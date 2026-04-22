@@ -1,7 +1,7 @@
 ---
 title: "feat: Build riffrec npm package"
 type: feat
-status: active
+status: completed
 date: 2026-04-22
 origin: docs/requirements.md
 deepened: 2026-04-22
@@ -202,7 +202,7 @@ SessionWriter
 
 ## Implementation Units
 
-- [ ] **Unit 1: Package scaffold**
+- [x] **Unit 1: Package scaffold**
 
 **Goal:** Establish the project structure, build tooling, and TypeScript configuration so all subsequent units have a working foundation.
 
@@ -234,7 +234,7 @@ SessionWriter
 
 ---
 
-- [ ] **Unit 2: Session types and schema**
+- [x] **Unit 2: Session types and schema**
 
 **Goal:** Define all TypeScript types for the public session format (`session.json`, `events.json`) with `schema_version` from day one.
 
@@ -266,7 +266,7 @@ SessionWriter
 
 ---
 
-- [ ] **Unit 3: Screen and voice capture**
+- [x] **Unit 3: Screen and voice capture**
 
 **Goal:** Implement `ScreenCapture` and `VoiceCapture` modules that record to two separate WebM files using `ondataavailable` chunks.
 
@@ -302,7 +302,7 @@ SessionWriter
 
 ---
 
-- [ ] **Unit 4: DOM event capture with Fiber component names**
+- [x] **Unit 4: DOM event capture with Fiber component names**
 
 **Goal:** Capture click events, page navigations with React component names from Fiber tree (dev) or `data-component` attribute (prod/fallback).
 
@@ -344,7 +344,7 @@ SessionWriter
 
 ---
 
-- [ ] **Unit 5: Network request capture**
+- [x] **Unit 5: Network request capture**
 
 **Goal:** Intercept all fetch and XHR requests; capture URL, method, status, duration; redact credentials; exclude Monologue API calls.
 
@@ -389,7 +389,7 @@ XHR override:
 
 ---
 
-- [ ] **Unit 6: Console error capture**
+- [x] **Unit 6: Console error capture**
 
 **Goal:** Intercept `window.onerror` and `console.error` to capture errors with React component context and optional sanitization.
 
@@ -434,7 +434,7 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 
 ---
 
-- [ ] **Unit 7: Session output — File System Access API**
+- [x] **Unit 7: Session output — File System Access API**
 
 **Goal:** Write session files to a user-selected directory with streaming for video; persist directory handle in IndexedDB to avoid re-prompting.
 
@@ -475,7 +475,7 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 
 ---
 
-- [ ] **Unit 8: Session output — zip fallback and Monologue transcription**
+- [x] **Unit 8: Session output — zip fallback and Monologue transcription**
 
 **Goal:** Implement zip download fallback for non-Chrome browsers and Monologue API client for voice transcription.
 
@@ -518,7 +518,7 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 
 ---
 
-- [ ] **Unit 9: Session orchestration**
+- [x] **Unit 9: Session orchestration**
 
 **Goal:** Implement `SessionWriter` that collects all capture outputs on `stop()`, builds `session.json` and `events.json`, calls Monologue, and writes to disk via File System Access API or zip fallback.
 
@@ -561,7 +561,7 @@ Session directory name: `riffrec-${YYYY-MM-DD}-${HHMM}-${shortid}` where shortid
 
 ---
 
-- [ ] **Unit 10: React integration layer**
+- [x] **Unit 10: React integration layer**
 
 **Goal:** Wire all capture and output modules behind `<RiffrecProvider>` and `useRiffrec()` hook; implement dev-only guard.
 
