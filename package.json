@@ -1,6 +1,6 @@
 {
   "name": "riffrec",
-  "version": "1.0.0-unreleased",
+  "version": "1.0.0",
   "description": "React session recorder for screen, voice, DOM, network, and console context.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,6 +36,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kieranklaassen/riffrec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kieranklaassen/riffrec/issues"
+  },
+  "homepage": "https://github.com/kieranklaassen/riffrec#readme",
   "peerDependencies": {
     "react": ">=16.8.0",
     "react-dom": ">=16.8.0"
