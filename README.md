@@ -1,14 +1,14 @@
 # riffrec
 
-`riffrec` is a React package for capturing the product context AI needs to improve your app. It records what happened in the interface, what the user saw and said, which DOM elements they touched, which requests failed, and which console errors fired, then writes everything to a local session directory or zip.
+`riffrec` is a React package for capturing golden feedback: the high-signal product sessions that show an AI exactly what happened, what the user saw and said, which UI they touched, which requests failed, and which console errors fired.
 
-The problem Riffrec solves is not screen recording by itself. It is the missing data layer between real product usage and useful AI-assisted product iteration. Without structured context, an agent gets a vague bug report. With Riffrec, it gets the screen recording, microphone audio, click timeline, React/DOM context, navigation, network status, and console errors needed to propose fixes or product improvements.
+There are already great tools for analytics and passive session replay. Riffrec is for the moments you intentionally turn on recording and capture the gold: the bug reproduction, the confused reaction, the broken flow, the product insight. In the age of AI slop, Riffrec gives agents concrete evidence instead of vague prompts.
 
-Riffrec does not analyze sessions and does not call an LLM. The session files are the interface for agents, teammates, and whatever analysis pipeline you run after recording.
+Riffrec does not analyze sessions and does not call an LLM. It writes local session files that agents, teammates, or Compound Engineering can inspect after recording.
 
 ## Why
 
-AI is most useful when it has evidence. Product teams already have the evidence while they use the app: the confusing flow, the broken button, the failing request, the console error, the spoken reaction, and the exact UI state. Riffrec packages that evidence into files an agent can inspect.
+AI is most useful when it has evidence. Product teams already find the evidence while using the app; Riffrec packages those moments into files an agent can inspect.
 
 Use it when you want to turn product usage into:
 
