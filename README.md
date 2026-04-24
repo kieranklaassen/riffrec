@@ -7,7 +7,7 @@ Riffrec does not analyze sessions and does not call an LLM. The session files ar
 ## Install
 
 ```sh
-npm install github:kieranklaassen/riffrec#v1.0.0
+npm install riffrec
 ```
 
 ```tsx
