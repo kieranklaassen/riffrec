@@ -23,7 +23,7 @@ Developer feedback sessions lose context between observation and description. Ri
 
 - R1. Screen recording via `getDisplayMedia()` + `MediaRecorder` → `recording.webm`
 - R2. Voice capture via `getUserMedia()` → `voice.webm`
-- R3. DOM click events with React component name (Fiber in dev, `data-component` attribute in prod), element tag, text, ID, selector
+- R3. DOM click events with React component name/path when available, plus production-safe DOM context: element name, tag, text, ID, selector, full path, class names, accessibility labels, nearby context, bounding box, and a small computed-style snapshot
 - R4. Network requests via fetch Proxy + XHR override; credential headers redacted
 - R5. Console errors via `window.onerror` + `console` override with configurable sanitizer
 - R6. Page navigations via `window.history` + React Router/Next.js router detection
@@ -69,9 +69,10 @@ Developer feedback sessions lose context between observation and description. Ri
 **Screen + Voice recording:**
 Two separate `MediaRecorder` instances run simultaneously — one on `displayStream` (getDisplayMedia), one on `micStream` (getUserMedia). Written to `recording.webm` and `voice.webm` independently. Start time recorded as `Date.now()` for sync. `timeslice: 1000` on both recorders fires `ondataavailable` every second for streaming writes. Check `MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')` and fall back to VP8.
 
-**React Fiber component names:**
+**React Fiber component names and DOM context:**
 - **Dev builds**: Traverse `Object.keys(el).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))`, walk up `fiber.return` until `fiber.type` is a function, read `fiber.type.displayName || fiber.type.name`
-- **Prod builds**: Fiber names are minified and useless. Fall back to `el.dataset.component` (`data-component` attribute). If neither available, emit `null`
+- **Prod builds**: Fiber names are minified and useless. Fall back to `el.dataset.component` (`data-component` attribute). If neither available, emit `null` for component fields while still capturing rich DOM context
+- **DOM context**: Click events include production-safe element names, selectors, full paths, class names, accessibility labels, nearby text, sibling context, bounding boxes, and focused computed-style snapshots
 - Recommend (but do not require) `riffrec-babel-plugin` to auto-inject `data-component` on JSX elements
 
 **fetch/XHR intercept:**
@@ -96,7 +97,7 @@ Two separate `MediaRecorder` instances run simultaneously — one on `displayStr
 
 - **Two separate audio files, not mixed**: `recording.webm` (display) + `voice.webm` (mic). Avoids AudioContext complexity and lets agents process either file independently.
 - **Proxy over monkey-patching for fetch**: Preserves reference integrity; transparent to downstream interceptors; reverts cleanly on `stop()`.
-- **Fiber traversal dev-only; data-component prod fallback**: Fiber internals are minified in production. Rather than produce garbage component names, emit `null` and document `riffrec-babel-plugin` for prod component names. Dev builds always have displayName.
+- **Fiber traversal dev-only; data-component prod fallback**: Fiber internals are minified in production. Rather than produce garbage component names, emit `null` and document `riffrec-babel-plugin` for prod component names. Dev builds usually have displayName. Production builds still get rich DOM context.
 - **fflate for zip**: 23KB gzipped vs JSZip 90KB; streaming API for large video files.
 - **`schema_version: "1.0.0"`** in events.json from day one: semver, documented in CHANGELOG, TypeScript types exported.
 - **`NODE_ENV` check at mount time** with single `console.warn`: Clear intent, zero runtime overhead when disabled. Not tree-shaken (bundle impact documented in README).

@@ -6,17 +6,34 @@ export type RiffrecStatus = "idle" | "recording" | "stopping" | "disabled" | "er
 
 export type RiffrecWriteMethod = "filesystem" | "zip";
 
+export interface ElementBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ElementInfo {
   tag: string;
   text: string | null;
   id: string | null;
   selector: string;
+  name?: string;
+  fullPath?: string;
+  classes?: string[];
+  role?: string | null;
+  ariaLabel?: string | null;
+  nearbyText?: string | null;
+  nearbyElements?: string | null;
+  boundingBox?: ElementBoundingBox;
+  computedStyles?: Record<string, string>;
 }
 
 export interface ClickEvent {
   t: number;
   type: "click";
   component: string | null;
+  componentPath?: string[] | null;
   element: ElementInfo;
 }
 

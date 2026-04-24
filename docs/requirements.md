@@ -86,14 +86,14 @@ All four files are optional and composable. Agent uses whatever is present.
 }
 ```
 
-React component names on every event - not just `<button>` but `<CheckoutButton>`. This is what makes the npm approach richer than screen recording alone.
+Rich DOM context on every event - not just that someone clicked a button, but which element, where it was, what nearby UI surrounded it, and which React component was involved when that context is available. This is what makes the npm approach richer than screen recording alone.
 
 ## Requirements
 
 **Capture**
 - R1. Screen recording via `getDisplayMedia()` + `MediaRecorder`; output is `recording.webm` (WebM/VP9, the native MediaRecorder format in Chrome)
 - R2. Voice capture via `getUserMedia()` (microphone); raw audio saved locally as `voice.webm`; voice is skipped gracefully if microphone capture is unavailable
-- R3. DOM click events with React component name (from Fiber tree when available, null otherwise), element tag, text content, ID, CSS selector; all fields required, null-safe if unavailable
+- R3. DOM click events with React component name or path when available, plus production-safe DOM context: readable element name, element tag, text content, ID, CSS selector, full DOM path, class names, ARIA metadata, nearby text, sibling context, bounding box, and a small computed-style snapshot; required fields remain null-safe if unavailable
 - R4. Network requests via fetch/XHR intercepts: URL, method, status code, duration; `Authorization`, `Cookie`, `Set-Cookie`, and `X-Api-Key` headers are redacted before writing; URL query parameters matching credential patterns (`token=`, `api_key=`, `client_secret=`) are masked; response bodies are not captured
 - R5. Console errors and uncaught exceptions via `window.onerror` and `console` override: message, stack trace, React component context; configurable sanitizer callback lets integrators scrub error messages before they are written
 - R6. Page navigations (React Router, Next.js router, or `window.history`)
@@ -118,8 +118,8 @@ React component names on every event - not just `<button>` but `<CheckoutButton>
 
 ## Success Criteria
 
-- A developer adds `<RiffrecProvider>` to their React app, hits start, tests their checkout flow while narrating, hits stop; an agent reads the session and returns a list of bugs with exact component names, correlated network errors, and voice context - without the developer writing a description
-- A developer without microphone capture still gets useful sessions: component names, network errors, and console stack traces give an agent enough context to identify bugs
+- A developer adds `<RiffrecProvider>` to their React app, hits start, tests their checkout flow while narrating, hits stop; an agent reads the session and returns a list of bugs with exact DOM context, component names when available, correlated network errors, and voice context - without the developer writing a description
+- A developer without microphone capture still gets useful sessions: DOM context, component names when available, network errors, and console stack traces give an agent enough context to identify bugs
 - The session zip can be sent to a teammate with no additional tooling required
 - Riffrec is a no-op in production builds by default
 
@@ -136,6 +136,7 @@ React component names on every event - not just `<button>` but `<CheckoutButton>
 
 - **npm package only, no daemon or CLI**: Session files are the interface. Agents read them directly.
 - **React-first**: Component names on every event is the differentiator. Fiber tree when available, graceful null fallback when not.
+- **Production-safe DOM context**: Uninstrumented production builds still emit useful element names, selectors, accessibility metadata, nearby text, bounding boxes, and style snapshots. Production component names require explicit `data-component` instrumentation.
 - **getDisplayMedia for screen recording**: Browser-native, any OS, outputs WebM
 - **Voice is optional but valuable**: Raw audio is captured locally; sessions are useful without it
 - **Dev-only by default**: `NODE_ENV` check at mount; `forceEnable` prop for explicit opt-in; bundle ships but does nothing in production

@@ -1,5 +1,6 @@
-import type { ClickEvent, ElementInfo, NavigationEvent, RiffrecEventSink } from "../types";
-import { getComponentName } from "./fiber";
+import type { ClickEvent, NavigationEvent, RiffrecEventSink } from "../types";
+import { buildElementInfo, buildSelector } from "./element";
+import { getComponentName, getComponentPath } from "./fiber";
 
 type HistoryMethod = typeof window.history.pushState;
 
@@ -11,56 +12,7 @@ function isElement(value: EventTarget | null): value is Element {
   return value instanceof Element;
 }
 
-function isSensitiveInput(el: Element): boolean {
-  if (!(el instanceof HTMLInputElement)) {
-    return false;
-  }
-
-  return el.type === "password" || el.type === "hidden";
-}
-
-function truncate(value: string, limit: number): string {
-  return value.length > limit ? value.slice(0, limit) : value;
-}
-
-function escapeCssIdentifier(value: string): string {
-  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
-    ? CSS.escape(value)
-    : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-}
-
-function selectorPart(el: Element): string {
-  const tag = el.tagName.toLowerCase();
-  const id = el.id ? `#${escapeCssIdentifier(el.id)}` : "";
-  const classes = Array.from(el.classList)
-    .slice(0, 2)
-    .map((className) => `.${escapeCssIdentifier(className)}`)
-    .join("");
-  return `${tag}${id}${classes}`;
-}
-
-export function buildSelector(el: Element): string {
-  const parts: string[] = [];
-  let current: Element | null = el;
-
-  while (current && parts.length < 4) {
-    parts.unshift(selectorPart(current));
-    current = current.parentElement;
-  }
-
-  return truncate(parts.join(" > "), 100);
-}
-
-export function buildElementInfo(el: Element): ElementInfo {
-  const rawText = isSensitiveInput(el) ? null : el.textContent?.trim() || null;
-
-  return {
-    tag: el.tagName.toLowerCase(),
-    text: rawText ? truncate(rawText, 200) : null,
-    id: el.id || null,
-    selector: buildSelector(el)
-  };
-}
+export { buildElementInfo, buildSelector };
 
 export class EventCapture {
   private onEvent: RiffrecEventSink | null = null;
@@ -123,6 +75,7 @@ export class EventCapture {
       t: timestamp(this.sessionStart),
       type: "click",
       component: getComponentName(element),
+      componentPath: getComponentPath(element),
       element: buildElementInfo(element)
     };
     this.onEvent(clickEvent);
