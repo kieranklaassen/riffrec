@@ -15,7 +15,7 @@ import { RiffrecProvider, RiffrecRecorder } from "riffrec";
 
 export function App() {
   return (
-    <RiffrecProvider monologueApiKey={import.meta.env.VITE_MONOLOGUE_API_KEY}>
+    <RiffrecProvider>
       <RiffrecRecorder />
       {/* your app */}
     </RiffrecProvider>
@@ -29,7 +29,6 @@ export function App() {
 
 ```ts
 interface RiffrecConfig {
-  monologueApiKey?: string;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
@@ -102,7 +101,6 @@ session.json
 events.json
 recording.webm
 voice.webm
-transcript.md
 ```
 
 `session.json` records URL, React version, browser, start/end timestamps, duration, and `files_present`.
@@ -120,15 +118,9 @@ transcript.md
 
 Chrome-family browsers can write a session directory after the user chooses a folder. Other browsers download a zip. Large `recording.webm` files over 50MB are excluded from the zip fallback; `session.json` and `events.json` are still included.
 
-## Monologue
-
-If `monologueApiKey` is configured, `voice.webm` is sent to the Monologue Enterprise Dictate API after recording stops and the response is written to `transcript.md`. If the key is missing or the API fails, transcription is skipped.
-
-Audio may contain private data and is sent to a third-party API. Host applications are responsible for consent, user-visible recording indicators, and appropriate data handling agreements.
-
 ## Privacy Notes
 
-Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. Password and hidden input text is excluded from DOM event text capture, but screen video can still contain sensitive content.
+Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. Password and hidden input text is excluded from DOM event text capture, but screen video and microphone audio can still contain sensitive content.
 
 Production component names are only available when elements include `data-component`. React Fiber names are useful in development but often minified in production. A future `riffrec-babel-plugin` package can automate production component attributes.
 

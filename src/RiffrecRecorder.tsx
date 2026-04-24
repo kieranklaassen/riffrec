@@ -95,7 +95,7 @@ const defaultConsentDescription = (
     </ul>
     <p style={{ margin: 0 }}>
       Password and hidden input text is omitted from DOM events, but anything visible on screen
-      can appear in the video. Voice may be sent to Monologue when configured.
+      can appear in the video, and anything spoken near the microphone can appear in the audio.
     </p>
   </>
 );

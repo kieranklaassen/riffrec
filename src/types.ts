@@ -77,7 +77,6 @@ export interface SessionResult {
 }
 
 export interface RiffrecConfig {
-  monologueApiKey?: string;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;

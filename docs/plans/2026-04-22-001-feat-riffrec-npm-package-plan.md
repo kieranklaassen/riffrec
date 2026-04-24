@@ -22,9 +22,9 @@ Developer feedback sessions lose context between observation and description. Ri
 ## Requirements Trace
 
 - R1. Screen recording via `getDisplayMedia()` + `MediaRecorder` → `recording.webm`
-- R2. Voice capture via `getUserMedia()` → `voice.webm` → Monologue API → `transcript.md`
+- R2. Voice capture via `getUserMedia()` → `voice.webm`
 - R3. DOM click events with React component name (Fiber in dev, `data-component` attribute in prod), element tag, text, ID, selector
-- R4. Network requests via fetch Proxy + XHR override; credential headers redacted; Monologue calls excluded
+- R4. Network requests via fetch Proxy + XHR override; credential headers redacted
 - R5. Console errors via `window.onerror` + `console` override with configurable sanitizer
 - R6. Page navigations via `window.history` + React Router/Next.js router detection
 - R7. All events timestamped relative to session start
@@ -77,7 +77,6 @@ Two separate `MediaRecorder` instances run simultaneously — one on `displayStr
 **fetch/XHR intercept:**
 - fetch: `window.fetch = new Proxy(originalFetch, { apply(...) })` — safer than monkey-patching; preserves `instanceof` checks; composable with TanStack Query, Apollo, Axios
 - XHR: wrap `XMLHttpRequest.prototype.open` and `send`; record start time on send; read status in `loadend` listener
-- Exclusion: check `url.includes(MONOLOGUE_API_HOST)` before logging; also exclude URLs containing riffrec's own origin
 - Capture: URL, method, status, duration only — never request/response bodies
 - Credential redaction: strip `Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` from logged headers; mask `token=`, `api_key=`, `client_secret=` in query strings
 
@@ -87,12 +86,6 @@ Two separate `MediaRecorder` instances run simultaneously — one on `displayStr
 - Streaming video writes: `fileHandle.createWritable()` → pipe `ondataavailable` chunks as they arrive
 - Zip fallback (non-Chrome): `fflate.zip()` async for small sessions; `fflate.ZipDeflate` streaming for large
 
-**Monologue API:**
-- `POST https://go.monologue.to/v1/enterprise/dictate` with `X-API-Key` header
-- Send `voice.webm` as multipart or binary body; verify accepted formats at planning time
-- Returns transcript text; write to `transcript.md` in session directory
-- Skip gracefully if `RIFFREC_MONOLOGUE_KEY` env var not set
-
 ### External References
 
 - File System Access API: Chrome 86+; IndexedDB handle persistence pattern
@@ -101,7 +94,7 @@ Two separate `MediaRecorder` instances run simultaneously — one on `displayStr
 
 ## Key Technical Decisions
 
-- **Two separate audio files, not mixed**: `recording.webm` (display) + `voice.webm` (mic). Avoids AudioContext complexity; simpler to send just `voice.webm` to Monologue; agents can use either independently.
+- **Two separate audio files, not mixed**: `recording.webm` (display) + `voice.webm` (mic). Avoids AudioContext complexity and lets agents process either file independently.
 - **Proxy over monkey-patching for fetch**: Preserves reference integrity; transparent to downstream interceptors; reverts cleanly on `stop()`.
 - **Fiber traversal dev-only; data-component prod fallback**: Fiber internals are minified in production. Rather than produce garbage component names, emit `null` and document `riffrec-babel-plugin` for prod component names. Dev builds always have displayName.
 - **fflate for zip**: 23KB gzipped vs JSZip 90KB; streaming API for large video files.
@@ -120,7 +113,6 @@ Two separate `MediaRecorder` instances run simultaneously — one on `displayStr
 
 ### Deferred to Implementation
 
-- Exact Monologue API multipart format (test against live endpoint during implementation)
 - Exact IndexedDB schema key and database version for handle storage
 - Safari VP8 codec detection and fallback path specifics
 - Whether `ondataavailable` chunks from display MediaRecorder need to be written to OPFS first before final File System Access API write (depends on streaming support per browser)
@@ -143,7 +135,6 @@ riffrec/
 │   ├── output/
 │   │   ├── filesystem.ts             # File System Access API + IndexedDB
 │   │   ├── zip.ts                    # fflate zip fallback
-│   │   ├── monologue.ts              # Monologue API client
 │   │   └── session.ts                # session.json + orchestration
 │   ├── RiffrecProvider.tsx           # React context provider
 │   └── useRiffrec.ts                 # hook: { start, stop, status }
@@ -192,7 +183,6 @@ SessionWriter
 ├── flush all MediaRecorder chunks
 ├── build events.json (schema_version: "1.0.0")
 ├── build session.json (files_present)
-├── POST voice.webm → Monologue API → transcript.md (if configured)
 └── write to disk:
       ├── FileSystemWriter (Chrome/Arc/Brave)
       │     └── streaming FileSystemWritableFileStream per file
@@ -254,7 +244,7 @@ SessionWriter
 - `NavigationEvent`: `{ t: number, type: "navigation", from: string, to: string }`
 - `EventsJson`: top-level shape with `version`, `schema_version: "1.0.0"`, `session_id`, `url`, `started_at`, `duration_seconds`, `events: RiffrecEvent[]`
 - `SessionJson`: `url`, `react_version`, `browser`, `started_at`, `ended_at`, `duration_seconds`, `files_present: string[]`
-- `RiffrecConfig`: provider props — `monologueApiKey?: string`, `forceEnable?: boolean`, `onError?: (err: Error) => void`, `sanitizeError?: (msg: string, stack: string | null) => string`
+- `RiffrecConfig`: provider props — `forceEnable?: boolean`, `forceEnableParam?: boolean | string`, `onError?: (err: Error) => void`, `sanitizeError?: (msg: string, stack: string | null) => string`
 - Export all types from `src/index.ts`
 
 **Test scenarios:**
@@ -346,7 +336,7 @@ SessionWriter
 
 - [x] **Unit 5: Network request capture**
 
-**Goal:** Intercept all fetch and XHR requests; capture URL, method, status, duration; redact credentials; exclude Monologue API calls.
+**Goal:** Intercept all fetch and XHR requests; capture URL, method, status, duration; redact credentials.
 
 **Requirements:** R4
 
@@ -372,12 +362,9 @@ fetch Proxy (`apply` trap):
 XHR override:
 - Wrap `open` to record method + URL; wrap `send` to record start time; add `loadend` listener to record status + duration; emit `NetworkRequestEvent`
 
-`excludeUrls` default: `['monologue.to']`
-
 **Test scenarios:**
 - Happy path: `fetch('/api/orders', { method: 'POST' })` → event emitted with correct method, URL, status, duration
 - Happy path: XHR `GET /api/users` → event emitted
-- Edge case: `fetch` to `monologue.to` → not emitted (excluded)
 - Error path: fetch throws (network error, CORS) → event emitted with status `-1` and duration
 - Security: request with `Authorization: Bearer token123` → header not present in emitted event (only URL/method/status/duration captured)
 - Security: URL `/api/orders?token=abc123` → emitted URL shows `/api/orders?token=[redacted]`
@@ -475,17 +462,16 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 
 ---
 
-- [x] **Unit 8: Session output — zip fallback and Monologue transcription**
+- [x] **Unit 8: Session output — zip fallback**
 
-**Goal:** Implement zip download fallback for non-Chrome browsers and Monologue API client for voice transcription.
+**Goal:** Implement zip download fallback for non-Chrome browsers.
 
-**Requirements:** R2 (Monologue), R12, R18 (zip)
+**Requirements:** R12, R18
 
 **Dependencies:** Units 1–2, 7
 
 **Files:**
 - Create: `src/output/zip.ts`
-- Create: `src/output/monologue.ts`
 
 **Approach:**
 
@@ -494,11 +480,6 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 - `isSupported()`: always `true` (fallback for all browsers)
 - Note: `recording.webm` excluded from zip by default when >50MB; include `session.json` and `events.json` always
 
-`monologue.ts` — `MonologueClient` class:
-- `transcribe(audioBlob: Blob, apiKey: string): Promise<string>`: POST to `https://go.monologue.to/v1/enterprise/dictate` with `X-API-Key` header; send audio as `multipart/form-data` or raw body (verify during implementation); parse response transcript text; return string
-- `isConfigured(config: RiffrecConfig): boolean`: check `config.monologueApiKey` is set
-- On failure: return `null` (skip transcript); do not throw
-
 **Test scenarios:**
 
 `zip.ts`:
@@ -506,21 +487,14 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 - Edge case: `recording.webm` > 50MB → excluded from zip; `session.json` still included
 - Edge case: browser without `URL.createObjectURL` → graceful fallback or error
 
-`monologue.ts`:
-- Happy path: valid API key + audio blob → returns non-empty transcript string
-- Error path: invalid API key (401) → returns `null`, no throw
-- Error path: API unavailable → returns `null` after timeout, no throw
-- Edge case: `apiKey` not configured → `isConfigured` returns false, transcription skipped
-
 **Verification:**
 - Zip download triggers in Firefox (no File System Access API)
-- Monologue returns `null` gracefully without crashing when key is invalid
 
 ---
 
 - [x] **Unit 9: Session orchestration**
 
-**Goal:** Implement `SessionWriter` that collects all capture outputs on `stop()`, builds `session.json` and `events.json`, calls Monologue, and writes to disk via File System Access API or zip fallback.
+**Goal:** Implement `SessionWriter` that collects all capture outputs on `stop()`, builds `session.json` and `events.json`, and writes to disk via File System Access API or zip fallback.
 
 **Requirements:** R12–R15, R17, R18
 
@@ -533,24 +507,22 @@ Test environment guard: skip all wrapping if `process.env.NODE_ENV === 'test'` o
 
 `SessionWriter` class:
 
-`stop(captures: CaptureOutputs, config: RiffrecConfig)`:
+`stop(captures: CaptureOutputs)`:
 1. Stop all `MediaRecorder` instances; collect `recording.webm` Blob + `voice.webm` Blob
 2. Compute `duration_seconds = (Date.now() - sessionStart) / 1000`
 3. Build `EventsJson` from accumulated events array; set `schema_version: "1.0.0"`, `duration_seconds`
-4. Attempt Monologue transcription if `config.monologueApiKey` is set; get `transcript: string | null`
-5. Build `files_present` array from which files have non-null content
-6. Build `SessionJson`
-7. Construct `Map<string, Blob>` of files to write
-8. Try `FileSystemWriter.writeSession`; if not supported or fails: `ZipWriter.writeSession`
-9. Return `{ sessionPath: string | null, method: 'filesystem' | 'zip' }`
+4. Build `files_present` array from which files have non-null content
+5. Build `SessionJson`
+6. Construct `Map<string, Blob>` of files to write
+7. Try `FileSystemWriter.writeSession`; if not supported or fails: `ZipWriter.writeSession`
+8. Return `{ sessionPath: string | null, method: 'filesystem' | 'zip' }`
 
 Session directory name: `riffrec-${YYYY-MM-DD}-${HHMM}-${shortid}` where shortid is generated via `crypto.randomUUID().slice(0, 6)` — no external dependency; `crypto.randomUUID()` is available in all target browsers (Chrome 92+, Firefox 95+, Safari 15.4+)
 
 **Test scenarios:**
-- Happy path (Chrome): all captures produce content → all 4 files written to filesystem; `files_present` has 4 entries
+- Happy path (Chrome): all captures produce content → all session files written to filesystem; `files_present` has the expected entries
 - Happy path (Firefox): fallback to zip → download triggered; `files_present` reflects actual content
-- Edge case: voice capture failed (permission denied) → `voice.webm` absent; `files_present` omits it; `transcript.md` absent
-- Edge case: Monologue returns `null` → `transcript.md` absent; no error thrown
+- Edge case: voice capture failed (permission denied) → `voice.webm` absent; `files_present` omits it
 - Error path: File System Access API write fails → zip fallback triggered automatically
 - Integration: `session.json` `files_present` accurately reflects which files were actually written
 
@@ -607,12 +579,12 @@ Session directory name: `riffrec-${YYYY-MM-DD}-${HHMM}-${shortid}` where shortid
 
 ## System-Wide Impact
 
-- **Interaction graph**: `window.fetch` and `XMLHttpRequest.prototype` are patched globally while recording; `window.onerror` and `console.error` are wrapped; `history.pushState` and `history.replaceState` are patched. All restored on `stop()`. **Re-entrancy**: the network capture module calls `fetch` internally (Monologue upload); internal calls must reference the pre-patch original to avoid infinite recursion.
+- **Interaction graph**: `window.fetch` and `XMLHttpRequest.prototype` are patched globally while recording; `window.onerror` and `console.error` are wrapped; `history.pushState` and `history.replaceState` are patched. All restored on `stop()`.
 - **SSR / Node.js**: `window`, `document`, `navigator.mediaDevices`, `history`, and `XMLHttpRequest` do not exist in Node.js. Any import of the package in a Next.js App Router server component, Remix loader, or other SSR environment throws at module evaluation time. All browser API access must be gated behind `typeof window !== 'undefined'`. The `package.json` `exports` map must include a `"node"` condition pointing to a no-op stub to prevent crashes on server import.
 - **Multiple instances / monorepo hoisting**: If the host app bundles two versions of riffrec (monorepo hoisting failure), both patches `window.fetch`. Calling `stop()` on one instance restores only the inner original, leaving the outer patch dangling permanently. Detection mechanism: on `start()`, check for `window.__RIFFREC_PATCHED__`; if present, emit `console.warn('[riffrec] Another riffrec instance is already active — skipping patch')` and mark as observer-only (no patching). Set `window.__RIFFREC_PATCHED__ = true` on first patch; clear on `stop()`.
 - **Test environment pollution**: `console.error` wrapping breaks `jest` and Vitest spy assertions in host app tests if the package is imported without a guard. Document that riffrec should not be imported in test environments, or that mocking the provider is the correct pattern.
-- **Privacy**: The package can record everything visible on screen — passwords, banking, health data — with no built-in safeguard. The plan explicitly delegates the responsibility for user-visible recording indicators and consent surfaces to the host application. `input[type="password"]` and `input[type="hidden"]` nodes must be excluded from DOM event text capture (R3). Audio sent to Monologue may contain spoken PII; host app developers must understand this is a third-party data flow.
-- **Error propagation**: Capture failures (e.g. permission denied, Monologue API error) are isolated — they do not propagate to the host app. Session output falls back gracefully.
+- **Privacy**: The package can record everything visible on screen — passwords, banking, health data — with no built-in safeguard. The plan explicitly delegates the responsibility for user-visible recording indicators and consent surfaces to the host application. `input[type="password"]` and `input[type="hidden"]` nodes must be excluded from DOM event text capture (R3). Microphone audio may contain spoken PII.
+- **Error propagation**: Capture failures (e.g. permission denied) are isolated — they do not propagate to the host app. Session output falls back gracefully.
 - **State lifecycle risks**: If `stop()` is not called (e.g. page refresh mid-session), patches are not restored. `MediaRecorder` `ondataavailable` chunks accumulate in memory unbounded; for long sessions this is a real memory leak. The implementation should flush chunks to IndexedDB OPFS every 60 seconds or every 50MB rather than holding all chunks in memory until `stop()`.
 - **API surface parity**: The session format (`events.json`, `session.json`) is the public API contract. Any breaking change requires a `schema_version` bump and CHANGELOG entry.
 - **Integration coverage**: The full flow (start → interact → stop → file on disk) cannot be unit-tested in jsdom; requires a real Chrome browser environment or Playwright test.
@@ -622,23 +594,20 @@ Session directory name: `riffrec-${YYYY-MM-DD}-${HHMM}-${shortid}` where shortid
 
 | Risk | Mitigation |
 |------|------------|
-| Monologue API audio format unknown | Implement with `multipart/form-data` first; fallback to raw body if rejected; verify against live endpoint |
 | File System Access API handle expires between sessions | `queryPermission` → `requestPermission` chain handles re-prompting gracefully |
 | React Fiber key format changes in future React version | `try/catch` + `null` fallback; isolated in `fiber.ts` for easy update |
 | Large video files (200MB+) OOM in zip fallback | Exclude `recording.webm` from zip when > 50MB; document the limitation |
 | `history.pushState` patch conflicts with existing router | Patch is additive (calls original); restore on `stop()` |
 | `getDisplayMedia` user cancels picker | `start()` rejects; host app must handle rejection; document in README |
 | SSR crash in Next.js App Router / Remix | All browser API access gated behind `typeof window !== 'undefined'`; `node` export condition points to no-op stub |
-| Network capture re-entrancy (Monologue upload calls fetch) | Internal requests use pre-patch original fetch reference; never go through the proxy |
 | Memory leak from unbounded MediaRecorder chunk accumulation | Flush chunks to OPFS every 60s or 50MB; document maximum recommended session duration |
 | Dual-patch from monorepo hoisting | Detect existing riffrec marker on `window.fetch` on install; warn and skip double-patching |
 | PII in screen recording (passwords, banking, health) | Document prominently in README: riffrec is dev-only tooling; recording indicator and consent are host app responsibilities |
-| PII in audio sent to Monologue Enterprise API | README must state: audio is transmitted to a third-party API; host app developer is responsible for ensuring appropriate data handling agreement |
 | Sensitive DOM text captured from password inputs | Exclude `input[type="password"]` and `input[type="hidden"]` text content from R3 DOM event capture |
 
 ## Documentation / Operational Notes
 
-- README must document: install, minimal setup, `RiffrecProvider` props, `useRiffrec` hook API, session format, browser support table, `forceEnable` warning, Monologue API key setup
+- README must document: install, minimal setup, `RiffrecProvider` props, `useRiffrec` hook API, session format, browser support table, `forceEnable` warning
 - CHANGELOG starts at `1.0.0-unreleased`; `schema_version: "1.0.0"` in events.json is the contract
 - Recommend `riffrec-babel-plugin` (separate package, post-v1) for production component names
 - Bundle impact: ~25KB gzipped (fflate 23KB + riffrec logic ~2KB); document in README
@@ -650,4 +619,3 @@ Session directory name: `riffrec-${YYYY-MM-DD}-${HHMM}-${shortid}` where shortid
 - File System Access API: `showDirectoryPicker` + IndexedDB handle persistence
 - fflate: streaming zip for large files
 - React Fiber key discovery: runtime property scan pattern (`__reactFiber$` prefix)
-- Monologue Enterprise API: `https://go.monologue.to/docs/enterprise.md`

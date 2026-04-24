@@ -1,12 +1,10 @@
-import type { CaptureOutputs, EventsJson, RiffrecConfig, SessionJson, SessionResult } from "../types";
+import type { CaptureOutputs, EventsJson, SessionJson, SessionResult } from "../types";
 import { RIFFREC_SCHEMA_VERSION } from "../types";
 import { FileSystemWriter, isSupported as isFileSystemSupported } from "./filesystem";
-import { MonologueClient } from "./monologue";
 import { filterZipSessionFiles, ZipWriter } from "./zip";
 
 interface SessionWriterOptions {
   reactVersion?: string | null;
-  fetchImpl?: typeof fetch;
 }
 
 function pad(value: number): string {
@@ -32,10 +30,6 @@ export function createSessionDirName(date = new Date()): string {
 
 function jsonBlob(value: unknown): Blob {
   return new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
-}
-
-function markdownBlob(value: string): Blob {
-  return new Blob([value.endsWith("\n") ? value : `${value}\n`], { type: "text/markdown" });
 }
 
 function readBrowser(): string {
@@ -92,13 +86,10 @@ function withSessionJson(
 export class SessionWriter {
   private readonly fileSystemWriter = new FileSystemWriter();
   private readonly zipWriter = new ZipWriter();
-  private readonly monologueClient: MonologueClient;
 
-  constructor(private readonly options: SessionWriterOptions = {}) {
-    this.monologueClient = new MonologueClient(options.fetchImpl);
-  }
+  constructor(private readonly options: SessionWriterOptions = {}) {}
 
-  async stop(outputs: CaptureOutputs, config: RiffrecConfig): Promise<SessionResult> {
+  async stop(outputs: CaptureOutputs): Promise<SessionResult> {
     const endedAt = new Date();
     const sessionDirName = createSessionDirName(endedAt);
     const eventsJson = buildEventsJson(outputs);
@@ -110,15 +101,6 @@ export class SessionWriter {
     }
     if (outputs.voiceBlob) {
       files.set("voice.webm", outputs.voiceBlob);
-    }
-
-    const transcript =
-      outputs.voiceBlob && config.monologueApiKey
-        ? await this.monologueClient.transcribe(outputs.voiceBlob, config.monologueApiKey)
-        : null;
-
-    if (transcript) {
-      files.set("transcript.md", markdownBlob(transcript));
     }
 
     try {

@@ -41,7 +41,6 @@ interface ActiveSession {
   networkCapture: NetworkCapture;
   consoleCapture: ConsoleCapture;
   ownsGlobalPatchMarker: boolean;
-  originalFetch: typeof fetch | undefined;
 }
 
 function readNodeEnv(): string | undefined {
@@ -86,7 +85,6 @@ export const RiffrecContext = createContext<RiffrecContextValue | null>(null);
 
 export function RiffrecProvider({
   children,
-  monologueApiKey,
   forceEnable,
   forceEnableParam,
   onError,
@@ -96,7 +94,6 @@ export function RiffrecProvider({
   const statusRef = useRef<RiffrecStatus>("idle");
   const activeSession = useRef<ActiveSession | null>(null);
   const configRef = useRef<RiffrecConfig>({
-    monologueApiKey,
     forceEnable,
     forceEnableParam,
     onError,
@@ -107,8 +104,8 @@ export function RiffrecProvider({
     forceEnable || isEnabledByUrlParam(forceEnableParam) || readNodeEnv() !== "production";
 
   useEffect(() => {
-    configRef.current = { monologueApiKey, forceEnable, forceEnableParam, onError, sanitizeError };
-  }, [forceEnable, forceEnableParam, monologueApiKey, onError, sanitizeError]);
+    configRef.current = { forceEnable, forceEnableParam, onError, sanitizeError };
+  }, [forceEnable, forceEnableParam, onError, sanitizeError]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -158,10 +155,9 @@ export function RiffrecProvider({
 
     try {
       const writer = new SessionWriter({
-        reactVersion: React.version,
-        fetchImpl: session.originalFetch
+        reactVersion: React.version
       });
-      const result = await writer.stop(outputs, configRef.current);
+      const result = await writer.stop(outputs);
       statusRef.current = "idle";
       setStatus("idle");
       return result;
@@ -184,7 +180,6 @@ export function RiffrecProvider({
     }
 
     const sessionStart = Date.now();
-    const originalFetch = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
     const screen = new ScreenCapture();
     const voice = new VoiceCapture();
     const eventCapture = new EventCapture();
@@ -225,8 +220,7 @@ export function RiffrecProvider({
         eventCapture,
         networkCapture,
         consoleCapture,
-        ownsGlobalPatchMarker,
-        originalFetch
+        ownsGlobalPatchMarker
       };
     } catch (error) {
       eventCapture.stop();
