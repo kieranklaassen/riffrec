@@ -1,6 +1,6 @@
 {
   "name": "riffrec",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "React session recorder for screen, voice, DOM, network, and console context.",
   "type": "module",
   "main": "./dist/index.cjs",
