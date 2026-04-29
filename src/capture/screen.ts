@@ -1,8 +1,16 @@
+import type { RiffrecDisplayMediaVideo } from "../types";
+
 const VIDEO_MIME_TYPES = [
   "video/webm;codecs=vp9",
   "video/webm;codecs=vp8",
   "video/webm"
 ];
+
+/** Default video constraints merged with optional `displayMediaVideo` overrides on `RiffrecProvider`. */
+export const DEFAULT_DISPLAY_MEDIA_VIDEO: RiffrecDisplayMediaVideo = {
+  frameRate: 5,
+  preferCurrentTab: true
+};
 
 function browserSupportsScreenCapture(): boolean {
   return (
@@ -27,6 +35,10 @@ export class ScreenCapture {
   private chunks: BlobPart[] = [];
   private mimeType = "video/webm";
 
+  constructor(
+    private readonly displayMediaVideoOverrides: Partial<RiffrecDisplayMediaVideo> = {}
+  ) {}
+
   async start(): Promise<void> {
     if (!browserSupportsScreenCapture()) {
       throw new Error("Screen capture is not supported in this browser.");
@@ -35,8 +47,12 @@ export class ScreenCapture {
     try {
       this.mimeType = chooseVideoMimeType();
       this.chunks = [];
+      const video: RiffrecDisplayMediaVideo = {
+        ...DEFAULT_DISPLAY_MEDIA_VIDEO,
+        ...this.displayMediaVideoOverrides
+      };
       this.stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30 },
+        video,
         audio: false
       });
       this.recorder = new MediaRecorder(this.stream, { mimeType: this.mimeType });

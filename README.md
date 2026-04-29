@@ -43,7 +43,12 @@ export function App() {
 ## Provider Props
 
 ```ts
+type RiffrecDisplayMediaVideo = MediaTrackConstraints & {
+  preferCurrentTab?: boolean;
+};
+
 interface RiffrecConfig {
+  displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
@@ -52,6 +57,8 @@ interface RiffrecConfig {
 ```
 
 `RiffrecProvider` is disabled in production by default. In production builds it emits a single warning and `start()` is a no-op unless `forceEnable={true}` is passed explicitly.
+
+Screen capture merges `displayMediaVideo` with built-in defaults (`DEFAULT_DISPLAY_MEDIA_VIDEO`, including `frameRate: 5` and `preferCurrentTab: true` on Chromium). Override only what you need; the browser still shows its share picker where required.
 
 For production debugging links, the host app can also opt into URL-param activation:
 

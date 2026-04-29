@@ -93,7 +93,19 @@ export interface SessionResult {
   filesPresent: string[];
 }
 
+/**
+ * Video constraints for `getDisplayMedia({ video })`.
+ * Chromium supports `preferCurrentTab` and other extension properties.
+ */
+export type RiffrecDisplayMediaVideo = MediaTrackConstraints & {
+  preferCurrentTab?: boolean;
+};
+
 export interface RiffrecConfig {
+  /**
+   * Override default screen-capture video constraints (e.g. `frameRate`, `preferCurrentTab`).
+   */
+  displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
