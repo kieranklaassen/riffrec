@@ -192,6 +192,8 @@ export function RiffrecProvider({
   children,
   displayMedia,
   displayMediaVideo,
+  downloadNoticeTitle = "We downloaded the zip file.",
+  downloadNoticeMessage = "Share the zip file for feedback.",
   forceEnable,
   forceEnableParam,
   onError,
@@ -403,8 +405,8 @@ export function RiffrecProvider({
             ✓
           </span>
           <span style={recordingTextStyle}>
-            <span style={recordingTitleStyle}>We downloaded the zip file.</span>
-            <span style={recordingHintStyle}>Share to Kieran for feedback.</span>
+            <span style={recordingTitleStyle}>{downloadNoticeTitle}</span>
+            <span style={recordingHintStyle}>{downloadNoticeMessage}</span>
           </span>
           <button
             type="button"
