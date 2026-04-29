@@ -4,7 +4,7 @@ export type RiffrecSchemaVersion = typeof RIFFREC_SCHEMA_VERSION;
 
 export type RiffrecStatus = "idle" | "recording" | "stopping" | "disabled" | "error";
 
-export type RiffrecWriteMethod = "filesystem" | "zip";
+export type RiffrecWriteMethod = "zip";
 
 export interface ElementBoundingBox {
   x: number;

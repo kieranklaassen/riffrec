@@ -91,12 +91,12 @@ Use the hook when you want to build your own recording controls:
 const { start, stop, status } = useRiffrec();
 ```
 
-`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. `stop()` returns:
+`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. `stop()` downloads a zip file and returns:
 
 ```ts
 {
   sessionPath: string | null;
-  method: "filesystem" | "zip";
+  method: "zip";
   filesPresent: string[];
 }
 ```
@@ -117,7 +117,7 @@ const { start, stop, status } = useRiffrec();
 </RiffrecProvider>
 ```
 
-Before recording starts, the component explains that Riffrec records screen video, microphone audio, clicks, navigation, network URLs/statuses, and console errors. The user must check a consent box before browser capture prompts open. While recording, it shows a visible status indicator next to the stop button.
+Before recording starts, the component explains that Riffrec records screen video, microphone audio, clicks, navigation, network URLs/statuses, and console errors. The user must check a consent box before browser capture prompts open. While recording, the provider-level stop control stays fixed above the page and saves the session zip when clicked.
 
 For custom consent copy, pass `consentTitle`, `consentDescription`, or `consentLabel`.
 
@@ -142,10 +142,9 @@ voice.webm
 | --- | --- | --- | --- |
 | Screen recording | Yes | Yes | Partial |
 | Microphone recording | Yes | Yes | Yes |
-| File System Access writes | Yes | No | No |
-| Zip fallback | Yes | Yes | Yes |
+| Automatic zip download | Yes | Yes | Yes |
 
-Chrome-family browsers can write a session directory after the user chooses a folder. Other browsers download a zip. Large `recording.webm` files over 50MB are excluded from the zip fallback; `session.json` and `events.json` are still included.
+Riffrec downloads a zip automatically through the browser download flow instead of asking the user to choose a folder. Large `recording.webm` files over 50MB are excluded from the zip; `session.json` and `events.json` are still included.
 
 ## Privacy Notes
 
@@ -155,4 +154,4 @@ Uninstrumented production sessions still include rich DOM context. Production Re
 
 ## Bundle Notes
 
-React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers the zip fallback.
+React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers zip downloads.

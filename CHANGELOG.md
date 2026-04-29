@@ -5,6 +5,8 @@
 - Added optional `displayMedia` and `displayMediaVideo` props on `RiffrecProvider` to customize `getDisplayMedia` options and video constraints.
 - Updated default screen capture options to request current-tab capture in Chromium (`preferCurrentTab: true`, `selfBrowserSurface: "include"`) while hiding monitor capture (`monitorTypeSurfaces: "exclude"`) and keeping a lower default frame rate (`5`).
 - Exported `DEFAULT_DISPLAY_MEDIA_OPTIONS` and `DEFAULT_DISPLAY_MEDIA_VIDEO` for callers that want to extend the defaults explicitly.
+- Changed session saving to automatically download a zip instead of prompting for a folder with the File System Access API.
+- Added a provider-level recording overlay with a prominent "Stop and save" action.
 
 ## [2.0.0] - 2026-04-24
 
