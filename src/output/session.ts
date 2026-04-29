@@ -1,6 +1,5 @@
 import type { CaptureOutputs, EventsJson, SessionJson, SessionResult } from "../types";
 import { RIFFREC_SCHEMA_VERSION } from "../types";
-import { FileSystemWriter, isSupported as isFileSystemSupported } from "./filesystem";
 import { filterZipSessionFiles, ZipWriter } from "./zip";
 
 interface SessionWriterOptions {
@@ -84,7 +83,6 @@ function withSessionJson(
 }
 
 export class SessionWriter {
-  private readonly fileSystemWriter = new FileSystemWriter();
   private readonly zipWriter = new ZipWriter();
 
   constructor(private readonly options: SessionWriterOptions = {}) {}
@@ -101,24 +99,6 @@ export class SessionWriter {
     }
     if (outputs.voiceBlob) {
       files.set("voice.webm", outputs.voiceBlob);
-    }
-
-    try {
-      if (isFileSystemSupported()) {
-        const filesystemSession = withSessionJson(
-          files,
-          outputs,
-          endedAt,
-          this.options.reactVersion ?? null
-        );
-        const sessionPath = await this.fileSystemWriter.writeSession(
-          sessionDirName,
-          filesystemSession.files
-        );
-        return { sessionPath, method: "filesystem", filesPresent: filesystemSession.filesPresent };
-      }
-    } catch {
-      // Fall back to zip below. Capture failures must not crash the host app.
     }
 
     const zipSession = withSessionJson(
