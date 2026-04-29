@@ -404,7 +404,7 @@ export function RiffrecProvider({
           </span>
           <span style={recordingTextStyle}>
             <span style={recordingTitleStyle}>We downloaded the zip file.</span>
-            <span style={recordingHintStyle}>Share to QM for feedback.</span>
+            <span style={recordingHintStyle}>Share to Kieran for feedback.</span>
           </span>
           <button
             type="button"
