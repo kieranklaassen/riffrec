@@ -112,6 +112,8 @@ export interface RiffrecConfig {
    * Override default screen-capture video constraints (e.g. `frameRate`).
    */
   displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
+  downloadNoticeTitle?: string;
+  downloadNoticeMessage?: string;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
