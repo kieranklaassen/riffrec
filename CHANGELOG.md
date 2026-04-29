@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Added optional `displayMediaVideo` prop on `RiffrecProvider` to customize `getDisplayMedia` video constraints. Defaults use a lower frame rate (`5`) and `preferCurrentTab: true` where supported (Chromium).
-- Exported `DEFAULT_DISPLAY_MEDIA_VIDEO` for callers that want to extend the defaults explicitly.
+- Added optional `displayMedia` and `displayMediaVideo` props on `RiffrecProvider` to customize `getDisplayMedia` options and video constraints.
+- Updated default screen capture options to request current-tab capture in Chromium (`preferCurrentTab: true`, `selfBrowserSurface: "include"`) while hiding monitor capture (`monitorTypeSurfaces: "exclude"`) and keeping a lower default frame rate (`5`).
+- Exported `DEFAULT_DISPLAY_MEDIA_OPTIONS` and `DEFAULT_DISPLAY_MEDIA_VIDEO` for callers that want to extend the defaults explicitly.
 
 ## [2.0.0] - 2026-04-24
 

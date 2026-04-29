@@ -43,11 +43,18 @@ export function App() {
 ## Provider Props
 
 ```ts
-type RiffrecDisplayMediaVideo = MediaTrackConstraints & {
+type RiffrecDisplayMediaVideo = MediaTrackConstraints;
+
+type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
   preferCurrentTab?: boolean;
+  selfBrowserSurface?: "include" | "exclude";
+  monitorTypeSurfaces?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+  systemAudio?: "include" | "exclude";
 };
 
 interface RiffrecConfig {
+  displayMedia?: Partial<RiffrecDisplayMediaOptions>;
   displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
@@ -58,7 +65,7 @@ interface RiffrecConfig {
 
 `RiffrecProvider` is disabled in production by default. In production builds it emits a single warning and `start()` is a no-op unless `forceEnable={true}` is passed explicitly.
 
-Screen capture merges `displayMediaVideo` with built-in defaults (`DEFAULT_DISPLAY_MEDIA_VIDEO`, including `frameRate: 5` and `preferCurrentTab: true` on Chromium). Override only what you need; the browser still shows its share picker where required.
+Screen capture merges `displayMedia` and `displayMediaVideo` with built-in defaults. Riffrec asks Chromium to make the current tab prominent (`preferCurrentTab: true`, `selfBrowserSurface: "include"`, `monitorTypeSurfaces: "exclude"`, `surfaceSwitching: "exclude"`, `systemAudio: "exclude"`), and records browser-tab video at `frameRate: 5` by default. Override only what you need; browsers still require a user confirmation for screen capture.
 
 For production debugging links, the host app can also opt into URL-param activation:
 
