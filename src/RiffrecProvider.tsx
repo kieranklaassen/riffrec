@@ -85,6 +85,7 @@ export const RiffrecContext = createContext<RiffrecContextValue | null>(null);
 
 export function RiffrecProvider({
   children,
+  displayMedia,
   displayMediaVideo,
   forceEnable,
   forceEnableParam,
@@ -95,6 +96,7 @@ export function RiffrecProvider({
   const statusRef = useRef<RiffrecStatus>("idle");
   const activeSession = useRef<ActiveSession | null>(null);
   const configRef = useRef<RiffrecConfig>({
+    displayMedia,
     displayMediaVideo,
     forceEnable,
     forceEnableParam,
@@ -107,13 +109,14 @@ export function RiffrecProvider({
 
   useEffect(() => {
     configRef.current = {
+      displayMedia,
       displayMediaVideo,
       forceEnable,
       forceEnableParam,
       onError,
       sanitizeError
     };
-  }, [displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -188,7 +191,10 @@ export function RiffrecProvider({
     }
 
     const sessionStart = Date.now();
-    const screen = new ScreenCapture(configRef.current.displayMediaVideo);
+    const screen = new ScreenCapture(
+      configRef.current.displayMedia,
+      configRef.current.displayMediaVideo
+    );
     const voice = new VoiceCapture();
     const eventCapture = new EventCapture();
     const networkCapture = new NetworkCapture();
