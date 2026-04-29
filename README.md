@@ -91,7 +91,7 @@ Use the hook when you want to build your own recording controls:
 const { start, stop, status } = useRiffrec();
 ```
 
-`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. `stop()` downloads a zip file and returns:
+`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. After the download starts, it shows a confirmation telling the user to share the zip for feedback. `stop()` downloads a zip file and returns:
 
 ```ts
 {

@@ -98,6 +98,39 @@ const recordingStopDisabledStyle: CSSProperties = {
   opacity: 0.68
 };
 
+const downloadNoticeStyle: CSSProperties = {
+  ...recordingOverlayStyle,
+  background: "rgba(6, 78, 59, 0.95)",
+  boxShadow: "0 24px 70px rgba(6, 78, 59, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.14)"
+};
+
+const downloadNoticeIconStyle: CSSProperties = {
+  width: 30,
+  height: 30,
+  flex: "0 0 auto",
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#34d399",
+  color: "#052e16",
+  fontSize: 18,
+  fontWeight: 900
+};
+
+const downloadNoticeButtonStyle: CSSProperties = {
+  border: "1px solid rgba(255, 255, 255, 0.35)",
+  borderRadius: 999,
+  padding: "10px 14px",
+  background: "rgba(255, 255, 255, 0.14)",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 14,
+  fontWeight: 800,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+
 interface RiffrecProviderProps extends RiffrecConfig {
   children?: ReactNode;
 }
@@ -165,6 +198,7 @@ export function RiffrecProvider({
   sanitizeError
 }: RiffrecProviderProps): React.ReactElement {
   const [status, setStatus] = useState<RiffrecStatus>("idle");
+  const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
   const statusRef = useRef<RiffrecStatus>("idle");
   const activeSession = useRef<ActiveSession | null>(null);
   const configRef = useRef<RiffrecConfig>({
@@ -243,6 +277,7 @@ export function RiffrecProvider({
       const result = await writer.stop(outputs);
       statusRef.current = "idle";
       setStatus("idle");
+      setDownloadNoticeVisible(true);
       return result;
     } catch (error) {
       const err = toError(error);
@@ -262,6 +297,7 @@ export function RiffrecProvider({
       return;
     }
 
+    setDownloadNoticeVisible(false);
     const sessionStart = Date.now();
     const screen = new ScreenCapture(
       configRef.current.displayMedia,
@@ -358,6 +394,24 @@ export function RiffrecProvider({
             onClick={() => void stop()}
           >
             {status === "stopping" ? "Saving..." : "Stop and save"}
+          </button>
+        </div>
+      ) : null}
+      {isDownloadNoticeVisible ? (
+        <div aria-live="polite" role="status" style={downloadNoticeStyle}>
+          <span aria-hidden="true" style={downloadNoticeIconStyle}>
+            ✓
+          </span>
+          <span style={recordingTextStyle}>
+            <span style={recordingTitleStyle}>We downloaded the zip file.</span>
+            <span style={recordingHintStyle}>Share to QM for feedback.</span>
+          </span>
+          <button
+            type="button"
+            style={downloadNoticeButtonStyle}
+            onClick={() => setDownloadNoticeVisible(false)}
+          >
+            Got it
           </button>
         </div>
       ) : null}
