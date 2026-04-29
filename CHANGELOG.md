@@ -7,6 +7,7 @@
 - Exported `DEFAULT_DISPLAY_MEDIA_OPTIONS` and `DEFAULT_DISPLAY_MEDIA_VIDEO` for callers that want to extend the defaults explicitly.
 - Changed session saving to automatically download a zip instead of prompting for a folder with the File System Access API.
 - Added a provider-level recording overlay with a prominent "Stop and save" action.
+- Added a post-download notice that tells users to share the downloaded zip for feedback.
 
 ## [2.0.0] - 2026-04-24
 
