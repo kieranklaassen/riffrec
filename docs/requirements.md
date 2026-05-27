@@ -23,7 +23,7 @@ riffrec (npm package)
   ├── fetch/XHR intercepts  network requests (credentials redacted)
   └── window.onerror        console errors + stack traces
 
-session written to disk (File System Access API on Chrome/Arc/Brave, or zip download)
+session written to disk (File System Access API on Chrome/Arc/Brave, or `.riffrec` download — a renamed zip)
 
 agent (Claude Code or any LLM)
   └── reads session files → analyzes → creates issues / brainstorm
@@ -33,7 +33,7 @@ Note: "No backend" means no Riffrec-operated server. Monologue API is an optiona
 
 ## Session Output
 
-Every session is a directory (or zip):
+Every session is a directory (or a `.riffrec` file, which is a renamed zip):
 
 ```
 riffrec-session-2026-04-21-0716/
@@ -108,21 +108,21 @@ React component names on every event - not just `<button>` but `<CheckoutButton>
 - R11. Dev-only by default: `RiffrecProvider` checks `process.env.NODE_ENV` at mount time; if `production`, all capture is disabled and a `console.warn` is emitted; explicit opt-in via `<RiffrecProvider forceEnable={true}>` is documented but discouraged; runtime guard only (bundle impact documented, not tree-shaken)
 
 **Session Output**
-- R12. On `stop()`, writes session directory via File System Access API (Chrome/Arc/Brave - user selects a directory once, handle persisted via IndexedDB) or offers zip download fallback for all other browsers; streaming writes for video file to avoid memory pressure
-- R13. File System Access API stores a persisted directory handle; no `~/.riffrec/sessions/` default path (browser sandbox prevents arbitrary path access); zip fallback writes to browser Downloads
+- R12. On `stop()`, writes session directory via File System Access API (Chrome/Arc/Brave - user selects a directory once, handle persisted via IndexedDB) or offers a `.riffrec` download fallback for all other browsers (the `.riffrec` file is a renamed zip — any unzip tool opens it); streaming writes for video file to avoid memory pressure
+- R13. File System Access API stores a persisted directory handle; no `~/.riffrec/sessions/` default path (browser sandbox prevents arbitrary path access); `.riffrec` (zip) fallback writes to browser Downloads
 - R14. Session directory name: `riffrec-{YYYY-MM-DD}-{HHMM}-{shortid}`
 - R15. `session.json` includes: URL, React version, browser, timestamps, and `files_present` array listing which files were successfully written (e.g. `["events.json", "transcript.md"]`); agents read `files_present` to determine what analysis is possible
 
 **Agent Integration**
 - R16. Session format is the public API - versioned via `schema_version` field in `events.json`; breaking changes documented in CHANGELOG; TypeScript types exported from package for agent authors
 - R17. No LLM calls inside riffrec; no API keys stored in the package; agents supply all analysis capability
-- R18. Sessions are shareable as a zip file; session.json and events.json are always included; recording.webm is optional due to size
+- R18. Sessions are shareable as a single `.riffrec` file (a renamed zip); session.json and events.json are always included; recording.webm is optional due to size
 
 ## Success Criteria
 
 - A developer adds `<RiffrecProvider>` to their React app, hits start, tests their checkout flow while narrating (with Monologue configured), hits stop; an agent reads the session and returns a list of bugs with exact component names, correlated network errors, and voice context - without the developer writing a description
 - A developer without Monologue configured still gets useful sessions: component names, network errors, and console stack traces give an agent enough context to identify bugs
-- The session zip can be sent to a teammate with no additional tooling required
+- The session `.riffrec` file can be sent to a teammate with no additional tooling required (it's a standard zip with a custom extension)
 - Riffrec is a no-op in production builds by default
 
 ## Scope Boundaries
@@ -141,7 +141,7 @@ React component names on every event - not just `<button>` but `<CheckoutButton>
 - **getDisplayMedia for screen recording**: Browser-native, any OS, outputs WebM
 - **Voice is optional but valuable**: Raw audio captured locally; Monologue API transcribes if configured; sessions are useful without it
 - **Dev-only by default**: `NODE_ENV` check at mount; `forceEnable` prop for explicit opt-in; bundle ships but does nothing in production
-- **File System Access API + zip fallback**: Chrome/Arc/Brave get persisted directory handle; others get zip download; no `~/.riffrec/sessions/` default path claim
+- **File System Access API + `.riffrec` fallback**: Chrome/Arc/Brave get persisted directory handle; others get a `.riffrec` download (renamed zip); no `~/.riffrec/sessions/` default path claim
 - **Schema versioning from day one**: `schema_version` field in `events.json`; TypeScript types exported; CHANGELOG maintained
 
 ## Dependencies / Assumptions
@@ -153,13 +153,13 @@ React component names on every event - not just `<button>` but `<CheckoutButton>
 | Screen recording (`getDisplayMedia`) | Yes | Yes | Partial (macOS 13+) |
 | Voice (`getUserMedia`) | Yes | Yes | Yes |
 | Native file writes (File System Access API) | Yes | No | No |
-| Zip download fallback | Yes | Yes | Yes |
+| `.riffrec` download fallback | Yes | Yes | Yes |
 
 - `getDisplayMedia()` requires a user gesture; cannot be triggered programmatically
 - Monologue Enterprise API key required for voice transcription; skipped gracefully if not configured
 - React 16.8+ required (hooks)
 - Agent (Claude Code or equivalent) required for analysis - riffrec does not analyze sessions itself
-- Session video files (recording.webm) may be 50-200MB for a 5-minute session; zip sharing of large sessions is impractical - share events.json + transcript.md separately for large recordings
+- Session video files (recording.webm) may be 50-200MB for a 5-minute session; `.riffrec` (zip) sharing of large sessions is impractical - share events.json + transcript.md separately for large recordings
 
 ## Outstanding Questions
 

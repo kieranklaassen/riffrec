@@ -1,6 +1,6 @@
 # riffrec
 
-`riffrec` is a React package for recording rich feedback sessions from inside an app. It captures screen video, microphone audio, DOM clicks with React component context, navigation, network requests, and console errors, then writes a local session directory or zip.
+`riffrec` is a React package for recording rich feedback sessions from inside an app. It captures screen video, microphone audio, DOM clicks with React component context, navigation, network requests, and console errors, then writes a local session directory or a `.riffrec` bundle (a renamed zip).
 
 Riffrec does not analyze sessions and does not call an LLM. The session files are the interface for agents and teammates.
 
@@ -116,9 +116,9 @@ transcript.md
 | Screen recording | Yes | Yes | Partial |
 | Microphone recording | Yes | Yes | Yes |
 | File System Access writes | Yes | No | No |
-| Zip fallback | Yes | Yes | Yes |
+| `.riffrec` download fallback | Yes | Yes | Yes |
 
-Chrome-family browsers can write a session directory after the user chooses a folder. Other browsers download a zip. Large `recording.webm` files over 50MB are excluded from the zip fallback; `session.json` and `events.json` are still included.
+Chrome-family browsers can write a session directory after the user chooses a folder. Other browsers download a single `.riffrec` file — a standard ZIP archive with a custom extension, so any unzip tool can open it (rename to `.zip`, or run `unzip session.riffrec` directly). Large `recording.webm` files over 50MB are excluded from the `.riffrec` fallback; `session.json` and `events.json` are still included.
 
 ## Monologue
 
@@ -134,4 +134,4 @@ Production component names are only available when elements include `data-compon
 
 ## Bundle Notes
 
-React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers the zip fallback.
+React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers the `.riffrec` (zip) fallback.
