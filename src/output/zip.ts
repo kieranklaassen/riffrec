@@ -56,9 +56,12 @@ export class ZipWriter {
 
     const data =
       totalBytes < MAX_RECORDING_IN_ZIP_BYTES ? zipSync(zipFiles) : await zipAsync(zipFiles);
-    const archive = new Blob([toArrayBuffer(data)], { type: "application/zip" });
-    triggerDownload(`${sessionDirName}.zip`, archive);
-    return `${sessionDirName}.zip`;
+    // The payload is a standard ZIP archive. We advertise the `.riffrec` extension and
+    // `application/x-riffrec` MIME purely for brand identity — the file unzips with any
+    // standard zip tool (rename to `.zip`, or run `unzip foo.riffrec` directly).
+    const archive = new Blob([toArrayBuffer(data)], { type: "application/x-riffrec" });
+    triggerDownload(`${sessionDirName}.riffrec`, archive);
+    return `${sessionDirName}.riffrec`;
   }
 }
 
