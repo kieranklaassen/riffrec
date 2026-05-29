@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Riffrec</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="toolbar">
+        <div class="brand" aria-label="Riffrec">
+          <span class="brand-mark"></span>
+          <span class="brand-name">riffrec</span>
+        </div>
+        <nav class="browser-actions" aria-label="Browser controls">
+          <button id="back" class="icon-button" type="button" aria-label="Back" disabled>&larr;</button>
+          <button id="forward" class="icon-button" type="button" aria-label="Forward" disabled>&rarr;</button>
+          <button id="reload" class="icon-button" type="button" aria-label="Reload">&#8635;</button>
+        </nav>
+        <form id="address-form" class="address-form">
+          <span class="secure-dot" aria-hidden="true"></span>
+          <input
+            id="address"
+            autocomplete="url"
+            spellcheck="false"
+            placeholder="Enter a website to record, for example linear.app"
+            aria-label="Website address"
+          />
+          <button class="go-button" type="submit">Open</button>
+        </form>
+        <div id="recording-chip" class="recording-chip" hidden>
+          <span class="record-dot" aria-hidden="true"></span>
+          <span>Recording</span>
+          <time id="elapsed">00:00</time>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section id="empty-state" class="empty-state" aria-label="Get started">
+          <p class="overline">Standalone feedback browser</p>
+          <h1>Record what happened,<br />while it is happening.</h1>
+          <p class="empty-copy">
+            Open any website here. Riffrec captures the page, your narration, clicks,
+            navigations, failed requests, and console errors into one local feedback session.
+          </p>
+          <div class="signal-line" aria-label="Captured signals">
+            <span>Screen</span><span>Voice</span><span>Clicks</span><span>Network</span><span>Console</span>
+          </div>
+        </section>
+
+        <aside class="feedback-rail" aria-label="Feedback recorder">
+          <div class="rail-heading">
+            <p class="overline">Feedback session</p>
+            <h2 id="page-title">No site open</h2>
+            <p id="page-status" class="quiet">Open a website to begin.</p>
+          </div>
+
+          <section class="setup" aria-label="Capture options">
+            <label class="toggle">
+              <input id="microphone" type="checkbox" checked />
+              <span>
+                <strong>Microphone narration</strong>
+                <small>Records a separate voice track.</small>
+              </span>
+            </label>
+            <label class="toggle">
+              <input id="capture-clicks" type="checkbox" checked />
+              <span>
+                <strong>Clicked elements</strong>
+                <small>No typed form values are collected.</small>
+              </span>
+            </label>
+          </section>
+
+          <section class="notes">
+            <label for="notes">Notes for the reviewer</label>
+            <textarea
+              id="notes"
+              placeholder="What were you trying to do? What did you expect?"
+              rows="4"
+            ></textarea>
+          </section>
+
+          <label id="consent-wrap" class="consent">
+            <input id="consent" type="checkbox" />
+            <span>
+              I understand the visible website, selected clicks and URLs/statuses, console errors,
+              and optional microphone audio will be saved locally in a shareable file.
+            </span>
+          </label>
+
+          <div class="record-actions">
+            <button id="record" class="primary" type="button" disabled>Start recording</button>
+            <button id="marker" class="secondary" type="button" hidden>Mark this moment</button>
+          </div>
+
+          <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+
+          <footer class="rail-footer">
+            <button id="clear-data" class="link-button" type="button">Clear website sign-in data</button>
+            <p>
+              Websites run inside Riffrec's separate browser profile. Captures remain on this Mac
+              until you share the exported zip.
+            </p>
+          </footer>
+        </aside>
+      </main>
+    </div>
+    <script src="../ui/renderer.global.js"></script>
+  </body>
+</html>
