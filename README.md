@@ -23,16 +23,20 @@ Riffrec is designed to pair well with the [Compound Engineering plugin](https://
 
 Riffrec Desktop is a standalone macOS feedback browser. A feedback giver opens a website inside the app, records a reproduction, and exports a zip without the website owner installing the React package.
 
+**Download for macOS (Apple Silicon):** [Riffrec Desktop Preview `.dmg`](https://github.com/kieranklaassen/riffrec/releases/download/desktop-v0.1.0-preview.2/Riffrec-darwin-arm64.dmg)
+
+This preview download is unsigned and unnotarized. On first launch, right-click **Riffrec.app** and choose **Open**; production distribution will use a signed and notarized build.
+
 ```sh
 cd desktop
 npm install
 npm run package
-open out/Riffrec-darwin-$(test "$(uname -m)" = arm64 && echo arm64 || echo x64)/Riffrec.app
+open out/Riffrec-darwin-$(test "$(uname -m)" = arm64 && echo arm64 || echo x64).dmg
 ```
 
 The first release is macOS-first and packages for the current Mac architecture. The app requires macOS Screen Recording permission to record its browser window, and Microphone permission only when narration is enabled.
 
-`npm run package` produces a local development build. Before distributing a download to feedback participants, sign and notarize the app with Apple Developer credentials so macOS can verify and launch it normally.
+`npm run package` produces local `.dmg` and `.zip` development builds. Before broadly distributing a download to feedback participants, sign and notarize the app with Apple Developer credentials so macOS can verify and launch it normally.
 
 ### Desktop Workflow
 

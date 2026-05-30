@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { packager } from "@electron/packager";
@@ -65,6 +65,30 @@ execFileSync("/usr/bin/ditto", [
   appBundlePath,
   archivePath
 ]);
+const diskImagePath = path.join(output, `Riffrec-${process.platform}-${arch}.dmg`);
+const diskImageContents = await mkdtemp(path.join(output, "dmg-"));
+try {
+  await cp(appBundlePath, path.join(diskImageContents, "Riffrec.app"), { recursive: true });
+  await symlink("/Applications", path.join(diskImageContents, "Applications"));
+  execFileSync(
+    "/usr/bin/hdiutil",
+    [
+      "create",
+      "-volname",
+      "Riffrec",
+      "-srcfolder",
+      diskImageContents,
+      "-ov",
+      "-format",
+      "UDZO",
+      diskImagePath
+    ],
+    { stdio: "inherit" }
+  );
+} finally {
+  await rm(diskImageContents, { recursive: true, force: true });
+}
 
 console.log(`Packaged application: ${appBundlePath}`);
 console.log(`Distributable archive: ${archivePath}`);
+console.log(`Installable disk image: ${diskImagePath}`);
