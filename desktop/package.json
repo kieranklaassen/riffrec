@@ -1,0 +1,29 @@
+{
+  "name": "riffrec-desktop",
+  "version": "0.1.0",
+  "description": "Standalone Riffrec feedback browser for macOS.",
+  "private": true,
+  "main": "dist/process/main.js",
+  "scripts": {
+    "build": "rm -rf dist && tsup && cp -R assets dist/assets",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "npm run build && electron .",
+    "package": "npm run build && node scripts/package-mac.mjs",
+    "make": "npm run package"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.1.1",
+    "@electron/packager": "^20.0.0",
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^24.10.0",
+    "electron": "^42.3.0",
+    "jsdom": "^29.1.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}
