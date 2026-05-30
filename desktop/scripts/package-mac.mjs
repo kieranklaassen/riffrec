@@ -1,13 +1,48 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
+import { access, mkdtemp, readdir, readlink, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sign } from "@electron/osx-sign";
 import { packager } from "@electron/packager";
 import { flipFuses, FuseVersion, FuseV1Options } from "@electron/fuses";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const output = path.join(root, "out");
 const arch = process.arch === "arm64" ? "arm64" : "x64";
+const signingIdentity = process.env.RIFFREC_CODESIGN_IDENTITY?.trim();
+
+async function assertPortableAppBundle(appBundlePath) {
+  const requiredFrameworkExecutable = path.join(
+    appBundlePath,
+    "Contents",
+    "Frameworks",
+    "Electron Framework.framework",
+    "Electron Framework"
+  );
+  await access(requiredFrameworkExecutable);
+
+  const absoluteSymlinks = [];
+  async function visit(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = await readlink(entryPath);
+        if (path.isAbsolute(target)) {
+          absoluteSymlinks.push(`${path.relative(appBundlePath, entryPath)} -> ${target}`);
+        }
+      } else if (entry.isDirectory()) {
+        await visit(entryPath);
+      }
+    }
+  }
+
+  await visit(appBundlePath);
+  if (absoluteSymlinks.length > 0) {
+    throw new Error(
+      `Application bundle contains non-portable absolute symlinks:\n${absoluteSymlinks.join("\n")}`
+    );
+  }
+}
 
 await rm(output, { recursive: true, force: true });
 
@@ -56,6 +91,21 @@ await flipFuses(
     [FuseV1Options.OnlyLoadAppFromAsar]: true
   }
 );
+if (signingIdentity) {
+  await sign({
+    app: appBundlePath,
+    platform: "darwin",
+    identity: signingIdentity,
+    preEmbedProvisioningProfile: false
+  });
+  console.log(`Signed application with: ${signingIdentity}`);
+} else {
+  console.warn(
+    "Application remains ad hoc signed. Set RIFFREC_CODESIGN_IDENTITY to sign with a Keychain identity."
+  );
+}
+await assertPortableAppBundle(appBundlePath);
+
 const archivePath = path.join(output, `Riffrec-${process.platform}-${arch}.zip`);
 execFileSync("/usr/bin/ditto", [
   "-c",
@@ -68,7 +118,9 @@ execFileSync("/usr/bin/ditto", [
 const diskImagePath = path.join(output, `Riffrec-${process.platform}-${arch}.dmg`);
 const diskImageContents = await mkdtemp(path.join(output, "dmg-"));
 try {
-  await cp(appBundlePath, path.join(diskImageContents, "Riffrec.app"), { recursive: true });
+  const stagedAppBundlePath = path.join(diskImageContents, "Riffrec.app");
+  execFileSync("/usr/bin/ditto", [appBundlePath, stagedAppBundlePath]);
+  await assertPortableAppBundle(stagedAppBundlePath);
   await symlink("/Applications", path.join(diskImageContents, "Applications"));
   execFileSync(
     "/usr/bin/hdiutil",
@@ -87,6 +139,14 @@ try {
   );
 } finally {
   await rm(diskImageContents, { recursive: true, force: true });
+}
+if (signingIdentity) {
+  execFileSync(
+    "/usr/bin/codesign",
+    ["--sign", signingIdentity, "--timestamp", "--force", diskImagePath],
+    { stdio: "inherit" }
+  );
+  console.log(`Signed disk image with: ${signingIdentity}`);
 }
 
 console.log(`Packaged application: ${appBundlePath}`);
