@@ -8,12 +8,14 @@ function createCapture() {
       title: "Start",
       canGoBack: false,
       canGoForward: false,
-      isLoading: false
+      isLoading: false,
+      canRecord: true
     },
     options: { microphone: false, captureClicks: true },
     outcomes: { screen: "captured", microphone: "disabled" },
     appVersion: "0.1.0",
-    electronVersion: "42.3.0"
+    electronVersion: "42.3.0",
+    viewport: { width: 1024, height: 768, device_pixel_ratio: 2, zoom_factor: 1 }
   });
 }
 
@@ -35,6 +37,8 @@ describe("CaptureSession", () => {
       to: "https://example.test/checkout?token=[redacted]"
     });
     expect(result.contextJson.markers[0]?.label).toBe("Payment spinner remained visible");
+    expect(result.eventsJson.url).toBe("https://example.test/checkout?token=[redacted]");
+    expect(result.contextJson.viewport.width).toBe(1024);
     expect(result.contextJson.capture_outcomes.microphone).toBe("disabled");
     expect(result.contextJson.unavailable_signals).toContain("activity in external browser windows");
     vi.restoreAllMocks();
@@ -45,5 +49,33 @@ describe("CaptureSession", () => {
     session.completeNetwork(99, 200);
 
     expect(session.complete().eventsJson.events).toEqual([]);
+  });
+
+  it("redacts credentials in hash-routed final and observed URLs", () => {
+    const session = createCapture();
+    session.addNavigation("https://example.test/#/callback?access_token=secret&state=ok");
+    session.beginNetwork(1, "GET", "https://api.example.test/#/fetch?token=secret", 1);
+    session.completeNetwork(1, 200, 2);
+
+    const completed = session.complete();
+    expect(completed.eventsJson.url).toContain("access_token=[redacted]");
+    expect(completed.eventsJson.events[0]).toMatchObject({
+      to: "https://example.test/#/callback?access_token=[redacted]&state=ok"
+    });
+    expect(completed.eventsJson.events[1]).toMatchObject({
+      url: "https://api.example.test/#/fetch?token=[redacted]"
+    });
+  });
+
+  it("bounds outstanding request observations from untrusted pages", () => {
+    const session = createCapture();
+    for (let id = 0; id < 1002; id += 1) {
+      session.beginNetwork(id, "GET", `https://example.test/${id}`);
+    }
+    const completed = session.complete();
+
+    expect(completed.contextJson.warnings).toContain(
+      "Concurrent network observation limit reached; some requests were omitted."
+    );
   });
 });

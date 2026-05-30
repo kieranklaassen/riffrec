@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { packager } from "@electron/packager";
+import { flipFuses, FuseVersion, FuseV1Options } from "@electron/fuses";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const output = path.join(root, "out");
@@ -42,6 +43,19 @@ const [appPath] = await packager({
 });
 
 const appBundlePath = path.join(appPath, "Riffrec.app");
+await flipFuses(
+  appBundlePath,
+  {
+    version: FuseVersion.V1,
+    resetAdHocDarwinSignature: process.platform === "darwin" && arch === "arm64",
+    [FuseV1Options.RunAsNode]: false,
+    [FuseV1Options.EnableCookieEncryption]: true,
+    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+    [FuseV1Options.EnableNodeCliInspectArguments]: false,
+    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+    [FuseV1Options.OnlyLoadAppFromAsar]: true
+  }
+);
 const archivePath = path.join(output, `Riffrec-${process.platform}-${arch}.zip`);
 execFileSync("/usr/bin/ditto", [
   "-c",

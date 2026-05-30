@@ -13,6 +13,9 @@ import { RIFFREC_SCHEMA_VERSION } from "../shared/types";
 import { redactUrl, sanitizeConsoleMessage } from "./privacy";
 
 const MAX_EVENTS = 10_000;
+const MAX_PENDING_REQUESTS = 1_000;
+const MAX_MARKERS = 200;
+const MAX_WARNINGS = 25;
 
 interface CaptureSessionInput {
   initialState: BrowserState;
@@ -20,6 +23,7 @@ interface CaptureSessionInput {
   outcomes: CaptureOutcomes;
   appVersion: string;
   electronVersion: string;
+  viewport: SessionContextJson["viewport"];
 }
 
 interface NetworkStart {
@@ -46,6 +50,8 @@ export class CaptureSession {
   private readonly warnings: string[] = [];
   private finalState: BrowserState;
   private didTruncateEvents = false;
+  private didTruncateRequests = false;
+  private didTruncateMarkers = false;
 
   constructor(private readonly input: CaptureSessionInput) {
     this.finalState = input.initialState;
@@ -89,6 +95,10 @@ export class CaptureSession {
   }
 
   beginNetwork(id: number, method: string, url: string, timestamp = Date.now()): void {
+    if (this.networkStarts.size >= MAX_PENDING_REQUESTS) {
+      this.didTruncateRequests = true;
+      return;
+    }
     this.networkStarts.set(id, { method: method.toUpperCase(), url, startedAt: timestamp });
   }
 
@@ -109,6 +119,10 @@ export class CaptureSession {
   }
 
   addMarker(label: string): void {
+    if (this.markers.length >= MAX_MARKERS) {
+      this.didTruncateMarkers = true;
+      return;
+    }
     const trimmed = label.trim();
     this.markers.push({
       t: this.timestamp(),
@@ -117,7 +131,9 @@ export class CaptureSession {
   }
 
   addWarning(warning: string): void {
-    this.warnings.push(warning);
+    if (this.warnings.length < MAX_WARNINGS && !this.warnings.includes(warning)) {
+      this.warnings.push(warning);
+    }
   }
 
   complete(endedAt = new Date()): CompletedCaptureSession {
@@ -131,7 +147,7 @@ export class CaptureSession {
         version: "1",
         schema_version: RIFFREC_SCHEMA_VERSION,
         session_id: this.id,
-        url: redactUrl(this.input.initialState.url),
+        url: redactUrl(this.finalState.url),
         started_at: this.startedAt.toISOString(),
         duration_seconds: durationSeconds,
         events: this.events
@@ -161,6 +177,7 @@ export class CaptureSession {
           "typed keys or form field values",
           "activity in external browser windows"
         ],
+        viewport: this.input.viewport,
         privacy: {
           stores_request_or_response_bodies: false,
           stores_keystrokes: false,
@@ -169,7 +186,11 @@ export class CaptureSession {
         markers: this.markers,
         warnings: [
           ...this.warnings,
-          ...(this.didTruncateEvents ? ["Event limit reached; later events were omitted."] : [])
+          ...(this.didTruncateEvents ? ["Event limit reached; later events were omitted."] : []),
+          ...(this.didTruncateRequests
+            ? ["Concurrent network observation limit reached; some requests were omitted."]
+            : []),
+          ...(this.didTruncateMarkers ? ["Marker limit reached; later markers were omitted."] : [])
         ]
       }
     };

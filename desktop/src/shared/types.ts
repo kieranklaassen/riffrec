@@ -86,6 +86,12 @@ export interface SessionContextJson {
   capture_outcomes: CaptureOutcomes;
   captured_signals: string[];
   unavailable_signals: string[];
+  viewport: {
+    width: number;
+    height: number;
+    device_pixel_ratio: number;
+    zoom_factor: number;
+  };
   privacy: {
     stores_request_or_response_bodies: false;
     stores_keystrokes: false;
@@ -110,11 +116,7 @@ export interface RecordingStartInput {
   outcomes: CaptureOutcomes;
 }
 
-export interface RecordingMediaPayload {
-  recording: ArrayBuffer;
-  voice: ArrayBuffer | null;
-  notes: string;
-}
+export type MediaKind = "recording" | "voice";
 
 export interface BrowserState {
   url: string;
@@ -122,12 +124,14 @@ export interface BrowserState {
   canGoBack: boolean;
   canGoForward: boolean;
   isLoading: boolean;
+  canRecord: boolean;
   error?: string | null;
 }
 
 export interface ExportResult {
   path: string | null;
   canceled: boolean;
+  retryAvailable: boolean;
 }
 
 export interface DesktopApi {
@@ -138,11 +142,28 @@ export interface DesktopApi {
   setBrowserBounds: (bounds: Rectangle) => void;
   clearBrowsingData: () => Promise<void>;
   getScreenCaptureStatus: () => Promise<string>;
+  authorizeDisplayCapture: () => Promise<void>;
   startRecording: (input: RecordingStartInput) => Promise<void>;
+  appendMediaChunk: (kind: MediaKind, chunk: ArrayBuffer) => Promise<void>;
+  endTelemetry: () => Promise<{ recoveryPersisted: boolean }>;
+  finalizeMedia: () => Promise<void>;
   addMarker: (label: string) => Promise<void>;
-  stopRecording: (payload: RecordingMediaPayload) => Promise<ExportResult>;
+  addWarning: (warning: string) => Promise<void>;
+  saveRecording: (notes: string) => Promise<ExportResult>;
+  retryExport: (notes: string) => Promise<ExportResult>;
+  discardDraft: () => Promise<void>;
+  discardQuarantinedDrafts: () => Promise<{ removed: number }>;
   cancelRecording: () => Promise<void>;
+  getPendingExport: () => Promise<{
+    available: boolean;
+    notes: string;
+    activeAborted: boolean;
+    additionalCount: number;
+    quarantinedCount: number;
+    partial: boolean;
+  }>;
   onBrowserState: (listener: (state: BrowserState) => void) => () => void;
+  onNotice: (listener: (message: string) => void) => () => void;
 }
 
 export interface Rectangle {

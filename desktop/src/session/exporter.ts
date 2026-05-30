@@ -9,6 +9,12 @@ export interface SessionMedia {
   notes?: string;
 }
 
+export interface PresentSessionMedia {
+  recording?: boolean;
+  voice?: boolean;
+  notes?: string;
+}
+
 export interface ArchiveResult {
   filename: string;
   bytes: Uint8Array;
@@ -43,25 +49,46 @@ export async function buildSessionArchive(
   session: CompletedCaptureSession,
   media: SessionMedia = {}
 ): Promise<ArchiveResult> {
-  const entries: AsyncZippable = {};
-  const optional: string[] = [];
-
-  entries["events.json"] = jsonBytes(session.eventsJson);
-  entries["context.json"] = jsonBytes(session.contextJson);
+  const present = buildPortableEntries(session, {
+    recording: Boolean(media.recording?.byteLength),
+    voice: Boolean(media.voice?.byteLength),
+    notes: media.notes
+  });
+  const entries: AsyncZippable = { ...present.entries };
 
   if (media.recording?.byteLength) {
     entries["recording.webm"] = [media.recording, { level: 0 }];
-    optional.push("recording.webm");
   }
   if (media.voice?.byteLength) {
     entries["voice.webm"] = [media.voice, { level: 0 }];
+  }
+
+  return {
+    filename: `${createSessionName(session.endedAt, session.id.slice(0, 6))}.zip`,
+    bytes: await zipAsync(entries),
+    filesPresent: present.filesPresent
+  };
+}
+
+export function buildPortableEntries(
+  session: CompletedCaptureSession,
+  media: PresentSessionMedia = {}
+): { entries: Record<string, Uint8Array>; filesPresent: string[] } {
+  const entries: Record<string, Uint8Array> = {
+    "events.json": jsonBytes(session.eventsJson),
+    "context.json": jsonBytes(session.contextJson)
+  };
+  const optional: string[] = [];
+  if (media.recording) {
+    optional.push("recording.webm");
+  }
+  if (media.voice) {
     optional.push("voice.webm");
   }
   if (media.notes?.trim()) {
     entries["notes.md"] = Buffer.from(`${media.notes.trim()}\n`, "utf8");
     optional.push("notes.md");
   }
-
   const filesPresent = ["session.json", "events.json", "context.json", ...optional];
   const metadata: SessionJson = {
     url: session.eventsJson.url,
@@ -75,8 +102,7 @@ export async function buildSessionArchive(
   entries["session.json"] = jsonBytes(metadata);
 
   return {
-    filename: `${createSessionName(session.endedAt, session.id.slice(0, 6))}.zip`,
-    bytes: await zipAsync(entries),
+    entries,
     filesPresent
   };
 }

@@ -10,12 +10,14 @@ function makeSession() {
       title: "Checkout",
       canGoBack: false,
       canGoForward: false,
-      isLoading: false
+      isLoading: false,
+      canRecord: true
     },
     options: { microphone: true, captureClicks: true },
     outcomes: { screen: "captured", microphone: "captured" },
     appVersion: "0.1.0",
-    electronVersion: "42.3.0"
+    electronVersion: "42.3.0",
+    viewport: { width: 1200, height: 700, device_pixel_ratio: 2, zoom_factor: 1 }
   });
   session.addClick({
     component: null,
@@ -48,10 +50,21 @@ describe("buildSessionArchive", () => {
       notes: "Button froze after payment."
     });
     const files = unzipSync(archive.bytes);
+    const sessionJson = JSON.parse(Buffer.from(files["session.json"]).toString("utf8"));
+    const contextJson = JSON.parse(Buffer.from(files["context.json"]).toString("utf8"));
 
     expect(files["recording.webm"].byteLength).toBe(recording.byteLength);
     expect(files["voice.webm"].byteLength).toBe(3);
     expect(Buffer.from(files["notes.md"]).toString("utf8")).toBe("Button froze after payment.\n");
+    expect(sessionJson.files_present).toEqual([
+      "session.json",
+      "events.json",
+      "context.json",
+      "recording.webm",
+      "voice.webm",
+      "notes.md"
+    ]);
+    expect(contextJson.capture_outcomes.microphone).toBe("captured");
   });
 });
 

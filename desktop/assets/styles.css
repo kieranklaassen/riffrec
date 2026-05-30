@@ -8,6 +8,8 @@
   --red: #b5412e;
   --red-dark: #943324;
   --moss: #58614c;
+  --moss-soft: #eef0e7;
+  --red-soft: #f7e8e3;
   --rail-width: 354px;
   --toolbar-height: 72px;
   --radius: 12px;
@@ -67,7 +69,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 16px;
   padding: 14px 18px 10px 82px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid #dfd7c9;
   background: var(--paper);
 }
 
@@ -176,6 +178,11 @@ textarea:focus-visible {
   color: #fff;
   font-size: 13px;
   font-weight: 600;
+  transition: background 130ms ease, transform 130ms ease;
+}
+
+.go-button:hover {
+  background: #302e28;
 }
 
 .recording-chip {
@@ -186,7 +193,7 @@ textarea:focus-visible {
   padding: 0 14px;
   border: 1px solid rgba(181, 65, 46, 0.24);
   border-radius: 21px;
-  background: #f7e8e3;
+  background: var(--red-soft);
   color: var(--red-dark);
   font-size: 13px;
   font-weight: 600;
@@ -218,7 +225,7 @@ textarea:focus-visible {
 }
 
 .empty-state {
-  padding: clamp(42px, 8vw, 110px);
+  padding: clamp(42px, 7vw, 98px);
   background: var(--canvas);
   border-right: 1px solid var(--line);
 }
@@ -244,10 +251,49 @@ textarea:focus-visible {
 
 .empty-copy {
   max-width: 480px;
-  margin: 26px 0 42px;
+  margin: 26px 0 38px;
   color: var(--muted);
   line-height: 1.65;
   font-size: 16px;
+}
+
+.workflow-steps {
+  max-width: 720px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0 0 32px;
+}
+
+.workflow-steps div {
+  min-height: 102px;
+  padding: 14px 14px 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffefb;
+}
+
+.workflow-steps span {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--red);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+.workflow-steps strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.workflow-steps small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
 }
 
 .signal-line {
@@ -257,7 +303,7 @@ textarea:focus-visible {
 }
 
 .signal-line span {
-  padding: 9px 14px;
+  padding: 8px 13px;
   border-radius: 30px;
   border: 1px solid var(--line);
   color: var(--muted);
@@ -266,18 +312,26 @@ textarea:focus-visible {
 
 .feedback-rail {
   min-height: 0;
-  padding: 30px 25px 22px;
+  padding: 22px 20px 18px;
   background: var(--paper);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.session-card {
+  padding: 17px 17px 15px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(251, 250, 247, 0.74);
 }
 
 .rail-heading h2 {
   margin: 0 0 7px;
   font-family: "Iowan Old Style", "Baskerville", serif;
   font-weight: 500;
-  font-size: 27px;
+  font-size: 26px;
   letter-spacing: -0.04em;
   white-space: nowrap;
   overflow: hidden;
@@ -300,16 +354,31 @@ textarea:focus-visible {
 .setup {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 8px 0;
+  gap: 0;
+  padding: 4px 14px 5px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--canvas);
+}
+
+.section-label {
+  margin: 9px 0 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .toggle {
   display: flex;
   align-items: flex-start;
   gap: 11px;
-  padding: 12px 0;
+  padding: 10px 0;
+}
+
+.toggle + .toggle {
+  border-top: 1px solid #ebe4d7;
 }
 
 .toggle input,
@@ -340,24 +409,59 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.notes label small {
+  float: right;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .notes textarea {
   width: 100%;
   resize: none;
   padding: 11px 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--ink);
   background: var(--canvas);
   font-size: 13px;
   line-height: 1.5;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.notes textarea:focus {
+  border-color: #ac9a7b;
+  box-shadow: 0 0 0 3px rgba(181, 65, 46, 0.09);
 }
 
 .consent {
   display: flex;
   gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(88, 97, 76, 0.2);
+  border-radius: 12px;
+  background: var(--moss-soft);
+}
+
+.consent strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.consent small {
+  display: block;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.capture-actions {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--canvas);
 }
 
 .record-actions {
@@ -368,7 +472,7 @@ textarea:focus-visible {
 
 .primary,
 .secondary {
-  height: 48px;
+  height: 47px;
   border-radius: var(--radius);
   border: 1px solid transparent;
   font-weight: 600;
@@ -407,13 +511,35 @@ textarea:focus-visible {
   color: var(--moss);
 }
 
+.capture-actions .feedback {
+  min-height: 0;
+  margin: 10px 3px 1px;
+}
+
+.capture-actions .feedback:empty {
+  display: none;
+}
+
 .rail-footer {
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .record-dot {
+    animation: none;
+  }
+
+  .primary,
+  .go-button,
+  .icon-button {
+    transition: none;
+  }
+}
+
 .link-button {
+  display: block;
   padding: 0;
   border: 0;
   background: transparent;
@@ -421,6 +547,14 @@ textarea:focus-visible {
   font-size: 13px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.link-button + .link-button {
+  margin-top: 10px;
+}
+
+.link-button.destructive {
+  color: var(--red);
 }
 
 .rail-footer p {
