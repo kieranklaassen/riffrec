@@ -23,9 +23,9 @@ Riffrec is designed to pair well with the [Compound Engineering plugin](https://
 
 Riffrec Desktop is a standalone macOS feedback browser. A feedback giver opens a website inside the app, records a reproduction, and exports a zip without the website owner installing the React package.
 
-**Download for macOS (Apple Silicon):** [Riffrec Desktop Preview `.dmg`](https://github.com/kieranklaassen/riffrec/releases/download/desktop-v0.1.0-preview.2/Riffrec-darwin-arm64.dmg)
+**Download for macOS (Apple Silicon):** [Riffrec Desktop Preview `.dmg`](https://github.com/kieranklaassen/riffrec/releases/download/desktop-v0.1.0-preview.3/Riffrec-darwin-arm64.dmg)
 
-This preview download is unsigned and unnotarized. On first launch, right-click **Riffrec.app** and choose **Open**; production distribution will use a signed and notarized build.
+This preview download is development-signed and unnotarized. On first launch, right-click **Riffrec.app** and choose **Open**; production distribution will use a Developer ID signed and notarized build.
 
 ```sh
 cd desktop
@@ -36,7 +36,13 @@ open out/Riffrec-darwin-$(test "$(uname -m)" = arm64 && echo arm64 || echo x64).
 
 The first release is macOS-first and packages for the current Mac architecture. The app requires macOS Screen Recording permission to record its browser window, and Microphone permission only when narration is enabled.
 
-`npm run package` produces local `.dmg` and `.zip` development builds. Before broadly distributing a download to feedback participants, sign and notarize the app with Apple Developer credentials so macOS can verify and launch it normally.
+`npm run package` produces local `.dmg` and `.zip` development builds. To sign the app and disk image with a certificate installed through Xcode or Keychain Access, set `RIFFREC_CODESIGN_IDENTITY`:
+
+```sh
+RIFFREC_CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" npm run package
+```
+
+An Apple Development signature is suitable for local testing. Before broadly distributing a download to feedback participants, package with a `Developer ID Application` certificate and notarize the app so macOS can verify and launch it normally.
 
 ### Desktop Workflow
 
