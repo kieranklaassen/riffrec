@@ -1,7 +1,7 @@
 ---
 title: "feat: Add standalone desktop feedback browser"
 type: feat
-status: active
+status: completed
 date: 2026-05-29
 origin: docs/requirements.md
 ---
