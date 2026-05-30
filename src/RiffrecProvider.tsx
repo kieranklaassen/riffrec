@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode
 } from "react";
 import * as React from "react";
@@ -26,6 +27,110 @@ import type {
 const DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 const ENABLE_PARAM_VALUES = new Set(["", "1", "true", "on", "yes"]);
 
+const recordingOverlayStyle: CSSProperties = {
+  position: "fixed",
+  top: 18,
+  left: "50%",
+  transform: "translateX(-50%)",
+  zIndex: 2147483647,
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  maxWidth: "calc(100vw - 32px)",
+  padding: "14px 16px 14px 18px",
+  borderRadius: 999,
+  background: "rgba(15, 23, 42, 0.94)",
+  color: "#ffffff",
+  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.36), 0 0 0 1px rgba(255, 255, 255, 0.12)",
+  fontFamily:
+    'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  pointerEvents: "auto"
+};
+
+const recordingDotStyle: CSSProperties = {
+  width: 14,
+  height: 14,
+  flex: "0 0 auto",
+  borderRadius: "50%",
+  background: "#ef4444",
+  boxShadow: "0 0 0 6px rgba(239, 68, 68, 0.22), 0 0 24px rgba(239, 68, 68, 0.72)"
+};
+
+const recordingTextStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minWidth: 0,
+  lineHeight: 1.15
+};
+
+const recordingTitleStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 800,
+  letterSpacing: "0.02em",
+  textTransform: "uppercase"
+};
+
+const recordingHintStyle: CSSProperties = {
+  marginTop: 3,
+  color: "rgba(255, 255, 255, 0.78)",
+  fontSize: 13,
+  fontWeight: 500,
+  whiteSpace: "nowrap"
+};
+
+const recordingStopButtonStyle: CSSProperties = {
+  border: "1px solid rgba(255, 255, 255, 0.28)",
+  borderRadius: 999,
+  padding: "13px 20px",
+  background: "#ef4444",
+  color: "#ffffff",
+  boxShadow: "0 10px 30px rgba(239, 68, 68, 0.38)",
+  font: "inherit",
+  fontSize: 16,
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+
+const recordingStopDisabledStyle: CSSProperties = {
+  ...recordingStopButtonStyle,
+  cursor: "not-allowed",
+  opacity: 0.68
+};
+
+const downloadNoticeStyle: CSSProperties = {
+  ...recordingOverlayStyle,
+  background: "rgba(6, 78, 59, 0.95)",
+  boxShadow: "0 24px 70px rgba(6, 78, 59, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.14)"
+};
+
+const downloadNoticeIconStyle: CSSProperties = {
+  width: 30,
+  height: 30,
+  flex: "0 0 auto",
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#34d399",
+  color: "#052e16",
+  fontSize: 18,
+  fontWeight: 900
+};
+
+const downloadNoticeButtonStyle: CSSProperties = {
+  border: "1px solid rgba(255, 255, 255, 0.35)",
+  borderRadius: 999,
+  padding: "10px 14px",
+  background: "rgba(255, 255, 255, 0.14)",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 14,
+  fontWeight: 800,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+
 interface RiffrecProviderProps extends RiffrecConfig {
   children?: ReactNode;
 }
@@ -41,7 +146,6 @@ interface ActiveSession {
   networkCapture: NetworkCapture;
   consoleCapture: ConsoleCapture;
   ownsGlobalPatchMarker: boolean;
-  originalFetch: typeof fetch | undefined;
 }
 
 function readNodeEnv(): string | undefined {
@@ -86,17 +190,22 @@ export const RiffrecContext = createContext<RiffrecContextValue | null>(null);
 
 export function RiffrecProvider({
   children,
-  monologueApiKey,
+  displayMedia,
+  displayMediaVideo,
+  downloadNoticeTitle = "We downloaded the zip file.",
+  downloadNoticeMessage = "Share the zip file for feedback.",
   forceEnable,
   forceEnableParam,
   onError,
   sanitizeError
 }: RiffrecProviderProps): React.ReactElement {
   const [status, setStatus] = useState<RiffrecStatus>("idle");
+  const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
   const statusRef = useRef<RiffrecStatus>("idle");
   const activeSession = useRef<ActiveSession | null>(null);
   const configRef = useRef<RiffrecConfig>({
-    monologueApiKey,
+    displayMedia,
+    displayMediaVideo,
     forceEnable,
     forceEnableParam,
     onError,
@@ -107,8 +216,15 @@ export function RiffrecProvider({
     forceEnable || isEnabledByUrlParam(forceEnableParam) || readNodeEnv() !== "production";
 
   useEffect(() => {
-    configRef.current = { monologueApiKey, forceEnable, forceEnableParam, onError, sanitizeError };
-  }, [forceEnable, forceEnableParam, monologueApiKey, onError, sanitizeError]);
+    configRef.current = {
+      displayMedia,
+      displayMediaVideo,
+      forceEnable,
+      forceEnableParam,
+      onError,
+      sanitizeError
+    };
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -158,12 +274,12 @@ export function RiffrecProvider({
 
     try {
       const writer = new SessionWriter({
-        reactVersion: React.version,
-        fetchImpl: session.originalFetch
+        reactVersion: React.version
       });
-      const result = await writer.stop(outputs, configRef.current);
+      const result = await writer.stop(outputs);
       statusRef.current = "idle";
       setStatus("idle");
+      setDownloadNoticeVisible(true);
       return result;
     } catch (error) {
       const err = toError(error);
@@ -183,9 +299,12 @@ export function RiffrecProvider({
       return;
     }
 
+    setDownloadNoticeVisible(false);
     const sessionStart = Date.now();
-    const originalFetch = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
-    const screen = new ScreenCapture();
+    const screen = new ScreenCapture(
+      configRef.current.displayMedia,
+      configRef.current.displayMediaVideo
+    );
     const voice = new VoiceCapture();
     const eventCapture = new EventCapture();
     const networkCapture = new NetworkCapture();
@@ -225,8 +344,7 @@ export function RiffrecProvider({
         eventCapture,
         networkCapture,
         consoleCapture,
-        ownsGlobalPatchMarker,
-        originalFetch
+        ownsGlobalPatchMarker
       };
     } catch (error) {
       eventCapture.stop();
@@ -257,5 +375,48 @@ export function RiffrecProvider({
     [isEnabled, start, status, stop]
   );
 
-  return <RiffrecContext.Provider value={value}>{children}</RiffrecContext.Provider>;
+  const isRecordingVisible = status === "recording" || status === "stopping";
+
+  return (
+    <RiffrecContext.Provider value={value}>
+      {children}
+      {isRecordingVisible ? (
+        <div aria-live="polite" role="status" style={recordingOverlayStyle}>
+          <span aria-hidden="true" style={recordingDotStyle} />
+          <span style={recordingTextStyle}>
+            <span style={recordingTitleStyle}>Recording feedback</span>
+            <span style={recordingHintStyle}>
+              Stop when you are ready to save the ZIP file.
+            </span>
+          </span>
+          <button
+            type="button"
+            disabled={status === "stopping"}
+            style={status === "stopping" ? recordingStopDisabledStyle : recordingStopButtonStyle}
+            onClick={() => void stop()}
+          >
+            {status === "stopping" ? "Saving..." : "Stop and save"}
+          </button>
+        </div>
+      ) : null}
+      {isDownloadNoticeVisible ? (
+        <div aria-live="polite" role="status" style={downloadNoticeStyle}>
+          <span aria-hidden="true" style={downloadNoticeIconStyle}>
+            ✓
+          </span>
+          <span style={recordingTextStyle}>
+            <span style={recordingTitleStyle}>{downloadNoticeTitle}</span>
+            <span style={recordingHintStyle}>{downloadNoticeMessage}</span>
+          </span>
+          <button
+            type="button"
+            style={downloadNoticeButtonStyle}
+            onClick={() => setDownloadNoticeVisible(false)}
+          >
+            Got it
+          </button>
+        </div>
+      ) : null}
+    </RiffrecContext.Provider>
+  );
 }

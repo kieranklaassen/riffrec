@@ -1,0 +1,25 @@
+# Visit https://soloterm.com to learn more
+name: riffrec
+icon: null
+processes:
+  npm:test:
+    command: npm run test
+    working_dir: null
+    auto_start: false
+    auto_restart: false
+    restart_when_changed: []
+    env: {}
+  npm:build:
+    command: npm run build
+    working_dir: null
+    auto_start: false
+    auto_restart: false
+    restart_when_changed: []
+    env: {}
+  Vitest:
+    command: npx vitest --ui
+    working_dir: null
+    auto_start: false
+    auto_restart: false
+    restart_when_changed: []
+    env: {}

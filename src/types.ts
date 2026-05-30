@@ -4,19 +4,36 @@ export type RiffrecSchemaVersion = typeof RIFFREC_SCHEMA_VERSION;
 
 export type RiffrecStatus = "idle" | "recording" | "stopping" | "disabled" | "error";
 
-export type RiffrecWriteMethod = "filesystem" | "zip";
+export type RiffrecWriteMethod = "zip";
+
+export interface ElementBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface ElementInfo {
   tag: string;
   text: string | null;
   id: string | null;
   selector: string;
+  name?: string;
+  fullPath?: string;
+  classes?: string[];
+  role?: string | null;
+  ariaLabel?: string | null;
+  nearbyText?: string | null;
+  nearbyElements?: string | null;
+  boundingBox?: ElementBoundingBox;
+  computedStyles?: Record<string, string>;
 }
 
 export interface ClickEvent {
   t: number;
   type: "click";
   component: string | null;
+  componentPath?: string[] | null;
   element: ElementInfo;
 }
 
@@ -76,8 +93,27 @@ export interface SessionResult {
   filesPresent: string[];
 }
 
+export type RiffrecDisplayMediaVideo = MediaTrackConstraints;
+
+export type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
+  preferCurrentTab?: boolean;
+  selfBrowserSurface?: "include" | "exclude";
+  monitorTypeSurfaces?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+  systemAudio?: "include" | "exclude";
+};
+
 export interface RiffrecConfig {
-  monologueApiKey?: string;
+  /**
+   * Override default screen-capture options passed to `getDisplayMedia()`.
+   */
+  displayMedia?: Partial<RiffrecDisplayMediaOptions>;
+  /**
+   * Override default screen-capture video constraints (e.g. `frameRate`).
+   */
+  displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
+  downloadNoticeTitle?: string;
+  downloadNoticeMessage?: string;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;

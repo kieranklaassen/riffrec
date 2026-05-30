@@ -1,8 +1,23 @@
 # riffrec
 
-`riffrec` records rich website feedback sessions: screen video, microphone narration, clicks, navigation, network outcomes, and console errors packaged into local files for an agent or teammate.
+`riffrec` captures golden feedback: high-signal product sessions with screen video, microphone narration, clicks, navigation, network outcomes, and console errors. Use it as a React package or as a standalone macOS feedback browser.
 
-Riffrec does not analyze sessions and does not call an LLM. The session files are the interface for agents and teammates.
+There are already great tools for analytics and passive session replay. Riffrec is for the moments you intentionally turn on recording and capture the gold: the bug reproduction, the confused reaction, the broken flow, the product insight. In the age of AI slop, Riffrec gives agents concrete evidence instead of vague prompts.
+
+Riffrec does not analyze sessions and does not call an LLM. It writes local session files that agents, teammates, or Compound Engineering can inspect after recording.
+
+## Why
+
+AI is most useful when it has evidence. Product teams already find the evidence while using the app; Riffrec packages those moments into files an agent can inspect.
+
+Use it when you want to turn product usage into:
+
+- bug reports with reproduction context
+- UI and UX improvement notes
+- implementation tasks tied to exact DOM and network events
+- sessions teammates or agents can review without asking the user to re-explain everything
+
+Riffrec is designed to pair well with the [Compound Engineering plugin](https://github.com/EveryInc/compound-engineering-plugin). Record a session with Riffrec, then hand the session files to Compound Engineering so the agent can turn concrete product evidence into a sharper plan or implementation.
 
 ## Riffrec Desktop For Any Website
 
@@ -36,7 +51,7 @@ Riffrec stores website cookies and local storage only in its dedicated local bro
 For a developer who can integrate Riffrec in a React app, the package can additionally identify React component context during feedback.
 
 ```sh
-npm install github:kieranklaassen/riffrec#v1.0.0
+npm install riffrec
 ```
 
 ```tsx
@@ -44,7 +59,7 @@ import { RiffrecProvider, RiffrecRecorder } from "riffrec";
 
 export function App() {
   return (
-    <RiffrecProvider monologueApiKey={import.meta.env.VITE_MONOLOGUE_API_KEY}>
+    <RiffrecProvider>
       <RiffrecRecorder />
       {/* your app */}
     </RiffrecProvider>
@@ -57,8 +72,21 @@ export function App() {
 ## Provider Props
 
 ```ts
+type RiffrecDisplayMediaVideo = MediaTrackConstraints;
+
+type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
+  preferCurrentTab?: boolean;
+  selfBrowserSurface?: "include" | "exclude";
+  monitorTypeSurfaces?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+  systemAudio?: "include" | "exclude";
+};
+
 interface RiffrecConfig {
-  monologueApiKey?: string;
+  displayMedia?: Partial<RiffrecDisplayMediaOptions>;
+  displayMediaVideo?: Partial<RiffrecDisplayMediaVideo>;
+  downloadNoticeTitle?: string;
+  downloadNoticeMessage?: string;
   forceEnable?: boolean;
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
@@ -67,6 +95,8 @@ interface RiffrecConfig {
 ```
 
 `RiffrecProvider` is disabled in production by default. In production builds it emits a single warning and `start()` is a no-op unless `forceEnable={true}` is passed explicitly.
+
+Screen capture merges `displayMedia` and `displayMediaVideo` with built-in defaults. Riffrec asks Chromium to make the current tab prominent (`preferCurrentTab: true`, `selfBrowserSurface: "include"`, `monitorTypeSurfaces: "exclude"`, `surfaceSwitching: "exclude"`, `systemAudio: "exclude"`), and records browser-tab video at `frameRate: 5` by default. Override only what you need; browsers still require a user confirmation for screen capture.
 
 For production debugging links, the host app can also opt into URL-param activation:
 
@@ -92,12 +122,12 @@ Use the hook when you want to build your own recording controls:
 const { start, stop, status } = useRiffrec();
 ```
 
-`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. `stop()` returns:
+`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. After the download starts, it shows a confirmation telling the user to share the zip for feedback. Host apps can customize that confirmation with `downloadNoticeTitle` and `downloadNoticeMessage`. `stop()` downloads a zip file and returns:
 
 ```ts
 {
   sessionPath: string | null;
-  method: "filesystem" | "zip";
+  method: "zip";
   filesPresent: string[];
 }
 ```
@@ -118,7 +148,7 @@ const { start, stop, status } = useRiffrec();
 </RiffrecProvider>
 ```
 
-Before recording starts, the component explains that Riffrec records screen video, microphone audio, clicks, navigation, network URLs/statuses, and console errors. The user must check a consent box before browser capture prompts open. While recording, it shows a visible status indicator next to the stop button.
+Before recording starts, the component explains that Riffrec records screen video, microphone audio, clicks, navigation, network URLs/statuses, and console errors. The user must check a consent box before browser capture prompts open. While recording, the provider-level stop control stays fixed above the page and saves the session zip when clicked.
 
 For custom consent copy, pass `consentTitle`, `consentDescription`, or `consentLabel`.
 
@@ -135,11 +165,11 @@ voice.webm         # when microphone narration was captured
 notes.md           # when notes were provided
 ```
 
-The React package may instead include `recording.webm`, `voice.webm`, and `transcript.md` according to the selected browser capture and transcription options.
+The React package includes `recording.webm` and `voice.webm` when those captures are available; it does not include desktop-only `context.json` or `notes.md`.
 
 `session.json` records URL, React version, browser, start/end timestamps, duration, and `files_present`. Consumers should use `files_present`, and for desktop sessions `context.json.capture_outcomes`, rather than assuming optional media or text files exist.
 
-`events.json` has `schema_version: "1.0.0"` and event records for clicks, network requests, console errors, and navigation. Credential-like query parameters such as `token`, `api_key`, and `client_secret` are redacted. Request and response bodies are not captured.
+`events.json` has `schema_version: "1.0.0"` and event records for clicks, network requests, console errors, and navigation. Click events include production-safe DOM context such as readable element names, selectors, class names, accessibility labels, nearby text, sibling context, bounding boxes, and a small computed-style snapshot. Credential-like query parameters such as `token`, `api_key`, and `client_secret` are redacted. Request and response bodies are not captured.
 
 Desktop-generated zips keep the same `events.json` schema. `context.json` records desktop capture options and outcomes, app/browser versions, initial/final page information, captured viewport dimensions, marker timestamps, and unavailable signal disclosures.
 
@@ -149,25 +179,18 @@ Desktop-generated zips keep the same `events.json` schema. `context.json` record
 | --- | --- | --- | --- |
 | Screen recording | Yes | Yes | Partial |
 | Microphone recording | Yes | Yes | Yes |
-| File System Access writes | Yes | No | No |
-| Zip fallback | Yes | Yes | Yes |
+| Automatic zip download | Yes | Yes | Yes |
 
-Chrome-family browsers can write a session directory after the user chooses a folder. Other browsers download a zip. Large `recording.webm` files over 50MB are excluded from the zip fallback; `session.json` and `events.json` are still included.
-
-## Monologue
-
-If `monologueApiKey` is configured, `voice.webm` is sent to the Monologue Enterprise Dictate API after recording stops and the response is written to `transcript.md`. If the key is missing or the API fails, transcription is skipped.
-
-Audio may contain private data and is sent to a third-party API. Host applications are responsible for consent, user-visible recording indicators, and appropriate data handling agreements.
+Riffrec downloads a zip automatically through the browser download flow instead of asking the user to choose a folder. Large `recording.webm` files over 50MB are excluded from the zip; `session.json` and `events.json` are still included.
 
 ## Privacy Notes
 
-Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. Riffrec Desktop excludes text inside form fields and editable controls from DOM click evidence. The React integration excludes password and hidden input values. Screen video can still contain sensitive content.
+Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. Riffrec Desktop excludes text inside form fields and editable controls from DOM click evidence. The React integration excludes password and hidden input values. Screen video and microphone audio can still contain sensitive content.
 
-Production component names are only available when elements include `data-component`. React Fiber names are useful in development but often minified in production. A future `riffrec-babel-plugin` package can automate production component attributes.
+Uninstrumented production sessions still include rich DOM context. Production React component names are only reliable when elements include `data-component`. React Fiber names are useful in development but often minified in production. A future `riffrec-babel-plugin` package can automate production component attributes.
 
 Riffrec Desktop loads remote pages in an Electron browser surface with Node integration disabled, context isolation and sandboxing enabled, and unnecessary website permission requests and downloads denied. Credential-like URL query or fragment parameters are redacted from captured evidence. Recordings and recovery drafts remain local until the person recording exports or deletes them; only an exported zip is intended for sharing.
 
 ## Bundle Notes
 
-React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers the zip fallback.
+React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers zip downloads.

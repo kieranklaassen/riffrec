@@ -1,6 +1,6 @@
 {
   "name": "riffrec",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "React session recorder for screen, voice, DOM, network, and console context.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -25,7 +25,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

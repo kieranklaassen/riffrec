@@ -10,7 +10,6 @@ interface XhrMeta {
   start: number;
 }
 
-const DEFAULT_EXCLUDE_URLS = ["monologue.to"];
 const REDACTED_QUERY_KEYS = new Set(["token", "api_key", "client_secret"]);
 
 function timestamp(sessionStart: number): number {
@@ -62,7 +61,7 @@ function shouldExclude(url: string, excludeUrls: string[]): boolean {
 export class NetworkCapture {
   private onEvent: RiffrecEventSink | null = null;
   private sessionStart = 0;
-  private excludeUrls: string[] = DEFAULT_EXCLUDE_URLS;
+  private excludeUrls: string[] = [];
   private originalFetch: FetchLike | null = null;
   private originalOpen: XHROpen | null = null;
   private originalSend: XHRSend | null = null;
@@ -75,7 +74,7 @@ export class NetworkCapture {
 
     this.sessionStart = sessionStart;
     this.onEvent = onEvent;
-    this.excludeUrls = [...DEFAULT_EXCLUDE_URLS, ...excludeUrls];
+    this.excludeUrls = excludeUrls;
     this.patchFetch();
     this.patchXhr();
   }
