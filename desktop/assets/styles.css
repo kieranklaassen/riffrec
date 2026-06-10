@@ -311,6 +311,7 @@ textarea:focus-visible {
 }
 
 .feedback-rail {
+  grid-column: 2;
   min-height: 0;
   padding: 22px 20px 18px;
   background: var(--paper);
