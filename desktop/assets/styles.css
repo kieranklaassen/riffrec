@@ -311,6 +311,11 @@ textarea:focus-visible {
 }
 
 .feedback-rail {
+  /* Stay in the reserved 354px right column. When .empty-state becomes
+     display:none (a site is open), grid auto-placement would otherwise move
+     this rail into column 1 — directly under the website WebContentsView,
+     which paints above HTML and hides the recorder controls. */
+  grid-column: 2;
   min-height: 0;
   padding: 22px 20px 18px;
   background: var(--paper);
