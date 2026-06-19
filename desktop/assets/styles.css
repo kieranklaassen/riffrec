@@ -225,6 +225,7 @@ textarea:focus-visible {
 }
 
 .empty-state {
+  grid-column: 1;
   padding: clamp(42px, 7vw, 98px);
   background: var(--canvas);
   border-right: 1px solid var(--line);
@@ -311,6 +312,7 @@ textarea:focus-visible {
 }
 
 .feedback-rail {
+  grid-column: 2;
   min-height: 0;
   padding: 22px 20px 18px;
   background: var(--paper);
