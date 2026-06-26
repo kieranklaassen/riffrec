@@ -1,7 +1,7 @@
 {
   "name": "riffrec-desktop",
   "version": "0.1.0",
-  "description": "Standalone Riffrec feedback browser for macOS.",
+  "description": "Highly experimental standalone Riffrec feedback browser for macOS.",
   "private": true,
   "main": "dist/process/main.js",
   "scripts": {

@@ -267,7 +267,7 @@ function createWindow(): void {
     height: 920,
     minWidth: 1020,
     minHeight: 700,
-    title: "Riffrec",
+    title: "Riffrec Desktop — Experimental Preview",
     titleBarStyle: "hiddenInset",
     backgroundColor: "#f3efe7",
     webPreferences: {
