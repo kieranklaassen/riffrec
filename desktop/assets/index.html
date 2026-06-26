@@ -7,7 +7,7 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Riffrec</title>
+    <title>Riffrec Desktop — Experimental Preview</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -17,6 +17,7 @@
           <span class="brand-mark"></span>
           <span class="brand-name">riffrec</span>
         </div>
+        <span class="experimental-badge">Experimental preview</span>
         <nav class="browser-actions" aria-label="Browser controls">
           <button id="back" class="icon-button" type="button" aria-label="Back" disabled>&larr;</button>
           <button id="forward" class="icon-button" type="button" aria-label="Forward" disabled>&rarr;</button>
@@ -42,12 +43,16 @@
 
       <main class="workspace">
         <section id="empty-state" class="empty-state" aria-label="Get started">
-          <p class="overline">Standalone feedback browser</p>
+          <p class="overline">Highly experimental desktop preview</p>
           <h1>Record what happened,<br />while it is happening.</h1>
           <p class="empty-copy">
             Open any website here. Riffrec captures the page, your narration, clicks,
             navigations, failed requests, and console errors into one local feedback session.
           </p>
+          <div class="experimental-notice" role="note" aria-label="Experimental preview warning">
+            <strong>This app is a rough experiment.</strong>
+            <span>It may break or change without notice. The React package is the recommended way to use Riffrec.</span>
+          </div>
           <div class="workflow-steps" aria-label="Recording workflow">
             <div><span>01</span><strong>Open a site</strong><small>Sign in here if needed.</small></div>
             <div><span>02</span><strong>Reproduce it</strong><small>Speak and mark moments.</small></div>

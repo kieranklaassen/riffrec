@@ -6,3 +6,4 @@ coverage/
 desktop/node_modules/
 desktop/dist/
 desktop/out/
+.worktrees/

@@ -108,6 +108,18 @@ textarea:focus-visible {
   letter-spacing: -0.04em;
 }
 
+.experimental-badge {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid rgba(181, 65, 46, 0.28);
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: var(--red-dark);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .browser-actions {
   display: flex;
   gap: 5px;
@@ -251,10 +263,28 @@ textarea:focus-visible {
 
 .empty-copy {
   max-width: 480px;
-  margin: 26px 0 38px;
+  margin: 26px 0 20px;
   color: var(--muted);
   line-height: 1.65;
   font-size: 16px;
+}
+
+.experimental-notice {
+  max-width: 560px;
+  margin: 0 0 30px;
+  padding: 13px 15px;
+  border-left: 3px solid var(--red);
+  background: var(--red-soft);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.experimental-notice strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--red-dark);
+  font-weight: 650;
 }
 
 .workflow-steps {
