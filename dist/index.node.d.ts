@@ -7,5 +7,6 @@ declare function RiffrecProvider({ children }: {
 }): ReactNode;
 declare function useRiffrec(): RiffrecContextValue;
 declare function RiffrecRecorder(): null;
+declare function downloadSessionArchive(_filename: string, _archive: Blob): never;
 
-export { RiffrecContextValue, RiffrecProvider, RiffrecRecorder, useRiffrec };
+export { RiffrecContextValue, RiffrecProvider, RiffrecRecorder, downloadSessionArchive, useRiffrec };

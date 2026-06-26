@@ -14,9 +14,13 @@ function useRiffrec() {
 function RiffrecRecorder() {
   return null;
 }
+function downloadSessionArchive(_filename, _archive) {
+  throw new Error("Browser download APIs are not available.");
+}
 export {
   RiffrecProvider,
   RiffrecRecorder,
+  downloadSessionArchive,
   useRiffrec
 };
 //# sourceMappingURL=index.node.js.map
