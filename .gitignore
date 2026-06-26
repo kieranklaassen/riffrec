@@ -3,6 +3,4 @@ node_modules/
 .DS_Store
 coverage/
 .context/
-desktop/node_modules/
-desktop/dist/
-desktop/out/
+.worktrees/

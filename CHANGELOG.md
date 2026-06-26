@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Removed the standalone Riffrec Desktop app, macOS preview release workflow, and desktop download documentation.
+
 ## [2.1.0] - 2026-06-05
 
 - Added Riffrec Desktop, a standalone macOS feedback browser for recording any website without installing the React integration.
