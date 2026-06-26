@@ -24,7 +24,7 @@ function toArrayBuffer(value: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-function triggerDownload(filename: string, blob: Blob): void {
+export function downloadSessionArchive(filename: string, blob: Blob): void {
   if (typeof window === "undefined" || typeof document === "undefined" || !URL.createObjectURL) {
     throw new Error("Browser download APIs are not available.");
   }
@@ -45,7 +45,11 @@ function triggerDownload(filename: string, blob: Blob): void {
 }
 
 export class ZipWriter {
-  async writeSession(sessionDirName: string, files: Map<string, Blob>): Promise<string> {
+  async writeSession(
+    sessionDirName: string,
+    files: Map<string, Blob>,
+    { download = true }: { download?: boolean } = {}
+  ): Promise<{ filename: string; archive: Blob }> {
     const zipFiles: Zippable = {};
     let totalBytes = 0;
 
@@ -57,8 +61,11 @@ export class ZipWriter {
     const data =
       totalBytes < MAX_RECORDING_IN_ZIP_BYTES ? zipSync(zipFiles) : await zipAsync(zipFiles);
     const archive = new Blob([toArrayBuffer(data)], { type: "application/zip" });
-    triggerDownload(`${sessionDirName}.zip`, archive);
-    return `${sessionDirName}.zip`;
+    const filename = `${sessionDirName}.zip`;
+    if (download) {
+      downloadSessionArchive(filename, archive);
+    }
+    return { filename, archive };
   }
 }
 

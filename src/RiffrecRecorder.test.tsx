@@ -62,6 +62,37 @@ describe("RiffrecRecorder", () => {
 
     expect(start).toHaveBeenCalledTimes(1);
   });
+
+  it("captures host-managed output options when recording starts", async () => {
+    const start = vi.fn(async () => {});
+    const onSessionComplete = vi.fn();
+    const context: RiffrecContextValue = {
+      start,
+      stop: vi.fn(async () => null),
+      status: "idle",
+      isEnabled: true
+    };
+
+    await act(async () => {
+      root.render(
+        <RiffrecContext.Provider value={context}>
+          <RiffrecRecorder download={false} onSessionComplete={onSessionComplete} />
+        </RiffrecContext.Provider>
+      );
+    });
+
+    await act(async () => {
+      getButton("Record feedback").click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    });
+    await act(async () => {
+      getButton("Start recording").click();
+    });
+
+    expect(start).toHaveBeenCalledWith({ download: false, onSessionComplete });
+  });
 });
 
 function getButton(name: string): HTMLButtonElement {

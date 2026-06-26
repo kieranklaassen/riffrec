@@ -139,8 +139,24 @@ const { start, stop, status } = useRiffrec();
   sessionPath: string | null;
   method: "zip";
   filesPresent: string[];
+  sessionId: string;
+  filename: string;
+  archive: Blob;
 }
 ```
+
+Hosts that upload or otherwise manage the archive can disable the automatic download per recording. The completion callback is captured when recording starts, so it also runs when the provider-level stop control is used:
+
+```tsx
+<RiffrecRecorder
+  download={false}
+  onSessionComplete={async ({ archive, filename, sessionId }) => {
+    await uploadFeedback({ archive, filename, sessionId });
+  }}
+/>
+```
+
+Use the exported `downloadSessionArchive(filename, archive)` helper when a host-managed flow needs to offer a later local-download fallback.
 
 ## Built-In Consent UI
 

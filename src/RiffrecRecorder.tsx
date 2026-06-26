@@ -10,7 +10,8 @@ export interface RiffrecRecorderProps {
   consentTitle?: string;
   consentDescription?: ReactNode;
   consentLabel?: string;
-  onSessionComplete?: (result: SessionResult | null) => void;
+  download?: boolean;
+  onSessionComplete?: (result: SessionResult) => void | Promise<void>;
 }
 
 const overlayStyle: CSSProperties = {
@@ -116,6 +117,7 @@ export function RiffrecRecorder({
   consentTitle = "Start recording?",
   consentDescription = defaultConsentDescription,
   consentLabel = "I understand and consent to this recording",
+  download = true,
   onSessionComplete
 }: RiffrecRecorderProps): React.ReactElement {
   const { start, stop, status, isEnabled } = useRiffrecContext();
@@ -126,8 +128,7 @@ export function RiffrecRecorder({
   const handleStop = async () => {
     setBusy(true);
     try {
-      const result = await stop();
-      onSessionComplete?.(result);
+      await stop();
     } finally {
       setBusy(false);
     }
@@ -136,7 +137,7 @@ export function RiffrecRecorder({
   const handleStart = async () => {
     setBusy(true);
     try {
-      await start();
+      await start({ download, onSessionComplete });
       setConsentOpen(false);
       setHasConsented(false);
     } catch {

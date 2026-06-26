@@ -37,7 +37,34 @@ describe("createSessionDirName", () => {
 
     expect(showDirectoryPicker).not.toHaveBeenCalled();
     expect(result.method).toBe("zip");
+    expect(result.sessionId).toBe("session-1");
+    expect(result.filename).toBe(result.sessionPath);
+    expect(result.archive).toBeInstanceOf(Blob);
+    expect(result.archive.type).toBe("application/zip");
     expect(result.sessionPath).toMatch(/^riffrec-\d{4}-\d{2}-\d{2}-\d{4}-.+\.zip$/);
     expect(result.filesPresent).toEqual(["session.json", "events.json", "recording.webm"]);
+  });
+
+  it("returns the archive without downloading when the host manages output", async () => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:riffrec");
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const outputs: CaptureOutputs = {
+      sessionId: "session-upload",
+      startedAt: new Date("2026-04-22T08:45:00"),
+      durationSeconds: 4,
+      events: [],
+      screenBlob: new Blob(["screen"], { type: "video/webm" }),
+      voiceBlob: null
+    };
+
+    const result = await new SessionWriter({ reactVersion: "19.0.0" }).stop(outputs, {
+      download: false
+    });
+
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+    expect(result.sessionId).toBe("session-upload");
+    expect(result.filename).toMatch(/^riffrec-.+\.zip$/);
+    expect(result.archive.size).toBeGreaterThan(0);
   });
 });
