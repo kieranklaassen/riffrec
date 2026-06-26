@@ -74,6 +74,15 @@ interface SessionResult {
     sessionPath: string | null;
     method: RiffrecWriteMethod;
     filesPresent: string[];
+    sessionId: string;
+    filename: string;
+    archive: Blob;
+}
+interface RiffrecSessionOptions {
+    /** Download the completed ZIP. Defaults to true. */
+    download?: boolean;
+    /** Runs after the archive is ready, including when stopped from the provider overlay. */
+    onSessionComplete?: (result: SessionResult) => void | Promise<void>;
 }
 type RiffrecDisplayMediaVideo = MediaTrackConstraints;
 type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
@@ -100,7 +109,7 @@ interface RiffrecConfig {
     sanitizeError?: (msg: string, stack: string | null) => string;
 }
 interface RiffrecContextValue {
-    start: () => Promise<void>;
+    start: (options?: RiffrecSessionOptions) => Promise<void>;
     stop: () => Promise<SessionResult | null>;
     status: RiffrecStatus;
     isEnabled: boolean;
@@ -124,4 +133,4 @@ declare global {
     }
 }
 
-export { type CaptureOutputs as C, type ElementBoundingBox as E, type NavigationEvent as N, type RiffrecConfig as R, type SessionResult as S, type UseRiffrecResult as U, type RiffrecDisplayMediaOptions as a, type RiffrecDisplayMediaVideo as b, type CaptureStartOptions as c, type ClickEvent as d, type ConsoleErrorEvent as e, type ElementInfo as f, type EventsJson as g, type NetworkRequestEvent as h, RIFFREC_SCHEMA_VERSION as i, type RiffrecContextValue as j, type RiffrecEvent as k, type RiffrecEventSink as l, type RiffrecSchemaVersion as m, type RiffrecStatus as n, type RiffrecWriteMethod as o, type SessionJson as p };
+export { type CaptureOutputs as C, type ElementBoundingBox as E, type NavigationEvent as N, type RiffrecConfig as R, type SessionResult as S, type UseRiffrecResult as U, type RiffrecDisplayMediaOptions as a, type RiffrecDisplayMediaVideo as b, type CaptureStartOptions as c, type ClickEvent as d, type ConsoleErrorEvent as e, type ElementInfo as f, type EventsJson as g, type NetworkRequestEvent as h, RIFFREC_SCHEMA_VERSION as i, type RiffrecContextValue as j, type RiffrecEvent as k, type RiffrecEventSink as l, type RiffrecSchemaVersion as m, type RiffrecSessionOptions as n, type RiffrecStatus as o, type RiffrecWriteMethod as p, type SessionJson as q };
