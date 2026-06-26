@@ -18,4 +18,8 @@ export function RiffrecRecorder(): null {
   return null;
 }
 
+export function downloadSessionArchive(_filename: string, _archive: Blob): never {
+  throw new Error("Browser download APIs are not available.");
+}
+
 export type * from "./types";

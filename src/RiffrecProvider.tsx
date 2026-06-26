@@ -20,6 +20,7 @@ import type {
   RiffrecConfig,
   RiffrecContextValue,
   RiffrecEvent,
+  RiffrecSessionOptions,
   RiffrecStatus,
   SessionResult
 } from "./types";
@@ -146,6 +147,7 @@ interface ActiveSession {
   networkCapture: NetworkCapture;
   consoleCapture: ConsoleCapture;
   ownsGlobalPatchMarker: boolean;
+  options: RiffrecSessionOptions;
 }
 
 function readNodeEnv(): string | undefined {
@@ -276,10 +278,11 @@ export function RiffrecProvider({
       const writer = new SessionWriter({
         reactVersion: React.version
       });
-      const result = await writer.stop(outputs);
+      const result = await writer.stop(outputs, { download: session.options.download });
+      await session.options.onSessionComplete?.(result);
       statusRef.current = "idle";
       setStatus("idle");
-      setDownloadNoticeVisible(true);
+      setDownloadNoticeVisible(session.options.download !== false);
       return result;
     } catch (error) {
       const err = toError(error);
@@ -290,7 +293,7 @@ export function RiffrecProvider({
     }
   }, []);
 
-  const start = useCallback(async (): Promise<void> => {
+  const start = useCallback(async (options: RiffrecSessionOptions = {}): Promise<void> => {
     if (!isEnabled || typeof window === "undefined") {
       return;
     }
@@ -344,7 +347,8 @@ export function RiffrecProvider({
         eventCapture,
         networkCapture,
         consoleCapture,
-        ownsGlobalPatchMarker
+        ownsGlobalPatchMarker,
+        options
       };
     } catch (error) {
       eventCapture.stop();

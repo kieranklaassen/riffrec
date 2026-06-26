@@ -22,6 +22,7 @@ var noop_exports = {};
 __export(noop_exports, {
   RiffrecProvider: () => RiffrecProvider,
   RiffrecRecorder: () => RiffrecRecorder,
+  downloadSessionArchive: () => downloadSessionArchive,
   useRiffrec: () => useRiffrec
 });
 module.exports = __toCommonJS(noop_exports);
@@ -40,10 +41,14 @@ function useRiffrec() {
 function RiffrecRecorder() {
   return null;
 }
+function downloadSessionArchive(_filename, _archive) {
+  throw new Error("Browser download APIs are not available.");
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   RiffrecProvider,
   RiffrecRecorder,
+  downloadSessionArchive,
   useRiffrec
 });
 //# sourceMappingURL=index.node.cjs.map

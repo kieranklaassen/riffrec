@@ -1040,7 +1040,7 @@ function toArrayBuffer(value) {
   copy.set(value);
   return copy.buffer;
 }
-function triggerDownload(filename, blob) {
+function downloadSessionArchive(filename, blob) {
   if (typeof window === "undefined" || typeof document === "undefined" || !URL.createObjectURL) {
     throw new Error("Browser download APIs are not available.");
   }
@@ -1058,17 +1058,20 @@ function triggerDownload(filename, blob) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 var ZipWriter = class {
-  async writeSession(sessionDirName, files) {
+  async writeSession(sessionDirName, files, { download = true } = {}) {
     const zipFiles = {};
     let totalBytes = 0;
-    for (const [filename, blob] of filterZipSessionFiles(files)) {
-      zipFiles[filename] = await blobToUint8Array(blob);
+    for (const [filename2, blob] of filterZipSessionFiles(files)) {
+      zipFiles[filename2] = await blobToUint8Array(blob);
       totalBytes += blob.size;
     }
     const data = totalBytes < MAX_RECORDING_IN_ZIP_BYTES ? zipSync(zipFiles) : await zipAsync(zipFiles);
     const archive = new Blob([toArrayBuffer(data)], { type: "application/zip" });
-    triggerDownload(`${sessionDirName}.zip`, archive);
-    return `${sessionDirName}.zip`;
+    const filename = `${sessionDirName}.zip`;
+    if (download) {
+      downloadSessionArchive(filename, archive);
+    }
+    return { filename, archive };
   }
 };
 function filterZipSessionFiles(files) {
@@ -1145,7 +1148,7 @@ var SessionWriter = class {
     this.options = options;
     this.zipWriter = new ZipWriter();
   }
-  async stop(outputs) {
+  async stop(outputs, options = {}) {
     const endedAt = /* @__PURE__ */ new Date();
     const sessionDirName = createSessionDirName(endedAt);
     const eventsJson = buildEventsJson(outputs);
@@ -1163,8 +1166,19 @@ var SessionWriter = class {
       endedAt,
       this.options.reactVersion ?? null
     );
-    const sessionPath = await this.zipWriter.writeSession(sessionDirName, zipSession.files);
-    return { sessionPath, method: "zip", filesPresent: zipSession.filesPresent };
+    const { filename, archive } = await this.zipWriter.writeSession(
+      sessionDirName,
+      zipSession.files,
+      options
+    );
+    return {
+      sessionPath: filename,
+      method: "zip",
+      filesPresent: zipSession.filesPresent,
+      sessionId: outputs.sessionId,
+      filename,
+      archive
+    };
   }
 };
 
@@ -1370,10 +1384,11 @@ function RiffrecProvider({
       const writer = new SessionWriter({
         reactVersion: React.version
       });
-      const result = await writer.stop(outputs);
+      const result = await writer.stop(outputs, { download: session.options.download });
+      await session.options.onSessionComplete?.(result);
       statusRef.current = "idle";
       setStatus("idle");
-      setDownloadNoticeVisible(true);
+      setDownloadNoticeVisible(session.options.download !== false);
       return result;
     } catch (error) {
       const err = toError(error);
@@ -1383,7 +1398,7 @@ function RiffrecProvider({
       return null;
     }
   }, []);
-  const start = useCallback(async () => {
+  const start = useCallback(async (options = {}) => {
     if (!isEnabled || typeof window === "undefined") {
       return;
     }
@@ -1429,7 +1444,8 @@ function RiffrecProvider({
         eventCapture,
         networkCapture,
         consoleCapture,
-        ownsGlobalPatchMarker
+        ownsGlobalPatchMarker,
+        options
       };
     } catch (error) {
       eventCapture.stop();
@@ -1582,6 +1598,7 @@ function RiffrecRecorder({
   consentTitle = "Start recording?",
   consentDescription = defaultConsentDescription,
   consentLabel = "I understand and consent to this recording",
+  download = true,
   onSessionComplete
 }) {
   const { start, stop, status, isEnabled } = useRiffrecContext();
@@ -1591,8 +1608,7 @@ function RiffrecRecorder({
   const handleStop = async () => {
     setBusy(true);
     try {
-      const result = await stop();
-      onSessionComplete?.(result);
+      await stop();
     } finally {
       setBusy(false);
     }
@@ -1600,7 +1616,7 @@ function RiffrecRecorder({
   const handleStart = async () => {
     setBusy(true);
     try {
-      await start();
+      await start({ download, onSessionComplete });
       setConsentOpen(false);
       setHasConsented(false);
     } catch {
@@ -1673,6 +1689,7 @@ export {
   DEFAULT_DISPLAY_MEDIA_VIDEO,
   RiffrecProvider,
   RiffrecRecorder,
+  downloadSessionArchive,
   useRiffrec
 };
 //# sourceMappingURL=index.js.map

@@ -91,6 +91,16 @@ export interface SessionResult {
   sessionPath: string | null;
   method: RiffrecWriteMethod;
   filesPresent: string[];
+  sessionId: string;
+  filename: string;
+  archive: Blob;
+}
+
+export interface RiffrecSessionOptions {
+  /** Download the completed ZIP. Defaults to true. */
+  download?: boolean;
+  /** Runs after the archive is ready, including when stopped from the provider overlay. */
+  onSessionComplete?: (result: SessionResult) => void | Promise<void>;
 }
 
 export type RiffrecDisplayMediaVideo = MediaTrackConstraints;
@@ -121,7 +131,7 @@ export interface RiffrecConfig {
 }
 
 export interface RiffrecContextValue {
-  start: () => Promise<void>;
+  start: (options?: RiffrecSessionOptions) => Promise<void>;
   stop: () => Promise<SessionResult | null>;
   status: RiffrecStatus;
   isEnabled: boolean;

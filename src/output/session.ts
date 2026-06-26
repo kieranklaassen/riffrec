@@ -6,6 +6,10 @@ interface SessionWriterOptions {
   reactVersion?: string | null;
 }
 
+interface SessionStopOptions {
+  download?: boolean;
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -87,7 +91,7 @@ export class SessionWriter {
 
   constructor(private readonly options: SessionWriterOptions = {}) {}
 
-  async stop(outputs: CaptureOutputs): Promise<SessionResult> {
+  async stop(outputs: CaptureOutputs, options: SessionStopOptions = {}): Promise<SessionResult> {
     const endedAt = new Date();
     const sessionDirName = createSessionDirName(endedAt);
     const eventsJson = buildEventsJson(outputs);
@@ -107,7 +111,18 @@ export class SessionWriter {
       endedAt,
       this.options.reactVersion ?? null
     );
-    const sessionPath = await this.zipWriter.writeSession(sessionDirName, zipSession.files);
-    return { sessionPath, method: "zip", filesPresent: zipSession.filesPresent };
+    const { filename, archive } = await this.zipWriter.writeSession(
+      sessionDirName,
+      zipSession.files,
+      options
+    );
+    return {
+      sessionPath: filename,
+      method: "zip",
+      filesPresent: zipSession.filesPresent,
+      sessionId: outputs.sessionId,
+      filename,
+      archive
+    };
   }
 }

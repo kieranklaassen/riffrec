@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added host-managed session output: completed ZIPs now include their archive, filename, and session ID in `SessionResult`.
+- Added a per-recording `download` option and reliable completion callbacks for both recorder and provider stop controls while keeping automatic downloads as the default.
+- Exported `downloadSessionArchive` for explicit local-download fallbacks.
 - Made the React package the recommended integration path and labeled Riffrec Desktop as a highly experimental preview in the documentation and app.
 - Added Riffrec Desktop, a highly experimental standalone macOS feedback browser for recording any website without installing the React integration.
 - Exported desktop recordings as compatible session zips containing existing event artifacts plus desktop capture context and optional notes.
