@@ -172,5 +172,9 @@ _None - ready for planning._
 - [Affects R12][Technical] File System Access API directory picker UX - one-time prompt with IndexedDB persistence vs per-session prompt
 - [Affects R1][Technical] Audio mixing strategy for R1 (getDisplayMedia) and R2 (getUserMedia) - two separate files (recording.webm + voice.webm) vs AudioContext mixing into one track
 
+## Future / Out of Scope for v1
+
+- **Swift companion app**: Optional native macOS menu bar app for recording non-browser apps; would write `recording.webm` to the same session directory format so agent workflow is identical; planned post-v1
+
 ## Next Steps
 -> Begin implementation plan with `/ce-plan`

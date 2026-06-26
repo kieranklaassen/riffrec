@@ -1,6 +1,6 @@
 # riffrec
 
-`riffrec` is a React package for capturing golden feedback: high-signal product sessions with screen video, microphone narration, clicks, navigation, network outcomes, and console errors.
+`riffrec` captures golden feedback: high-signal product sessions with screen video, microphone narration, clicks, navigation, network outcomes, and console errors. Use it as a React package or as a standalone macOS feedback browser.
 
 There are already great tools for analytics and passive session replay. Riffrec is for the moments you intentionally turn on recording and capture the gold: the bug reproduction, the confused reaction, the broken flow, the product insight. In the age of AI slop, Riffrec gives agents concrete evidence instead of vague prompts.
 
@@ -18,6 +18,43 @@ Use it when you want to turn product usage into:
 - sessions teammates or agents can review without asking the user to re-explain everything
 
 Riffrec is designed to pair well with the [Compound Engineering plugin](https://github.com/EveryInc/compound-engineering-plugin). Record a session with Riffrec, then hand the session files to Compound Engineering so the agent can turn concrete product evidence into a sharper plan or implementation.
+
+## Riffrec Desktop For Any Website
+
+Riffrec Desktop is a standalone macOS feedback browser. A feedback giver opens a website inside the app, records a reproduction, and exports a zip without the website owner installing the React package.
+
+**Download for macOS (Apple Silicon):** [Riffrec Desktop Preview `.dmg`](https://github.com/kieranklaassen/riffrec/releases/download/desktop-v0.1.0-preview.3/Riffrec-darwin-arm64.dmg)
+
+This preview download is development-signed and unnotarized. On first launch, right-click **Riffrec.app** and choose **Open**; production distribution will use a Developer ID signed and notarized build.
+
+```sh
+cd desktop
+npm install
+npm run package
+open out/Riffrec-darwin-$(test "$(uname -m)" = arm64 && echo arm64 || echo x64).dmg
+```
+
+The first release is macOS-first and packages for the current Mac architecture. The app requires macOS Screen Recording permission to record its browser window, and Microphone permission only when narration is enabled.
+
+`npm run package` produces local `.dmg` and `.zip` development builds. To sign the app and disk image with a certificate installed through Xcode or Keychain Access, set `RIFFREC_CODESIGN_IDENTITY`:
+
+```sh
+RIFFREC_CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" npm run package
+```
+
+An Apple Development signature is suitable for local testing. Before broadly distributing a download to feedback participants, package with a `Developer ID Application` certificate and notarize the app so macOS can verify and launch it normally.
+
+### Desktop Workflow
+
+1. Enter an `https://` website URL in the address bar. Local `http://localhost` URLs are supported for development feedback.
+2. Sign in or navigate inside Riffrec's isolated browser profile if required.
+3. Choose microphone and click capture, add optional reviewer notes, acknowledge the recording disclosure, and press **Start recording**.
+4. Reproduce the issue, add moment markers where useful, then press **Stop and save session**.
+5. Share the saved zip with an agent or teammate.
+
+Desktop sessions capture the webpage loaded **inside Riffrec**: screen video, optional microphone audio, DOM click element details, top-level navigation, network URLs/methods/statuses/durations, console errors, notes, and capture context. They do not capture activity in an existing Safari/Chrome/Arc tab, request or response bodies, typed values, or reliable internal React component names on third-party sites.
+
+Riffrec stores website cookies and local storage only in its dedicated local browser profile so authenticated reproductions work. It stages in-progress and unsaved recording media locally for crash recovery; interrupted or damaged drafts remain on this Mac until saved or deleted with the recovery-data action in the app. Use **Clear website sign-in data** after recording on sensitive sites.
 
 ## React Package Integration
 
@@ -127,18 +164,24 @@ For custom consent copy, pass `consentTitle`, `consentDescription`, or `consentL
 
 ## Session Format
 
-Sessions are named `riffrec-{YYYY-MM-DD}-{HHMM}-{shortid}`. A Riffrec zip contains:
+Sessions are named `riffrec-{YYYY-MM-DD}-{HHMM}-{shortid}`. A Riffrec Desktop zip contains:
 
 ```text
 session.json
 events.json
+context.json
 recording.webm
 voice.webm         # when microphone narration was captured
+notes.md           # when notes were provided
 ```
 
-`recording.webm` and `voice.webm` are included when those captures are available. `session.json` records URL, React version, browser, start/end timestamps, duration, and `files_present`; consumers should use `files_present` rather than assuming optional media files exist.
+The React package includes `recording.webm` and `voice.webm` when those captures are available; it does not include desktop-only `context.json` or `notes.md`.
+
+`session.json` records URL, React version, browser, start/end timestamps, duration, and `files_present`. Consumers should use `files_present`, and for desktop sessions `context.json.capture_outcomes`, rather than assuming optional media or text files exist.
 
 `events.json` has `schema_version: "1.0.0"` and event records for clicks, network requests, console errors, and navigation. Click events include production-safe DOM context such as readable element names, selectors, class names, accessibility labels, nearby text, sibling context, bounding boxes, and a small computed-style snapshot. Credential-like query parameters such as `token`, `api_key`, and `client_secret` are redacted. Request and response bodies are not captured.
+
+Desktop-generated zips keep the same `events.json` schema. `context.json` records desktop capture options and outcomes, app/browser versions, initial/final page information, captured viewport dimensions, marker timestamps, and unavailable signal disclosures.
 
 ## Browser Support
 
@@ -152,9 +195,11 @@ Riffrec downloads a zip automatically through the browser download flow instead 
 
 ## Privacy Notes
 
-Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. It excludes password and hidden input values from DOM click evidence, but screen video and microphone audio can still contain sensitive content.
+Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. Riffrec Desktop excludes text inside form fields and editable controls from DOM click evidence. The React integration excludes password and hidden input values. Screen video and microphone audio can still contain sensitive content.
 
 Uninstrumented production sessions still include rich DOM context. Production React component names are only reliable when elements include `data-component`. React Fiber names are useful in development but often minified in production. A future `riffrec-babel-plugin` package can automate production component attributes.
+
+Riffrec Desktop loads remote pages in an Electron browser surface with Node integration disabled, context isolation and sandboxing enabled, and unnecessary website permission requests and downloads denied. Credential-like URL query or fragment parameters are redacted from captured evidence. Recordings and recovery drafts remain local until the person recording exports or deletes them; only an exported zip is intended for sharing.
 
 ## Bundle Notes
 
