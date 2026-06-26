@@ -172,9 +172,11 @@ _None - ready for planning._
 - [Affects R12][Technical] File System Access API directory picker UX - one-time prompt with IndexedDB persistence vs per-session prompt
 - [Affects R1][Technical] Audio mixing strategy for R1 (getDisplayMedia) and R2 (getUserMedia) - two separate files (recording.webm + voice.webm) vs AudioContext mixing into one track
 
-## Future / Out of Scope for v1
+## Experimental / Outside the Primary Path
 
-- **Swift companion app**: Optional native macOS menu bar app for recording non-browser apps; would write `recording.webm` to the same session directory format so agent workflow is identical; planned post-v1
+- **React remains the product path**: The npm package is the recommended and supported integration surface.
+- **Desktop is an experiment**: The Electron desktop browser may be used for rough trials on unintegrated websites, but it is not a replacement for the React package and may change or disappear without notice.
+- **No native companion is planned**: A separate Swift menu bar recorder is outside the current product direction.
 
 ## Next Steps
 -> Begin implementation plan with `/ce-plan`

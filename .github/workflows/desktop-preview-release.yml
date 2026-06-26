@@ -1,4 +1,4 @@
-name: Desktop Preview Release
+name: Experimental Desktop Preview Release
 
 on:
   workflow_dispatch:
@@ -49,6 +49,6 @@ jobs:
             gh release create "$RELEASE_TAG" desktop/out/Riffrec-darwin-arm64.dmg \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "Riffrec Desktop v0.1.0 Preview 2" \
-              --notes "Apple Silicon macOS preview build. This DMG is unsigned and unnotarized; right-click Riffrec.app and choose Open on first launch."
+              --title "Riffrec Desktop v0.1.0 Experimental Preview" \
+              --notes "Highly experimental Apple Silicon macOS preview. This app may break or change without notice and the React package remains the recommended way to use Riffrec. This DMG is unsigned and unnotarized; right-click Riffrec.app and choose Open on first launch."
           fi

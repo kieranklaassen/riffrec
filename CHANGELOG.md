@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- Added Riffrec Desktop, a standalone macOS feedback browser for recording any website without installing the React integration.
+- Made the React package the recommended integration path and labeled Riffrec Desktop as a highly experimental preview in the documentation and app.
+- Added Riffrec Desktop, a highly experimental standalone macOS feedback browser for recording any website without installing the React integration.
 - Exported desktop recordings as compatible session zips containing existing event artifacts plus desktop capture context and optional notes.
-- Added a GitHub-hosted macOS preview DMG build and a direct desktop download link.
+- Added a GitHub-hosted experimental macOS preview DMG build and a direct desktop download link.
 - Fixed macOS preview DMG packaging so installed Electron framework links remain valid, and added optional local code signing for preview builds.
 - Added optional `displayMedia` and `displayMediaVideo` props on `RiffrecProvider` to customize `getDisplayMedia` options and video constraints.
 - Updated default screen capture options to request current-tab capture in Chromium (`preferCurrentTab: true`, `selfBrowserSurface: "include"`) while hiding monitor capture (`monitorTypeSurfaces: "exclude"`) and keeping a lower default frame rate (`5`).
