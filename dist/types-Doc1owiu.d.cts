@@ -74,6 +74,15 @@ interface SessionResult {
     sessionPath: string | null;
     method: RiffrecWriteMethod;
     filesPresent: string[];
+    /** False when an `onArchive` handler took the archive and skipped the local download. */
+    downloaded?: boolean;
+}
+/** The finished session archive handed to `onArchive` before download. */
+interface RiffrecArchive {
+    blob: Blob;
+    filename: string;
+    sessionId: string;
+    filesPresent: string[];
 }
 type RiffrecDisplayMediaVideo = MediaTrackConstraints;
 type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
@@ -98,6 +107,14 @@ interface RiffrecConfig {
     forceEnableParam?: boolean | string;
     onError?: (err: Error) => void;
     sanitizeError?: (msg: string, stack: string | null) => string;
+    /**
+     * Receive the finished session archive (zip) before the local download —
+     * e.g. to upload it somewhere. Return `false` (or a promise resolving to
+     * `false`) to skip the download once the archive is safely elsewhere. If the
+     * handler throws or rejects, the error goes to `onError` and the download
+     * proceeds anyway, so a session is never lost.
+     */
+    onArchive?: (archive: RiffrecArchive) => boolean | void | Promise<boolean | void>;
 }
 interface RiffrecContextValue {
     start: () => Promise<void>;
@@ -124,4 +141,4 @@ declare global {
     }
 }
 
-export { type CaptureOutputs as C, type ElementBoundingBox as E, type NavigationEvent as N, type RiffrecConfig as R, type SessionResult as S, type UseRiffrecResult as U, type RiffrecDisplayMediaOptions as a, type RiffrecDisplayMediaVideo as b, type CaptureStartOptions as c, type ClickEvent as d, type ConsoleErrorEvent as e, type ElementInfo as f, type EventsJson as g, type NetworkRequestEvent as h, RIFFREC_SCHEMA_VERSION as i, type RiffrecContextValue as j, type RiffrecEvent as k, type RiffrecEventSink as l, type RiffrecSchemaVersion as m, type RiffrecStatus as n, type RiffrecWriteMethod as o, type SessionJson as p };
+export { type CaptureOutputs as C, type ElementBoundingBox as E, type NavigationEvent as N, type RiffrecConfig as R, type SessionResult as S, type UseRiffrecResult as U, type RiffrecDisplayMediaOptions as a, type RiffrecDisplayMediaVideo as b, type CaptureStartOptions as c, type ClickEvent as d, type ConsoleErrorEvent as e, type ElementInfo as f, type EventsJson as g, type NetworkRequestEvent as h, RIFFREC_SCHEMA_VERSION as i, type RiffrecArchive as j, type RiffrecContextValue as k, type RiffrecEvent as l, type RiffrecEventSink as m, type RiffrecSchemaVersion as n, type RiffrecStatus as o, type RiffrecWriteMethod as p, type SessionJson as q };

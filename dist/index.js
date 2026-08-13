@@ -1058,7 +1058,7 @@ function triggerDownload(filename, blob) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 var ZipWriter = class {
-  async writeSession(sessionDirName, files) {
+  async buildArchive(sessionDirName, files) {
     const zipFiles = {};
     let totalBytes = 0;
     for (const [filename, blob] of filterZipSessionFiles(files)) {
@@ -1066,9 +1066,18 @@ var ZipWriter = class {
       totalBytes += blob.size;
     }
     const data = totalBytes < MAX_RECORDING_IN_ZIP_BYTES ? zipSync(zipFiles) : await zipAsync(zipFiles);
-    const archive = new Blob([toArrayBuffer(data)], { type: "application/zip" });
-    triggerDownload(`${sessionDirName}.zip`, archive);
-    return `${sessionDirName}.zip`;
+    return {
+      filename: `${sessionDirName}.zip`,
+      blob: new Blob([toArrayBuffer(data)], { type: "application/zip" })
+    };
+  }
+  download(filename, blob) {
+    triggerDownload(filename, blob);
+  }
+  async writeSession(sessionDirName, files) {
+    const archive = await this.buildArchive(sessionDirName, files);
+    this.download(archive.filename, archive.blob);
+    return archive.filename;
   }
 };
 function filterZipSessionFiles(files) {
@@ -1163,8 +1172,34 @@ var SessionWriter = class {
       endedAt,
       this.options.reactVersion ?? null
     );
-    const sessionPath = await this.zipWriter.writeSession(sessionDirName, zipSession.files);
-    return { sessionPath, method: "zip", filesPresent: zipSession.filesPresent };
+    const archive = await this.zipWriter.buildArchive(sessionDirName, zipSession.files);
+    let download = true;
+    if (this.options.onArchive) {
+      try {
+        const verdict = await this.options.onArchive({
+          blob: archive.blob,
+          filename: archive.filename,
+          sessionId: outputs.sessionId,
+          filesPresent: zipSession.filesPresent
+        });
+        if (verdict === false) {
+          download = false;
+        }
+      } catch (error) {
+        this.options.onArchiveError?.(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+    }
+    if (download) {
+      this.zipWriter.download(archive.filename, archive.blob);
+    }
+    return {
+      sessionPath: archive.filename,
+      method: "zip",
+      filesPresent: zipSession.filesPresent,
+      downloaded: download
+    };
   }
 };
 
@@ -1303,7 +1338,8 @@ function RiffrecProvider({
   forceEnable,
   forceEnableParam,
   onError,
-  sanitizeError
+  sanitizeError,
+  onArchive
 }) {
   const [status, setStatus] = useState("idle");
   const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
@@ -1315,7 +1351,8 @@ function RiffrecProvider({
     forceEnable,
     forceEnableParam,
     onError,
-    sanitizeError
+    sanitizeError,
+    onArchive
   });
   const didWarnDisabled = useRef(false);
   const isEnabled = forceEnable || isEnabledByUrlParam(forceEnableParam) || readNodeEnv() !== "production";
@@ -1326,9 +1363,10 @@ function RiffrecProvider({
       forceEnable,
       forceEnableParam,
       onError,
-      sanitizeError
+      sanitizeError,
+      onArchive
     };
-  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError, onArchive]);
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
@@ -1368,12 +1406,14 @@ function RiffrecProvider({
     activeSession.current = null;
     try {
       const writer = new SessionWriter({
-        reactVersion: React.version
+        reactVersion: React.version,
+        onArchive: configRef.current.onArchive,
+        onArchiveError: configRef.current.onError
       });
       const result = await writer.stop(outputs);
       statusRef.current = "idle";
       setStatus("idle");
-      setDownloadNoticeVisible(true);
+      setDownloadNoticeVisible(result.downloaded !== false);
       return result;
     } catch (error) {
       const err = toError(error);

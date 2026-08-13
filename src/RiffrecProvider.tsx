@@ -197,7 +197,8 @@ export function RiffrecProvider({
   forceEnable,
   forceEnableParam,
   onError,
-  sanitizeError
+  sanitizeError,
+  onArchive
 }: RiffrecProviderProps): React.ReactElement {
   const [status, setStatus] = useState<RiffrecStatus>("idle");
   const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
@@ -209,7 +210,8 @@ export function RiffrecProvider({
     forceEnable,
     forceEnableParam,
     onError,
-    sanitizeError
+    sanitizeError,
+    onArchive
   });
   const didWarnDisabled = useRef(false);
   const isEnabled =
@@ -222,9 +224,10 @@ export function RiffrecProvider({
       forceEnable,
       forceEnableParam,
       onError,
-      sanitizeError
+      sanitizeError,
+      onArchive
     };
-  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError, onArchive]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -274,12 +277,15 @@ export function RiffrecProvider({
 
     try {
       const writer = new SessionWriter({
-        reactVersion: React.version
+        reactVersion: React.version,
+        onArchive: configRef.current.onArchive,
+        onArchiveError: configRef.current.onError
       });
       const result = await writer.stop(outputs);
       statusRef.current = "idle";
       setStatus("idle");
-      setDownloadNoticeVisible(true);
+      // No "we downloaded the zip" notice when onArchive claimed the session.
+      setDownloadNoticeVisible(result.downloaded !== false);
       return result;
     } catch (error) {
       const err = toError(error);

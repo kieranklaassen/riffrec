@@ -45,7 +45,10 @@ function triggerDownload(filename: string, blob: Blob): void {
 }
 
 export class ZipWriter {
-  async writeSession(sessionDirName: string, files: Map<string, Blob>): Promise<string> {
+  async buildArchive(
+    sessionDirName: string,
+    files: Map<string, Blob>
+  ): Promise<{ filename: string; blob: Blob }> {
     const zipFiles: Zippable = {};
     let totalBytes = 0;
 
@@ -56,9 +59,20 @@ export class ZipWriter {
 
     const data =
       totalBytes < MAX_RECORDING_IN_ZIP_BYTES ? zipSync(zipFiles) : await zipAsync(zipFiles);
-    const archive = new Blob([toArrayBuffer(data)], { type: "application/zip" });
-    triggerDownload(`${sessionDirName}.zip`, archive);
-    return `${sessionDirName}.zip`;
+    return {
+      filename: `${sessionDirName}.zip`,
+      blob: new Blob([toArrayBuffer(data)], { type: "application/zip" })
+    };
+  }
+
+  download(filename: string, blob: Blob): void {
+    triggerDownload(filename, blob);
+  }
+
+  async writeSession(sessionDirName: string, files: Map<string, Blob>): Promise<string> {
+    const archive = await this.buildArchive(sessionDirName, files);
+    this.download(archive.filename, archive.blob);
+    return archive.filename;
   }
 }
 

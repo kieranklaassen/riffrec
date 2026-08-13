@@ -1,12 +1,12 @@
 import * as React$1 from 'react';
 import { ReactNode } from 'react';
-import { R as RiffrecConfig, S as SessionResult, U as UseRiffrecResult, a as RiffrecDisplayMediaOptions, b as RiffrecDisplayMediaVideo } from './types-CoSwsjhI.cjs';
-export { C as CaptureOutputs, c as CaptureStartOptions, d as ClickEvent, e as ConsoleErrorEvent, E as ElementBoundingBox, f as ElementInfo, g as EventsJson, N as NavigationEvent, h as NetworkRequestEvent, i as RIFFREC_SCHEMA_VERSION, j as RiffrecContextValue, k as RiffrecEvent, l as RiffrecEventSink, m as RiffrecSchemaVersion, n as RiffrecStatus, o as RiffrecWriteMethod, p as SessionJson } from './types-CoSwsjhI.cjs';
+import { R as RiffrecConfig, S as SessionResult, U as UseRiffrecResult, a as RiffrecDisplayMediaOptions, b as RiffrecDisplayMediaVideo } from './types-Doc1owiu.cjs';
+export { C as CaptureOutputs, c as CaptureStartOptions, d as ClickEvent, e as ConsoleErrorEvent, E as ElementBoundingBox, f as ElementInfo, g as EventsJson, N as NavigationEvent, h as NetworkRequestEvent, i as RIFFREC_SCHEMA_VERSION, j as RiffrecArchive, k as RiffrecContextValue, l as RiffrecEvent, m as RiffrecEventSink, n as RiffrecSchemaVersion, o as RiffrecStatus, p as RiffrecWriteMethod, q as SessionJson } from './types-Doc1owiu.cjs';
 
 interface RiffrecProviderProps extends RiffrecConfig {
     children?: ReactNode;
 }
-declare function RiffrecProvider({ children, displayMedia, displayMediaVideo, downloadNoticeTitle, downloadNoticeMessage, forceEnable, forceEnableParam, onError, sanitizeError }: RiffrecProviderProps): React$1.ReactElement;
+declare function RiffrecProvider({ children, displayMedia, displayMediaVideo, downloadNoticeTitle, downloadNoticeMessage, forceEnable, forceEnableParam, onError, sanitizeError, onArchive }: RiffrecProviderProps): React$1.ReactElement;
 
 interface RiffrecRecorderProps {
     className?: string;

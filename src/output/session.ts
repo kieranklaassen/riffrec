@@ -1,9 +1,13 @@
-import type { CaptureOutputs, EventsJson, SessionJson, SessionResult } from "../types";
+import type { CaptureOutputs, EventsJson, RiffrecArchive, SessionJson, SessionResult } from "../types";
 import { RIFFREC_SCHEMA_VERSION } from "../types";
 import { filterZipSessionFiles, ZipWriter } from "./zip";
 
 interface SessionWriterOptions {
   reactVersion?: string | null;
+  /** See RiffrecConfig#onArchive. */
+  onArchive?: (archive: RiffrecArchive) => boolean | void | Promise<boolean | void>;
+  /** Where onArchive failures are reported (the download still happens). */
+  onArchiveError?: (err: Error) => void;
 }
 
 function pad(value: number): string {
@@ -107,7 +111,39 @@ export class SessionWriter {
       endedAt,
       this.options.reactVersion ?? null
     );
-    const sessionPath = await this.zipWriter.writeSession(sessionDirName, zipSession.files);
-    return { sessionPath, method: "zip", filesPresent: zipSession.filesPresent };
+    const archive = await this.zipWriter.buildArchive(sessionDirName, zipSession.files);
+
+    // The handler may claim the archive (upload it) and skip the download by
+    // returning false. A throwing handler must never lose the session: report
+    // the error and fall back to the local download.
+    let download = true;
+    if (this.options.onArchive) {
+      try {
+        const verdict = await this.options.onArchive({
+          blob: archive.blob,
+          filename: archive.filename,
+          sessionId: outputs.sessionId,
+          filesPresent: zipSession.filesPresent
+        });
+        if (verdict === false) {
+          download = false;
+        }
+      } catch (error) {
+        this.options.onArchiveError?.(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+    }
+
+    if (download) {
+      this.zipWriter.download(archive.filename, archive.blob);
+    }
+
+    return {
+      sessionPath: archive.filename,
+      method: "zip",
+      filesPresent: zipSession.filesPresent,
+      downloaded: download
+    };
   }
 }

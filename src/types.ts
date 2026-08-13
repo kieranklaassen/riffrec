@@ -91,6 +91,16 @@ export interface SessionResult {
   sessionPath: string | null;
   method: RiffrecWriteMethod;
   filesPresent: string[];
+  /** False when an `onArchive` handler took the archive and skipped the local download. */
+  downloaded?: boolean;
+}
+
+/** The finished session archive handed to `onArchive` before download. */
+export interface RiffrecArchive {
+  blob: Blob;
+  filename: string;
+  sessionId: string;
+  filesPresent: string[];
 }
 
 export type RiffrecDisplayMediaVideo = MediaTrackConstraints;
@@ -118,6 +128,14 @@ export interface RiffrecConfig {
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
   sanitizeError?: (msg: string, stack: string | null) => string;
+  /**
+   * Receive the finished session archive (zip) before the local download —
+   * e.g. to upload it somewhere. Return `false` (or a promise resolving to
+   * `false`) to skip the download once the archive is safely elsewhere. If the
+   * handler throws or rejects, the error goes to `onError` and the download
+   * proceeds anyway, so a session is never lost.
+   */
+  onArchive?: (archive: RiffrecArchive) => boolean | void | Promise<boolean | void>;
 }
 
 export interface RiffrecContextValue {
