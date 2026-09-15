@@ -43,17 +43,16 @@ export function segmentFileName(segment: number): string {
   return `recording-${String(segment).padStart(3, "0")}.webm`;
 }
 
-/** Every segment with bytes, in order, named per KTD15; `skip` leaves out segments the caller holds itself. */
+/** Every segment with bytes, in order, named per KTD15; `replacements` stand in for segments the caller holds itself. */
 export async function assembleRecordingSegments(
   store: SegmentStore,
   sessionId: string,
-  skip: ReadonlySet<number> = new Set()
+  replacements: ReadonlyMap<number, Blob> = new Map()
 ): Promise<Blob[]> {
   const segments = await store.listSegments(sessionId);
   const blobs: Blob[] = [];
   for (const meta of segments.sort((a, b) => a.segment - b.segment)) {
-    if (skip.has(meta.segment)) continue;
-    const blob = await store.readSegment(sessionId, meta.segment);
+    const blob = replacements.get(meta.segment) ?? (await store.readSegment(sessionId, meta.segment));
     if (blob && blob.size > 0) blobs.push(blob);
   }
   return blobs;

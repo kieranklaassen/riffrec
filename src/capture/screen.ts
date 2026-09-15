@@ -200,11 +200,17 @@ export class ScreenCapture {
     await Promise.allSettled(this.pendingWrites);
     if (this.segmentStore && this.sessionId) {
       try {
-        const persisted = await assembleRecordingSegments(this.segmentStore, this.sessionId, this.failedSegments);
-        const unpersisted = this.completedSegments
-          .filter((entry) => entry.segment === null || this.failedSegments.has(entry.segment))
+        const replacements = new Map<number, Blob>();
+        for (const entry of this.completedSegments) {
+          if (entry.segment !== null && this.failedSegments.has(entry.segment)) {
+            replacements.set(entry.segment, entry.blob);
+          }
+        }
+        const persisted = await assembleRecordingSegments(this.segmentStore, this.sessionId, replacements);
+        const unstored = this.completedSegments
+          .filter((entry) => entry.segment === null)
           .map((entry) => entry.blob);
-        return [...persisted, ...unpersisted];
+        return [...persisted, ...unstored];
       } catch (error) {
         this.options.onError?.(error);
       }
