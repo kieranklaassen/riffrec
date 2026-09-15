@@ -1,53 +1,3 @@
-"use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/noop.tsx
-var noop_exports = {};
-__export(noop_exports, {
-  CHECKPOINT_TRIGGERS: () => CHECKPOINT_TRIGGERS,
-  DEFAULT_EXECUTION_MODE: () => DEFAULT_EXECUTION_MODE,
-  EXECUTION_MODES: () => EXECUTION_MODES,
-  LIVE_EVENTS_BODY_MAX_BYTES: () => LIVE_EVENTS_BODY_MAX_BYTES,
-  LIVE_EVENT_TYPES: () => LIVE_EVENT_TYPES,
-  LIVE_FRAME_BODY_MAX_BYTES: () => LIVE_FRAME_BODY_MAX_BYTES,
-  LIVE_SCHEMA_VERSION: () => LIVE_SCHEMA_VERSION,
-  LIVE_SESSION_HEADER: () => LIVE_SESSION_HEADER,
-  LIVE_TOOLS: () => LIVE_TOOLS,
-  LIVE_TOOL_NAMES: () => LIVE_TOOL_NAMES,
-  RECORD_UNIT_TOOL: () => RECORD_UNIT_TOOL,
-  RELAY_ANSWER_TOOL: () => RELAY_ANSWER_TOOL,
-  RiffrecProvider: () => RiffrecProvider,
-  RiffrecRecorder: () => RiffrecRecorder,
-  UNIT_STATUSES: () => UNIT_STATUSES,
-  UPDATE_UNIT_TOOL: () => UPDATE_UNIT_TOOL,
-  WITHDRAW_UNIT_TOOL: () => WITHDRAW_UNIT_TOOL,
-  downloadSessionArchive: () => downloadSessionArchive,
-  getLiveTool: () => getLiveTool,
-  inspectEnvelope: () => inspectEnvelope,
-  isLiveEnvelopeOfType: () => isLiveEnvelopeOfType,
-  isLiveEventType: () => isLiveEventType,
-  isLiveToolName: () => isLiveToolName,
-  useRiffrec: () => useRiffrec,
-  validateEnvelope: () => validateEnvelope
-});
-module.exports = __toCommonJS(noop_exports);
-
 // src/live/contract.ts
 var LIVE_SCHEMA_VERSION = "live/1";
 var LIVE_SESSION_HEADER = "X-Riffrec-Session";
@@ -318,51 +268,27 @@ function getLiveTool(name) {
   return tool;
 }
 
-// src/noop.tsx
-function RiffrecProvider({ children }) {
-  return children ?? null;
-}
-function useRiffrec() {
-  return {
-    start: async () => {
-    },
-    stop: async () => null,
-    status: "disabled",
-    isEnabled: false
-  };
-}
-function RiffrecRecorder() {
-  return null;
-}
-function downloadSessionArchive(_filename, _archive) {
-  throw new Error("Browser download APIs are not available.");
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  CHECKPOINT_TRIGGERS,
-  DEFAULT_EXECUTION_MODE,
-  EXECUTION_MODES,
-  LIVE_EVENTS_BODY_MAX_BYTES,
-  LIVE_EVENT_TYPES,
-  LIVE_FRAME_BODY_MAX_BYTES,
+export {
   LIVE_SCHEMA_VERSION,
   LIVE_SESSION_HEADER,
-  LIVE_TOOLS,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_FRAME_BODY_MAX_BYTES,
+  LIVE_EVENT_TYPES,
+  EXECUTION_MODES,
+  DEFAULT_EXECUTION_MODE,
+  UNIT_STATUSES,
+  CHECKPOINT_TRIGGERS,
+  isLiveEventType,
+  inspectEnvelope,
+  validateEnvelope,
+  isLiveEnvelopeOfType,
   LIVE_TOOL_NAMES,
   RECORD_UNIT_TOOL,
-  RELAY_ANSWER_TOOL,
-  RiffrecProvider,
-  RiffrecRecorder,
-  UNIT_STATUSES,
   UPDATE_UNIT_TOOL,
   WITHDRAW_UNIT_TOOL,
-  downloadSessionArchive,
-  getLiveTool,
-  inspectEnvelope,
-  isLiveEnvelopeOfType,
-  isLiveEventType,
+  RELAY_ANSWER_TOOL,
+  LIVE_TOOLS,
   isLiveToolName,
-  useRiffrec,
-  validateEnvelope
-});
-//# sourceMappingURL=index.node.cjs.map
+  getLiveTool
+};
+//# sourceMappingURL=chunk-KFCNMUSO.js.map
