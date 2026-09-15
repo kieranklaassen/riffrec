@@ -489,7 +489,17 @@ export class Interviewer {
   }
 
   private handleLost(): void {
+    const lost = this.transport;
     this.transport = null;
+    if (lost) {
+      // The call is gone; release the peer, remote playback, and mic clone
+      // even when the mint that follows is refused.
+      try {
+        lost.close();
+      } catch (error) {
+        this.onError(error);
+      }
+    }
     this.clearFlushTimer();
     this.clearGateTimer();
     this.responseActive = false;
@@ -560,8 +570,8 @@ export class Interviewer {
   }
 
   private handleTranscript(transcript: LiveTranscript): void {
-    if (transcript.role === "riffer") this.lastRifferTranscript = transcript;
     if (transcript.text.trim().length === 0) return;
+    if (transcript.role === "riffer") this.lastRifferTranscript = transcript;
     this.session.addTranscript(transcript);
   }
 

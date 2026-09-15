@@ -343,6 +343,30 @@ describe("RealtimeClient", () => {
     ]);
   });
 
+  it("keeps a delayed transcription on its own utterance's span, keyed by item_id", async () => {
+    let t = 1000;
+    const h = harness({ elapsed: () => t });
+    await h.connect();
+
+    h.pc.channel.receive({ type: "input_audio_buffer.speech_started", item_id: "item_a" });
+    t = 2500;
+    h.pc.channel.receive({ type: "input_audio_buffer.speech_stopped", item_id: "item_a" });
+    t = 4000;
+    h.pc.channel.receive({ type: "input_audio_buffer.speech_started", item_id: "item_b" });
+    t = 4200;
+    h.pc.channel.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "item_a", transcript: "make it red" });
+    t = 5000;
+    h.pc.channel.receive({ type: "input_audio_buffer.speech_stopped", item_id: "item_b" });
+    t = 5300;
+    h.pc.channel.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "item_b", transcript: "and bigger" });
+
+    const transcripts = h.events.flatMap((event) => (event.type === "transcript" ? [event.transcript] : []));
+    expect(transcripts).toEqual([
+      { id: "item_a", role: "riffer", text: "make it red", t_start: 1000, t_end: 2500, final: true },
+      { id: "item_b", role: "riffer", text: "and bigger", t_start: 4000, t_end: 5000, final: true }
+    ]);
+  });
+
   it("sends items in the Realtime wire shapes and keeps tool results free of response.create", async () => {
     const h = harness();
     await h.connect();
@@ -429,6 +453,8 @@ describe("RealtimeClient", () => {
     expect(h.events.filter((event) => event.type === "closed")).toEqual([{ type: "closed", reason: "data_channel_closed" }]);
     expect(() => h.client.sendText("x")).toThrow(/not open/);
     expect(h.client.connected).toBe(false);
+    expect(h.pc.closed).toBe(true);
+    expect(h.audioElements.every((element) => element.srcObject === null)).toBe(true);
   });
 
   it("rides out a transient ICE disconnected and only reports the call lost when it stays down", async () => {

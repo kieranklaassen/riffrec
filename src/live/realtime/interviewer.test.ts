@@ -252,11 +252,12 @@ describe("Interviewer connection", () => {
 
     await h.realtime.emit({ type: "closed", reason: "peer_failed" });
     expect(h.session.status).toBe("reconnecting");
+    expect(h.realtime.actions[actionsBefore]).toEqual({ type: "close" });
     await vi.waitFor(() => expect(h.session.status).toBe("live"));
 
     expect(h.mintRequests).toHaveLength(2);
     expect(h.connects).toBe(2);
-    const first = h.realtime.actions[actionsBefore];
+    const first = h.realtime.actions[actionsBefore + 1];
     expect(first.type).toBe("send_text");
     const reseed = first.type === "send_text" ? first.text : "";
     expect(reseed.startsWith("[RECONNECT]")).toBe(true);
@@ -267,6 +268,18 @@ describe("Interviewer connection", () => {
     expect(reseed).not.toContain("old line");
     expect(reseed).toContain("recent line 119");
     expect(h.realtime.actionsNamed("update_session")).toEqual([]);
+  });
+
+  it("closes the lost call even when the re-mint is refused", async () => {
+    const h = harness();
+    await h.goLive();
+    h.endpoint.mint = { status: 503, reason: "no_key" };
+    await h.realtime.emit({ type: "closed", reason: "peer_failed" });
+    await vi.waitFor(() => expect(h.session.status).toBe("live_novoice"));
+    expect(h.realtime.actionsNamed("close")).toHaveLength(1);
+    expect(h.realtime.closed).toBe(true);
+    expect(h.interviewer.status.connected).toBe(false);
+    expect(h.connects).toBe(1);
   });
 
   it("stop closes the transport, and a session end stops the interviewer", async () => {
@@ -309,6 +322,18 @@ describe("Interviewer tools", () => {
     });
     expect(h.realtime.toolResults[0]).toEqual({ call_id: "call_0001", output: { ok: true, unit_id: unit.id, anchors_resolved: 1 } });
     expect(h.realtime.actionsNamed("create_response")).toEqual([]);
+  });
+
+  it("an empty riffer transcript neither reaches the session nor overwrites the span the next unit copies", async () => {
+    const h = harness();
+    await h.goLive();
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t_words", "make this red", 900) });
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t_empty", "   ", 3000) });
+    await h.realtime.emit(
+      h.realtime.toolCall({ name: "record_unit", arguments: { statement: "Make it red.", anchors: [], transcript_excerpt: "make this red" } })
+    );
+    expect(h.session.fullTranscript().map((entry) => entry.id)).toEqual(["t_words"]);
+    expect(h.session.allUnits()[0].evidence.transcript_span).toEqual({ t_start: 400, t_end: 900 });
   });
 
   it("resolves anchors by description and by recency, and reports what it could not resolve", async () => {

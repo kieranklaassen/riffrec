@@ -114,13 +114,26 @@ function parseToolArgs(value: unknown): Record<string, unknown> {
   }
 }
 
+export interface UtteranceSpan {
+  start: number;
+  end: number | null;
+}
+
 export interface ParseContext {
   /** Milliseconds since session start. */
   t: number;
   /** When the riffer's current utterance started, for transcript spans. */
   utteranceStart: number | null;
   utteranceEnd: number | null;
+  /**
+   * Spans keyed by the audio item id, so a transcription that arrives after
+   * the next utterance began still gets its own timestamps.
+   */
+  spans?: ReadonlyMap<string, UtteranceSpan>;
 }
+
+/** How many utterance spans the client remembers while their transcriptions are pending. */
+export const UTTERANCE_SPAN_LIMIT = 64;
 
 /** Maps one raw Realtime server event to the typed union; null for events the interviewer ignores. */
 export function parseRealtimeEvent(raw: unknown, context: ParseContext): RealtimeServerEvent | null {
@@ -133,12 +146,14 @@ export function parseRealtimeEvent(raw: unknown, context: ParseContext): Realtim
       return { type: "speech_stopped", t: context.t };
     case "conversation.item.input_audio_transcription.completed": {
       const text = asString(message.transcript).trim();
-      const tStart = context.utteranceStart ?? context.t;
-      const tEnd = context.utteranceEnd ?? context.t;
+      const itemId = asString(message.item_id);
+      const span = itemId ? context.spans?.get(itemId) : undefined;
+      const tStart = span?.start ?? context.utteranceStart ?? context.t;
+      const tEnd = span ? (span.end ?? Math.max(tStart, context.t)) : (context.utteranceEnd ?? context.t);
       return {
         type: "transcript",
         transcript: {
-          id: asString(message.item_id) || `riffer_${context.t}`,
+          id: itemId || `riffer_${context.t}`,
           role: "riffer",
           text,
           t_start: tStart,
@@ -202,6 +217,7 @@ export class RealtimeClient implements RealtimeTransport {
   private disconnectTimer: unknown = null;
   private utteranceStart: number | null = null;
   private utteranceEnd: number | null = null;
+  private readonly spans = new Map<string, UtteranceSpan>();
 
   constructor(private readonly options: RealtimeClientOptions) {
     const deps = options.deps ?? {};
@@ -399,14 +415,22 @@ export class RealtimeClient implements RealtimeTransport {
     const event = parseRealtimeEvent(raw, {
       t,
       utteranceStart: this.utteranceStart,
-      utteranceEnd: this.utteranceEnd
+      utteranceEnd: this.utteranceEnd,
+      spans: this.spans
     });
     if (!event) return;
+    const itemId = asString(asRecord(raw).item_id);
     if (event.type === "speech_started") {
       this.utteranceStart = event.t;
       this.utteranceEnd = null;
+      if (itemId) this.rememberSpan(itemId, { start: event.t, end: null });
     } else if (event.type === "speech_stopped") {
       this.utteranceEnd = event.t;
+      const span = itemId ? this.spans.get(itemId) : undefined;
+      if (span) span.end = event.t;
+      else if (itemId && this.utteranceStart !== null) this.rememberSpan(itemId, { start: this.utteranceStart, end: event.t });
+    } else if (event.type === "transcript" && itemId) {
+      this.spans.delete(itemId);
     }
     this.dispatch(event);
   }
@@ -424,10 +448,21 @@ export class RealtimeClient implements RealtimeTransport {
     }
   }
 
+  private rememberSpan(itemId: string, span: UtteranceSpan): void {
+    this.spans.set(itemId, span);
+    while (this.spans.size > UTTERANCE_SPAN_LIMIT) {
+      const oldest = this.spans.keys().next().value;
+      if (oldest === undefined) break;
+      this.spans.delete(oldest);
+    }
+  }
+
+  /** A lost call: tell the interviewer once, then release the peer, element, and mic clone. */
   private reportClosed(reason: string): void {
     if (this.closedReported) return;
     this.closedReported = true;
     this.dispatch({ type: "closed", reason });
+    this.teardown();
   }
 
   private clearDisconnectTimer(): void {
