@@ -1,11 +1,14 @@
 const AUDIO_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
 
+function browserSupportsMediaRecorder(): boolean {
+  return typeof window !== "undefined" && typeof MediaRecorder !== "undefined";
+}
+
 function browserSupportsVoiceCapture(): boolean {
   return (
-    typeof window !== "undefined" &&
+    browserSupportsMediaRecorder() &&
     typeof navigator !== "undefined" &&
-    Boolean(navigator.mediaDevices?.getUserMedia) &&
-    typeof MediaRecorder !== "undefined"
+    Boolean(navigator.mediaDevices?.getUserMedia)
   );
 }
 
@@ -20,18 +23,31 @@ function chooseAudioMimeType(): string {
 export class VoiceCapture {
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
+  /** True when `start` acquired the stream itself and therefore owns its tracks. */
+  private ownsStream = false;
   private chunks: BlobPart[] = [];
   private mimeType = "audio/webm";
 
-  async start(): Promise<boolean> {
-    if (!browserSupportsVoiceCapture()) {
+  /**
+   * Starts recording. With no argument the capture acquires its own microphone;
+   * a live session passes a clone of the shared consent stream instead (KTD21),
+   * whose tracks stay owned by the sharer — `stop()` leaves them running.
+   */
+  async start(stream?: MediaStream): Promise<boolean> {
+    if (stream ? !browserSupportsMediaRecorder() : !browserSupportsVoiceCapture()) {
       return false;
     }
 
     try {
       this.mimeType = chooseAudioMimeType();
       this.chunks = [];
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (stream) {
+        this.stream = stream;
+        this.ownsStream = false;
+      } else {
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.ownsStream = true;
+      }
       this.recorder = new MediaRecorder(this.stream, { mimeType: this.mimeType });
       this.recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -82,14 +98,20 @@ export class VoiceCapture {
     return this.recorder?.state === "recording";
   }
 
+  /** The stream being recorded, so a mute can be asserted against its tracks. */
+  get activeStream(): MediaStream | null {
+    return this.stream;
+  }
+
   private reset(): void {
     this.recorder = null;
     this.cleanupStream();
   }
 
   private cleanupStream(): void {
-    this.stream?.getTracks().forEach((track) => track.stop());
+    if (this.ownsStream) this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
+    this.ownsStream = false;
   }
 }
 
