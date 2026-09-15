@@ -38,6 +38,8 @@ export const MIN_UNIT_WORDS = 3;
 export const CONNECT_MAX_ATTEMPTS = 3;
 /** How long a `response.create` may go unconfirmed by `response.created` before the question is re-queued. */
 export const RESPONSE_CONFIRM_TIMEOUT_MS = 10_000;
+/** Page-side facts held while a response is active or the link is down; oldest are dropped past this. */
+export const PENDING_TEXT_LIMIT = 50;
 
 export type VoiceUnavailableReason =
   | { kind: "no_endpoint" }
@@ -337,12 +339,13 @@ export class Interviewer {
     );
   }
 
-  /** Any page-side fact as a text item; held while a response is active (KTD6). */
+  /** Any page-side fact as a text item; held while a response is active or the link is down (KTD6). */
   announce(text: string): void {
     const item = `[PAGE] ${text}`;
-    if (!this.transport) return;
-    if (this.responseActive) {
+    if (this.stopped) return;
+    if (!this.transport || this.responseActive) {
       this.pendingTexts.push(item);
+      if (this.pendingTexts.length > PENDING_TEXT_LIMIT) this.pendingTexts.shift();
       return;
     }
     this.sendText(item);
@@ -474,6 +477,7 @@ export class Interviewer {
         this.onError(error);
       }
     }
+    this.flushPendingTexts();
     this.session.voiceConnected();
     this.scheduleFlush();
   }
@@ -483,7 +487,6 @@ export class Interviewer {
     this.clearFlushTimer();
     this.clearConfirmTimer();
     this.responseActive = false;
-    this.pendingTexts.length = 0;
     if (this.voicing) {
       this.requeue(this.voicing);
       this.voicing = null;

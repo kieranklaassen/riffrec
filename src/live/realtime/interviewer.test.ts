@@ -607,6 +607,17 @@ describe("Interviewer mute (KTD21)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("delivers a drawing announced while the link was down once the replacement connects, after the re-seed", async () => {
+    const h = harness();
+    await h.goLive();
+    await h.realtime.emit({ type: "closed" });
+    h.interviewer.announceDrawing({ anchor: anchor(), description: "the footer" });
+    await vi.waitFor(() => expect(h.session.status).toBe("live"));
+    const texts = h.realtime.sentTexts;
+    expect(texts[0].startsWith("[RECONNECT]")).toBe(true);
+    expect(texts[1]).toBe("[PAGE] The riffer drew on the footer (anchor id: anchor_0001).");
+  });
+
   it("a reconnect while muted starts the replacement transport muted", async () => {
     const h = harness();
     await h.goLive();
