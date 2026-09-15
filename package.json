@@ -53,6 +53,7 @@
     "fflate": "^0.8.2"
   },
   "devDependencies": {
+    "@types/node": "^22.20.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "jsdom": "^29.0.2",

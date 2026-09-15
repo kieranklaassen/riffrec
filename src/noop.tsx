@@ -23,3 +23,6 @@ export function downloadSessionArchive(_filename: string, _archive: Blob): never
 }
 
 export type * from "./types";
+// The live contract is pure data and guards with no browser dependency, so the
+// Node entry re-exports the real module: endpoint authors validate envelopes with it.
+export * from "./live";
