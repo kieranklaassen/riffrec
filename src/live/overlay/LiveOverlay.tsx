@@ -212,6 +212,7 @@ export function LiveOverlay({
   // session must not inherit a dismissal, an ended reason or an open confirmation pass.
   useEffect(() => {
     setView("board");
+    setDrawing(false);
     setEndedReason(null);
     setDismissed(false);
     // Capture only learns pause through the callback, so clearing it has to notify too.

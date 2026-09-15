@@ -498,6 +498,58 @@ describe("LiveOverlay", () => {
     expect(q("[data-riffrec-live-collapse]")).not.toBeNull();
   });
 
+  it("a double click on Send emits exactly one send checkpoint", async () => {
+    const h = harness();
+    const session = await liveSession(h);
+    await act(async () => {
+      session.recordUnit({ statement: "Make this red", transcript_excerpt: "red", anchors: [anchor()] });
+    });
+    const button = q<HTMLButtonElement>("[data-riffrec-send]")!;
+    await act(async () => {
+      button.click();
+      button.click();
+    });
+    await settled(session);
+    expect(received(h.endpoint, "checkpoint")).toHaveLength(1);
+  });
+
+  it("resets dismissal, confirmation view, drawing, and pause when the overlay is handed a new session", async () => {
+    const h = harness();
+    const onPauseChange = vi.fn();
+    const first = await liveSession(h, { onPauseChange });
+
+    // Leave the first session mid-confirmation, drawing, and paused; the endpoint ends it.
+    await click("[data-riffrec-draw-toggle]");
+    await click("[data-riffrec-live-pause]");
+    expect(onPauseChange).toHaveBeenLastCalledWith(true);
+    await click("[data-riffrec-done]");
+    await act(async () => {
+      await h.endpoint.handle({ method: "POST", path: "/session/end", headers: h.endpoint.pageHeaders(first.id), body: {} });
+    });
+    await vi.waitFor(() => expect(q("[data-riffrec-ended-card]")).not.toBeNull());
+    await click("[data-riffrec-ended-dismiss]");
+    expect(container.innerHTML).toBe("");
+
+    // The same mounted overlay receives the next session.
+    const h2 = harness();
+    const second = track(LiveSession.create(h2.options({ sessionId: "sess_overlay_0002" })));
+    second.start();
+    second.voiceConnected();
+    await render({ session: second, onPauseChange });
+
+    expect(q("[data-riffrec-live-panel]")).not.toBeNull();
+    expect(q("[data-riffrec-confirmation]")).toBeNull();
+    expect(q("[data-riffrec-board]")).not.toBeNull();
+    expect(q("[data-riffrec-draw-active]")).toBeNull();
+    expect(indicatorState()).toBe("streaming");
+    expect(onPauseChange).toHaveBeenLastCalledWith(false);
+
+    await act(async () => {
+      await h2.endpoint.handle({ method: "POST", path: "/session/end", headers: h2.endpoint.pageHeaders(second.id), body: {} });
+    });
+    await vi.waitFor(() => expect(q("[data-riffrec-ended-card]")).not.toBeNull());
+  });
+
   it("keeps riffing when the confirmation pass is cancelled", async () => {
     const h = harness();
     await liveSession(h);

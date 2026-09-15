@@ -57,6 +57,20 @@ describe("SendControl", () => {
     expect(send().textContent).toBe("Send (1)");
   });
 
+  it("calls send once when Send is clicked twice before React re-renders", async () => {
+    let resolve: (emitted: boolean) => void = () => {};
+    const onSend = vi.fn(() => new Promise<boolean>((r) => (resolve = r)));
+    await render({ onSend, heldCount: 1 });
+    const button = send();
+    await act(async () => {
+      button.click();
+      button.click();
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    await act(async () => resolve(true));
+    expect(send().disabled).toBe(false);
+  });
+
   it("disables Send while a send is in flight", async () => {
     let resolve: (emitted: boolean) => void = () => {};
     await render({ onSend: () => new Promise((r) => (resolve = r)) });
