@@ -12,6 +12,8 @@ import {
   Interviewer,
   QUESTION_SILENCE_MS,
   RESEED_MAX_CHARS,
+  RESPONSE_CONFIRM_TIMEOUT_MS,
+  RESPONSE_GATE_RESET_MS,
   buildReseedText,
   createInterviewer,
   isNoiseTranscript,
@@ -514,6 +516,41 @@ describe("Interviewer conversation rules", () => {
       "[PAGE] The riffer pinned the footer (anchor id: anchor_0001)."
     ]);
     expect(h.realtime.actionsNamed("create_response")).toEqual([]);
+  });
+
+  it("does not stall after a busy error when the other response's done never arrives: the gate resets on a timer", async () => {
+    const h = harness();
+    await h.goLive();
+    const id = await h.recordUnit();
+    await h.ask(id, "Which shade of red?");
+    await vi.advanceTimersByTimeAsync(QUESTION_SILENCE_MS);
+    expect(h.questionTexts()).toHaveLength(1);
+    await h.realtime.emit({ type: "error", message: "conversation_already_has_active_response: busy" });
+
+    await vi.advanceTimersByTimeAsync(RESPONSE_CONFIRM_TIMEOUT_MS - 1);
+    expect(h.questionTexts()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1 + QUESTION_SILENCE_MS);
+    expect(h.questionTexts()).toHaveLength(2);
+    expect(h.interviewer.status.responseActive).toBe(true);
+  });
+
+  it("re-queues an unconfirmed response.create and resets a confirmed response whose done never arrives", async () => {
+    const h = harness();
+    await h.goLive();
+    const id = await h.recordUnit();
+    await h.ask(id, "Which shade of red?");
+    await vi.advanceTimersByTimeAsync(QUESTION_SILENCE_MS);
+    expect(h.questionTexts()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(RESPONSE_CONFIRM_TIMEOUT_MS + QUESTION_SILENCE_MS);
+    expect(h.questionTexts()).toHaveLength(2);
+
+    await h.realtime.emit({ type: "response_started", response_id: "resp_lost" });
+    await vi.advanceTimersByTimeAsync(RESPONSE_GATE_RESET_MS - 1);
+    expect(h.questionTexts()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1 + QUESTION_SILENCE_MS);
+    expect(h.questionTexts()).toHaveLength(3);
+    expect(h.errors.some((error) => String(error).includes("response gate reset"))).toBe(true);
   });
 
   it("re-queues a question whose response.create lost the race with an active response", async () => {

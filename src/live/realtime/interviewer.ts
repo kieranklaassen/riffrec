@@ -36,8 +36,14 @@ export const RESEED_WINDOW_MS = 120_000;
 export const ANCHOR_RECENCY_MS = 8000;
 export const MIN_UNIT_WORDS = 3;
 export const CONNECT_MAX_ATTEMPTS = 3;
-/** How long a `response.create` may go unconfirmed by `response.created` before the question is re-queued. */
+/**
+ * Response-gate resets, the breathwork lesson: a gate held open by an event we
+ * never see would silence the interviewer for the rest of the session.
+ * Unconfirmed: our `response.create` (or a busy error) with no `response.created`.
+ * Confirmed: a `response.created` whose `response.done` never arrives.
+ */
 export const RESPONSE_CONFIRM_TIMEOUT_MS = 10_000;
+export const RESPONSE_GATE_RESET_MS = 45_000;
 /** Page-side facts held while a response is active or the link is down; oldest are dropped past this. */
 export const PENDING_TEXT_LIMIT = 50;
 
@@ -213,7 +219,7 @@ export class Interviewer {
   private rifferSpeaking = false;
   private silenceAnchor = 0;
   private flushTimer: unknown = null;
-  private confirmTimer: unknown = null;
+  private gateTimer: unknown = null;
 
   private readonly queue: QueuedQuestion[] = [];
   private voicing: QueuedQuestion | null = null;
@@ -270,7 +276,7 @@ export class Interviewer {
     this.stopped = true;
     this.generation += 1;
     this.clearFlushTimer();
-    this.clearConfirmTimer();
+    this.clearGateTimer();
     for (const off of this.unsubscribe.splice(0)) off();
     const transport = this.transport;
     this.transport = null;
@@ -485,7 +491,7 @@ export class Interviewer {
   private handleLost(): void {
     this.transport = null;
     this.clearFlushTimer();
-    this.clearConfirmTimer();
+    this.clearGateTimer();
     this.responseActive = false;
     if (this.voicing) {
       this.requeue(this.voicing);
@@ -525,11 +531,11 @@ export class Interviewer {
       case "response_started":
         this.responseActive = true;
         this.clearFlushTimer();
-        this.clearConfirmTimer();
+        this.armGateTimer(RESPONSE_GATE_RESET_MS, "response.done never arrived");
         break;
       case "response_done":
         this.responseActive = false;
-        this.clearConfirmTimer();
+        this.clearGateTimer();
         this.silenceAnchor = this.now();
         if (this.voicing) {
           if (this.voicingInterrupted) this.requeue(this.voicing);
@@ -562,11 +568,14 @@ export class Interviewer {
   private handleError(message: string): void {
     this.onError(new Error(`riffrec live interviewer: ${message}`));
     if (message.includes("conversation_already_has_active_response") && this.voicing) {
-      // Our response.create lost the race with a riffer turn; ask again at the next pause.
+      // Our response.create lost the race with a riffer turn; ask again at the
+      // next pause. The other response's `response.done` clears the gate; the
+      // timer does when that event never arrives.
       this.requeue(this.voicing);
       this.voicing = null;
       this.voicingInterrupted = false;
       this.responseActive = true;
+      this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, "no response.done after a busy error");
     }
   }
 
@@ -808,7 +817,7 @@ export class Interviewer {
       // The server's response.created confirms; until then treat the response
       // as active so a second question cannot race it, but not forever.
       this.responseActive = true;
-      this.armConfirmTimer(next);
+      this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, "response.create was never confirmed");
     } catch (error) {
       this.onError(error);
       this.voicing = null;
@@ -817,24 +826,29 @@ export class Interviewer {
     this.emitStatus();
   }
 
-  private armConfirmTimer(question: QueuedQuestion): void {
-    this.clearConfirmTimer();
-    this.confirmTimer = this.schedule(() => {
-      this.confirmTimer = null;
-      if (this.voicing !== question) return;
-      this.onError(new Error("riffrec live interviewer: response.create was never confirmed; re-queuing the question"));
-      this.voicing = null;
-      this.voicingInterrupted = false;
+  /** Reopens the response gate after `ms` unless `response.done` clears it first. */
+  private armGateTimer(ms: number, why: string): void {
+    this.clearGateTimer();
+    this.gateTimer = this.schedule(() => {
+      this.gateTimer = null;
+      if (!this.responseActive) return;
+      this.onError(new Error(`riffrec live interviewer: response gate reset (${why})`));
       this.responseActive = false;
-      this.requeue(question);
+      this.silenceAnchor = this.now();
+      if (this.voicing) {
+        this.requeue(this.voicing);
+        this.voicing = null;
+        this.voicingInterrupted = false;
+      }
+      this.flushPendingTexts();
       this.scheduleFlush();
-    }, RESPONSE_CONFIRM_TIMEOUT_MS);
+    }, ms);
   }
 
-  private clearConfirmTimer(): void {
-    if (this.confirmTimer !== null) {
-      this.cancel(this.confirmTimer);
-      this.confirmTimer = null;
+  private clearGateTimer(): void {
+    if (this.gateTimer !== null) {
+      this.cancel(this.gateTimer);
+      this.gateTimer = null;
     }
   }
 
