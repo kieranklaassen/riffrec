@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SharedMicrophone, type AudioContextLike, type AudioNodeLike, type AudioTrackLike, type GainNodeLike } from "./audioRouting";
 import {
   DATA_CHANNEL_READY_TIMEOUT_MS,
+  PEER_DISCONNECTED_GRACE_MS,
   REALTIME_CALLS_URL,
   RealtimeClient,
   createRealtimeConnector,
@@ -430,6 +431,50 @@ describe("RealtimeClient", () => {
     expect(h.client.connected).toBe(false);
   });
 
+  it("rides out a transient ICE disconnected and only reports the call lost when it stays down", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await h.connect();
+
+    h.pc.connectionState = "disconnected";
+    h.pc.onconnectionstatechange?.();
+    await vi.advanceTimersByTimeAsync(PEER_DISCONNECTED_GRACE_MS - 1);
+    h.pc.connectionState = "connected";
+    h.pc.onconnectionstatechange?.();
+    await vi.advanceTimersByTimeAsync(PEER_DISCONNECTED_GRACE_MS * 2);
+    expect(h.events.some((event) => event.type === "closed")).toBe(false);
+    expect(h.client.connected).toBe(true);
+
+    h.pc.connectionState = "disconnected";
+    h.pc.onconnectionstatechange?.();
+    await vi.advanceTimersByTimeAsync(PEER_DISCONNECTED_GRACE_MS);
+    expect(h.events.filter((event) => event.type === "closed")).toEqual([{ type: "closed", reason: "peer_disconnected" }]);
+  });
+
+  it("stamps events with a clock that advances even when none is injected", async () => {
+    vi.useFakeTimers();
+    const pc = new FakePeerConnection();
+    const events: RealtimeServerEvent[] = [];
+    const client = new RealtimeClient({
+      secret: "ek",
+      model: "m",
+      micStream: fakeStream([new FakeTrack("mic")]),
+      deps: { fetchImpl: async () => new Response("v=0 answer", { status: 200 }), createPeerConnection: () => pc as unknown as RTCPeerConnection }
+    });
+    const pending = client.connect({
+      onEvent: (event) => {
+        events.push(event);
+      }
+    });
+    await vi.waitFor(() => expect(pc.remoteDescription).not.toBeNull());
+    pc.channel.open();
+    await pending;
+    await vi.advanceTimersByTimeAsync(3000);
+    pc.channel.receive({ type: "input_audio_buffer.speech_started" });
+    expect(events[0]).toMatchObject({ type: "speech_started" });
+    expect((events[0] as { t: number }).t).toBeGreaterThanOrEqual(3000);
+  });
+
   it("does not report a close the page asked for", async () => {
     const h = harness();
     await h.connect();
@@ -463,10 +508,15 @@ describe("createRealtimeConnector", () => {
   async function connectThrough(
     connector: ReturnType<typeof createRealtimeConnector>,
     pcs: FakePeerConnection[],
-    secret: string
+    secret: string,
+    events: RealtimeServerEvent[] = []
   ): Promise<RealtimeClient> {
     const client = connector.connect({ client_secret: secret, expires_at: 0, model: "gpt-realtime" });
-    const pending = client.connect({ onEvent: () => {} });
+    const pending = client.connect({
+      onEvent: (event) => {
+        events.push(event);
+      }
+    });
     const pc = pcs[pcs.length - 1];
     await vi.waitFor(() => expect(pc.remoteDescription).not.toBeNull());
     pc.channel.open();
@@ -482,8 +532,10 @@ describe("createRealtimeConnector", () => {
     );
     const graph = new FakeGraph();
     const pcs: FakePeerConnection[] = [];
+    let sessionClock = 42_000;
     const connector = createRealtimeConnector({
       microphone,
+      elapsed: () => sessionClock,
       audioContext: graph.context(),
       deps: {
         fetchImpl: async () => new Response("v=0 answer", { status: 200 }),
@@ -497,7 +549,17 @@ describe("createRealtimeConnector", () => {
       }
     });
 
-    await connectThrough(connector, pcs, "ek_first");
+    const events: RealtimeServerEvent[] = [];
+    await connectThrough(connector, pcs, "ek_first", events);
+    pcs[0].channel.receive({ type: "input_audio_buffer.speech_started" });
+    sessionClock = 43_500;
+    pcs[0].channel.receive({ type: "input_audio_buffer.speech_stopped" });
+    pcs[0].channel.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "i1", transcript: "make it red" });
+    expect(events).toEqual([
+      { type: "speech_started", t: 42_000 },
+      { type: "speech_stopped", t: 43_500 },
+      { type: "transcript", transcript: { id: "i1", role: "riffer", text: "make it red", t_start: 42_000, t_end: 43_500, final: true } }
+    ]);
     pcs[0].emitRemoteTrack(fakeStream([], "remote-1"));
     expect(connector.route?.isReachable()).toBe(true);
     expect(graph.reaches(graph.sources[0], graph.destination)).toBe(true);

@@ -27,6 +27,12 @@ import {
 
 export const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 export const DATA_CHANNEL_READY_TIMEOUT_MS = 10_000;
+/**
+ * How long an ICE `disconnected` may last before the call is reported lost.
+ * `disconnected` is often a brief interruption that returns to `connected`;
+ * only `failed`/`closed` are terminal on their own.
+ */
+export const PEER_DISCONNECTED_GRACE_MS = 10_000;
 
 export type RealtimeServerEvent =
   | { type: "speech_started"; t: number }
@@ -65,7 +71,11 @@ export interface RealtimeClientDeps {
   createPeerConnection?: () => RTCPeerConnection;
   createAudioElement?: () => HTMLAudioElement;
   baseUrl?: string;
-  /** Milliseconds since session start, stamped on speech and transcript events. */
+  /**
+   * Milliseconds since session start, stamped on speech and transcript events.
+   * Defaults to time since the client was built; the connector passes the
+   * session clock so spans and the re-seed window line up with the session.
+   */
   elapsed?: () => number;
   setTimeout?: (callback: () => void, ms: number) => unknown;
   clearTimeout?: (handle: unknown) => void;
@@ -189,6 +199,7 @@ export class RealtimeClient implements RealtimeTransport {
   private handlers: RealtimeTransportHandlers | null = null;
   private muted = false;
   private closedReported = false;
+  private disconnectTimer: unknown = null;
   private utteranceStart: number | null = null;
   private utteranceEnd: number | null = null;
 
@@ -204,7 +215,8 @@ export class RealtimeClient implements RealtimeTransport {
         return element;
       });
     this.baseUrl = deps.baseUrl ?? REALTIME_CALLS_URL;
-    this.elapsed = deps.elapsed ?? (() => 0);
+    const builtAt = Date.now();
+    this.elapsed = deps.elapsed ?? (() => Date.now() - builtAt);
     this.schedule = deps.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
     this.cancel = deps.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
     this.textRole = deps.textRole ?? "system";
@@ -273,9 +285,33 @@ export class RealtimeClient implements RealtimeTransport {
       this.reportClosed("data_channel_closed");
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed" || pc.connectionState === "disconnected") {
-        readyReject(new Error(`Realtime peer connection ${pc.connectionState} before data channel opened`));
-        this.reportClosed(`peer_${pc.connectionState}`);
+      switch (pc.connectionState) {
+        case "failed":
+        case "closed":
+          this.clearDisconnectTimer();
+          readyReject(new Error(`Realtime peer connection ${pc.connectionState} before data channel opened`));
+          this.reportClosed(`peer_${pc.connectionState}`);
+          break;
+        case "disconnected":
+          if (this.disconnectTimer === null) {
+            this.disconnectTimer = this.schedule(() => {
+              this.disconnectTimer = null;
+              if (this.pc === pc && pc.connectionState === "disconnected") {
+                readyReject(new Error("Realtime peer connection stayed disconnected"));
+                this.reportClosed("peer_disconnected");
+              }
+            }, PEER_DISCONNECTED_GRACE_MS);
+          }
+          break;
+        case "connected":
+        case "connecting":
+        case "new":
+          this.clearDisconnectTimer();
+          break;
+        default: {
+          const exhaustive: never = pc.connectionState;
+          return exhaustive;
+        }
       }
     };
 
@@ -394,7 +430,15 @@ export class RealtimeClient implements RealtimeTransport {
     this.dispatch({ type: "closed", reason });
   }
 
+  private clearDisconnectTimer(): void {
+    if (this.disconnectTimer !== null) {
+      this.cancel(this.disconnectTimer);
+      this.disconnectTimer = null;
+    }
+  }
+
   private teardown(): void {
+    this.clearDisconnectTimer();
     const channel = this.dataChannel;
     this.dataChannel = null;
     if (channel) {
@@ -436,9 +480,11 @@ export class RealtimeClient implements RealtimeTransport {
 
 export interface RealtimeConnectorOptions {
   microphone: SharedMicrophone;
+  /** The session clock: milliseconds since `LiveSession.startedAt`, so transcript spans match the session. */
+  elapsed: () => number;
   /** Web Audio context for the audible path; null disables routing (tests, no-audio hosts). */
   audioContext?: AudioContextLike | null;
-  deps?: RealtimeClientDeps;
+  deps?: Omit<RealtimeClientDeps, "elapsed">;
 }
 
 export interface RealtimeConnector {
@@ -477,7 +523,7 @@ export function createRealtimeConnector(options: RealtimeConnectorOptions): Real
           disposeRoute();
           if (audioContext) route = routeRemoteAudio(audioContext, stream);
         },
-        deps: options.deps
+        deps: { ...options.deps, elapsed: options.elapsed }
       });
       return client;
     },
