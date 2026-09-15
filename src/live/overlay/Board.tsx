@@ -252,10 +252,8 @@ export interface ConfirmationPassProps {
   busy?: boolean;
 }
 
-function defaultConfirmations(units: readonly LiveUnit[]): ConfirmationMap {
-  const map: ConfirmationMap = {};
-  for (const unit of units) map[unit.id] = unit.confirmed ?? { element: true, change: true };
-  return map;
+function defaultConfirmation(unit: LiveUnit): LiveUnitConfirmation {
+  return unit.confirmed ?? { element: true, change: true };
 }
 
 /**
@@ -264,10 +262,18 @@ function defaultConfirmations(units: readonly LiveUnit[]): ConfirmationMap {
  * per unit from the result before the `final` checkpoint leaves the page.
  */
 export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: ConfirmationPassProps) {
-  const [confirmations, setConfirmations] = useState<ConfirmationMap>(() => defaultConfirmations(units));
+  // Only the riffer's edits live in state; a unit that arrives while the pass is open reads its default.
+  const [edits, setEdits] = useState<ConfirmationMap>({});
+  const confirmationFor = (unit: LiveUnit): LiveUnitConfirmation => edits[unit.id] ?? defaultConfirmation(unit);
 
-  const toggle = (unitId: string, field: keyof LiveUnitConfirmation, value: boolean) => {
-    setConfirmations((current) => ({ ...current, [unitId]: { ...current[unitId], [field]: value } }));
+  const toggle = (unit: LiveUnit, field: keyof LiveUnitConfirmation, value: boolean) => {
+    setEdits((current) => ({ ...current, [unit.id]: { ...confirmationFor(unit), [field]: value } }));
+  };
+
+  const complete = () => {
+    const confirmations: ConfirmationMap = {};
+    for (const unit of units) confirmations[unit.id] = confirmationFor(unit);
+    onComplete(confirmations);
   };
 
   return (
@@ -278,7 +284,7 @@ export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: 
       ) : (
         <ul style={listStyle}>
           {units.map((unit) => {
-            const confirmation = confirmations[unit.id];
+            const confirmation = confirmationFor(unit);
             const anchor = describeAnchor(unit);
             return (
               <li key={unit.id} data-riffrec-confirm-unit={unit.id} style={itemStyle}>
@@ -290,7 +296,7 @@ export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: 
                       type="checkbox"
                       data-riffrec-confirm-element=""
                       checked={confirmation.element}
-                      onChange={(event) => toggle(unit.id, "element", event.currentTarget.checked)}
+                      onChange={(event) => toggle(unit, "element", event.currentTarget.checked)}
                     />
                     Right element
                   </label>
@@ -299,7 +305,7 @@ export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: 
                       type="checkbox"
                       data-riffrec-confirm-change=""
                       checked={confirmation.change}
-                      onChange={(event) => toggle(unit.id, "change", event.currentTarget.checked)}
+                      onChange={(event) => toggle(unit, "change", event.currentTarget.checked)}
                     />
                     Right change
                   </label>
@@ -318,7 +324,7 @@ export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: 
           data-riffrec-confirm-finish=""
           disabled={busy}
           style={busy ? { ...primaryButtonStyle, opacity: 0.56, cursor: "not-allowed" } : primaryButtonStyle}
-          onClick={() => onComplete(confirmations)}
+          onClick={complete}
         >
           {busy ? "Finishing…" : "Finish session"}
         </button>

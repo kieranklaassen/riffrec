@@ -246,8 +246,12 @@ export function LiveOverlay({
   const handleWithdraw = useCallback((unitId: string) => void session.withdrawUnit(unitId, "riffer"), [session]);
   const handleAnswer = useCallback((unitId: string, text: string) => void session.answer(unitId, text), [session]);
 
+  // A ref, not state: a second Finish click before React re-renders must not run `finish()` twice.
+  const finishInFlight = useRef(false);
   const handleConfirmations = useCallback(
     async (confirmations: ConfirmationMap) => {
+      if (finishInFlight.current) return;
+      finishInFlight.current = true;
       setFinishing(true);
       try {
         for (const [unitId, confirmation] of Object.entries(confirmations)) {
@@ -256,6 +260,7 @@ export function LiveOverlay({
         const result = await session.finish();
         onFinished?.(result);
       } finally {
+        finishInFlight.current = false;
         setFinishing(false);
         setView("board");
       }
@@ -326,7 +331,7 @@ export function LiveOverlay({
         showToggle={false}
         zIndex={zIndex}
       />
-      {collapsed ? (
+      {collapsed && view === "board" ? (
         <div data-riffrec-live-pill="" style={{ ...pillStyle, zIndex: zIndex + 1 }}>
           {indicator(true)}
           {running ? (
@@ -347,16 +352,18 @@ export function LiveOverlay({
         <div data-riffrec-live-panel="" role="region" aria-label="Riffrec live" style={{ ...panelStyle, zIndex: zIndex + 1 }}>
           <div style={headerStyle}>
             {indicator(false)}
-            <button
-              type="button"
-              data-riffrec-live-collapse=""
-              aria-label="Collapse live panel"
-              aria-expanded={true}
-              style={iconButtonStyle}
-              onClick={() => setCollapsed(true)}
-            >
-              ▾
-            </button>
+            {view === "board" ? (
+              <button
+                type="button"
+                data-riffrec-live-collapse=""
+                aria-label="Collapse live panel"
+                aria-expanded={true}
+                style={iconButtonStyle}
+                onClick={() => setCollapsed(true)}
+              >
+                ▾
+              </button>
+            ) : null}
           </div>
           {view === "board" ? (
             <>

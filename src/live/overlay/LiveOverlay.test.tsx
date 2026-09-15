@@ -457,6 +457,35 @@ describe("LiveOverlay", () => {
     expect(q("[data-riffrec-ended-card]")!.textContent).toMatch(/No units were recorded/);
   });
 
+  it("a double click on Finish emits exactly one final checkpoint", async () => {
+    const h = harness();
+    const onFinished = vi.fn<(result: FinishResult) => void>();
+    await liveSession(h, { onFinished });
+    await click("[data-riffrec-done]");
+    const finish = q<HTMLButtonElement>("[data-riffrec-confirm-finish]")!;
+    await act(async () => {
+      finish.click();
+      finish.click();
+    });
+    await vi.waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(received(h.endpoint, "checkpoint")).toHaveLength(1);
+    expect(h.requests.filter((request) => request.url.endsWith("/session/end"))).toHaveLength(1);
+  });
+
+  it("cannot collapse to the pill, and so cannot Send, while the confirmation pass is open", async () => {
+    const h = harness();
+    await liveSession(h);
+    await click("[data-riffrec-done]");
+    expect(q("[data-riffrec-live-collapse]")).toBeNull();
+    expect(q("[data-riffrec-send]")).toBeNull();
+    expect(q("[data-riffrec-confirmation]")).not.toBeNull();
+
+    await click("[data-riffrec-confirm-cancel]");
+    expect(q("[data-riffrec-live-collapse]")).not.toBeNull();
+  });
+
   it("keeps riffing when the confirmation pass is cancelled", async () => {
     const h = harness();
     await liveSession(h);

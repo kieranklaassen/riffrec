@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { buildConsentCopy, type ConsentCopyInput } from "./consentCopy";
 
 export type ConsentMicOutcome = "granted" | "denied";
@@ -110,7 +110,11 @@ export function ConsentDialog({
   const [stage, setStage] = useState<Stage>("reading");
   const [denialReason, setDenialReason] = useState<string | null>(null);
 
+  // A ref, not state: a second Accept click before React re-renders must not acquire a second stream (KTD21).
+  const requestInFlight = useRef(false);
   const accept = async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     setStage("requesting");
     try {
       const stream = await getUserMedia({ audio: true });
@@ -118,6 +122,8 @@ export function ConsentDialog({
     } catch (error) {
       setDenialReason(errorMessage(error) ?? "Microphone access was denied.");
       setStage("denied");
+    } finally {
+      requestInFlight.current = false;
     }
   };
 

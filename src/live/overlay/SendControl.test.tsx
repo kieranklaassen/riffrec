@@ -46,6 +46,17 @@ describe("SendControl", () => {
     expect(container.querySelector("[data-riffrec-send-note]")!.textContent).toBe("Nothing held");
   });
 
+  it("drops the nothing-held note once new units are held", async () => {
+    const onSend = () => Promise.resolve(false);
+    await render({ onSend, heldCount: 0 });
+    await act(async () => send().click());
+    expect(container.querySelector("[data-riffrec-send-note]")).not.toBeNull();
+
+    await render({ onSend, heldCount: 1 });
+    expect(container.querySelector("[data-riffrec-send-note]")).toBeNull();
+    expect(send().textContent).toBe("Send (1)");
+  });
+
   it("disables Send while a send is in flight", async () => {
     let resolve: (emitted: boolean) => void = () => {};
     await render({ onSend: () => new Promise((r) => (resolve = r)) });

@@ -89,7 +89,7 @@ export function SendControl({ onSend, onDone, heldCount = 0, disabled = false, c
           Done
         </button>
       ) : null}
-      {!compact && lastSend === "nothing" ? (
+      {!compact && lastSend === "nothing" && heldCount === 0 ? (
         <span data-riffrec-send-note="nothing" role="status" style={noteStyle}>
           Nothing held
         </span>

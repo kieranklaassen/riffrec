@@ -168,6 +168,24 @@ describe("ConfirmationPass", () => {
     });
   });
 
+  it("keeps working when a unit arrives while the pass is open and confirms it by default", async () => {
+    const onComplete = vi.fn();
+    await render({ units: [unit("u1", "applied")], onComplete });
+    await act(async () => container.querySelector<HTMLInputElement>(`[data-riffrec-confirm-unit="u1"] [data-riffrec-confirm-element]`)!.click());
+
+    await render({ units: [unit("u1", "applied"), unit("u2", "initial")], onComplete });
+    const late = container.querySelector(`[data-riffrec-confirm-unit="u2"]`)!;
+    expect(late).not.toBeNull();
+    expect(late.querySelector<HTMLInputElement>("[data-riffrec-confirm-element]")!.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>(`[data-riffrec-confirm-unit="u1"] [data-riffrec-confirm-element]`)!.checked).toBe(false);
+
+    await act(async () => container.querySelector<HTMLButtonElement>("[data-riffrec-confirm-finish]")!.click());
+    expect(onComplete).toHaveBeenCalledWith({
+      u1: { element: false, change: true },
+      u2: { element: true, change: true }
+    });
+  });
+
   it("lets the riffer keep riffing instead", async () => {
     const onCancel = vi.fn();
     await render({ units: [unit("u1", "initial")], onCancel });

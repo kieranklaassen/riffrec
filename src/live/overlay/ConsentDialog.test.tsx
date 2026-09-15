@@ -85,6 +85,22 @@ describe("ConsentDialog", () => {
     expect(onAccept).toHaveBeenCalledWith({ stream, mic: "granted" });
   });
 
+  it("acquires one stream even when Accept is clicked twice before the request settles (KTD21)", async () => {
+    let resolve: (stream: MediaStream) => void = () => {};
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>((r) => (resolve = r)));
+    await render({ getUserMedia });
+    await tick();
+    const button = accept()!;
+    await act(async () => {
+      button.click();
+      button.click();
+    });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolve(fakeStream()));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+
   it("covers AE14: declining calls onDecline and never asks for the microphone", async () => {
     const getUserMedia = vi.fn(() => Promise.resolve(fakeStream()));
     await render({ getUserMedia });
