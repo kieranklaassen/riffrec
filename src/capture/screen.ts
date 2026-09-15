@@ -75,8 +75,10 @@ export class ScreenCapture {
   private segment: number | null = null;
   private chunkIndex = 0;
   private pendingWrites: Promise<void>[] = [];
-  /** Segments this instance finished, with whether the store holds them too. */
-  private readonly completedSegments: Array<{ blob: Blob; persisted: boolean }> = [];
+  /** Segments this instance finished, with the store segment holding them (null without a store). */
+  private readonly completedSegments: Array<{ blob: Blob; segment: number | null }> = [];
+  /** Segments a chunk write failed on: the store copy is partial, so the in-memory blob stands in. */
+  private readonly failedSegments = new Set<number>();
   private readonly segmentStore: SegmentStore | null;
   private readonly sessionId: string | null;
   private readonly timesliceMs: number;
@@ -191,14 +193,17 @@ export class ScreenCapture {
   /**
    * Every segment of this session in order (KTD15): persisted segments from
    * before a reload, then the ones this instance recorded. Without a segment
-   * store, the segments this instance finished.
+   * store, the segments this instance finished. A segment whose chunk writes
+   * failed comes from memory instead of its partial store copy.
    */
   async collectSegments(): Promise<Blob[]> {
     await Promise.allSettled(this.pendingWrites);
     if (this.segmentStore && this.sessionId) {
       try {
-        const persisted = await assembleRecordingSegments(this.segmentStore, this.sessionId);
-        const unpersisted = this.completedSegments.filter((entry) => !entry.persisted).map((entry) => entry.blob);
+        const persisted = await assembleRecordingSegments(this.segmentStore, this.sessionId, this.failedSegments);
+        const unpersisted = this.completedSegments
+          .filter((entry) => entry.segment === null || this.failedSegments.has(entry.segment))
+          .map((entry) => entry.blob);
         return [...persisted, ...unpersisted];
       } catch (error) {
         this.options.onError?.(error);
@@ -241,17 +246,21 @@ export class ScreenCapture {
 
   private handleChunk(chunk: Blob): void {
     const index = this.chunkIndex++;
+    const segment = this.segment;
     this.chunks.push(chunk);
-    if (this.segmentStore && this.sessionId && this.segment !== null) {
+    if (this.segmentStore && this.sessionId && segment !== null) {
       const write = this.segmentStore
-        .appendChunk(this.sessionId, this.segment, index, chunk)
-        .catch((error) => this.options.onError?.(error));
+        .appendChunk(this.sessionId, segment, index, chunk)
+        .catch((error) => {
+          this.failedSegments.add(segment);
+          this.options.onError?.(error);
+        });
       this.pendingWrites.push(write);
       void write.finally(() => {
         this.pendingWrites = this.pendingWrites.filter((pending) => pending !== write);
       });
     }
-    this.options.onChunk?.(chunk, this.segment, index);
+    this.options.onChunk?.(chunk, segment, index);
   }
 
   private finishRecording(reason: SegmentCloseReason): Promise<Blob | null> {
@@ -262,7 +271,7 @@ export class ScreenCapture {
     return new Promise<Blob | null>((resolve, reject) => {
       recorder.onstop = () => {
         const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mimeType }) : null;
-        if (blob) this.completedSegments.push({ blob, persisted: segment !== null });
+        if (blob) this.completedSegments.push({ blob, segment });
         this.closeSegment(segment, reason);
         this.reset();
         resolve(blob);

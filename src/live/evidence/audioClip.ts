@@ -72,8 +72,8 @@ export class AudioClipRecorder {
   private readonly clips: AudioClip[] = [];
   private stream: MediaStream | null;
   private active: { clip: AudioClip; recorder: ClipRecorderLike; chunks: Blob[] } | null = null;
-  /** The last finished utterance's clip that no unit has taken yet. */
-  private unclaimed: AudioClip | null = null;
+  /** Finished utterances' clips that no unit has taken yet, oldest first. */
+  private readonly unclaimed: AudioClip[] = [];
 
   constructor(options: AudioClipRecorderOptions) {
     this.now = options.now;
@@ -135,21 +135,19 @@ export class AudioClipRecorder {
     if (!this.active) return null;
     const { clip } = this.active;
     this.finishActive();
-    this.unclaimed = clip.unit_id ? null : clip;
     return clip;
   }
 
   /** The id of the clip a `record_unit` arriving now would take; null when none is pending. */
   pendingClipId(): string | null {
-    return (this.unclaimed ?? this.active?.clip ?? null)?.id ?? null;
+    return (this.unclaimed[0] ?? this.active?.clip ?? null)?.id ?? null;
   }
 
   /** The clip for the utterance `record_unit` came from; null when none is pending. */
   claim(unitId: string): string | null {
-    const clip = this.unclaimed ?? (this.active ? this.active.clip : null);
+    const clip = this.unclaimed.shift() ?? this.active?.clip ?? null;
     if (!clip) return null;
     clip.unit_id = unitId;
-    if (this.unclaimed === clip) this.unclaimed = null;
     return clip.id;
   }
 
@@ -176,6 +174,7 @@ export class AudioClipRecorder {
     const { clip, recorder } = this.active;
     this.active = null;
     clip.t_end = this.now();
+    if (!clip.unit_id) this.unclaimed.push(clip);
     try {
       if (recorder.state === "inactive") recorder.onstop?.(undefined);
       else recorder.stop();

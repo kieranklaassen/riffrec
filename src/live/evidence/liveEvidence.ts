@@ -215,7 +215,9 @@ export class LiveEvidence {
    * drawing-only unit opened synchronously at completion time (so a second
    * stroke a moment later looks back at that unit); the composite frame id is
    * reserved up front, rendered through the queue, and the annotation posts
-   * once with `composite_frame_id` and `unit_id` filled as far as known.
+   * once with `composite_frame_id` and `unit_id` filled as far as known. A
+   * reserved id a unit already carries always gets a frame: when the composite
+   * does not render, the base view stands in for it.
    */
   async annotationCompleted(annotation: LiveAnnotation): Promise<AnnotationResolution> {
     if (this.disposed) return { kind: "drawing_only" };
@@ -245,15 +247,14 @@ export class LiveEvidence {
     if (this.disposed) return resolution;
     if (composite) {
       this.session.addFrame(composite.frame);
-    } else if (compositeId) {
-      this.compositeIds.delete(annotation.id);
+    } else if (base && compositeId) {
+      this.session.addFrame({ ...base, id: compositeId, kind: "composite" });
     }
-    const posted = composite ? referenced : annotation;
     if (resolution.kind === "held") {
       unitId = this.claimedBy.get(annotation.id) ?? null;
       this.claimedBy.delete(annotation.id);
     }
-    this.session.addAnnotation(unitId ? { ...posted, unit_id: unitId } : posted);
+    this.session.addAnnotation(unitId ? { ...referenced, unit_id: unitId } : referenced);
     return resolution;
   }
 

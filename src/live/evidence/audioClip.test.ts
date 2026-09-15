@@ -102,7 +102,7 @@ describe("AudioClipRecorder", () => {
     expect(h.recorder.speechStarted()?.id).toBe("clip_0001");
   });
 
-  it("a new utterance before the last one stopped closes the previous clip", () => {
+  it("a new utterance before the last one stopped closes the previous clip and keeps it claimable", () => {
     const h = harness();
     h.recorder.speechStarted();
     h.tick(500);
@@ -111,6 +111,24 @@ describe("AudioClipRecorder", () => {
     expect(h.recorders).toHaveLength(2);
     expect(h.recorders[0].state).toBe("inactive");
     expect(h.recorder.all().map((clip) => clip.t_end)).toEqual([500, null]);
+    expect(h.recorder.claim("unit_0001")).toBe("clip_0001");
+  });
+
+  it("queues a clip per utterance, so record_unit calls arriving late claim them in order", () => {
+    const h = harness();
+    h.recorder.speechStarted();
+    h.tick(500);
+    h.recorder.speechStopped();
+    h.recorder.speechStarted();
+    h.tick(500);
+    h.recorder.speechStopped();
+
+    expect(h.recorder.pendingClipId()).toBe("clip_0001");
+    expect(h.recorder.claim("unit_0001")).toBe("clip_0001");
+    expect(h.recorder.pendingClipId()).toBe("clip_0002");
+    expect(h.recorder.claim("unit_0002")).toBe("clip_0002");
+    expect(h.recorder.pendingClipId()).toBeNull();
+    expect(h.recorder.all().map((clip) => clip.unit_id)).toEqual(["unit_0001", "unit_0002"]);
   });
 
   it("lists archive files for clips with bytes, named by id and container", () => {

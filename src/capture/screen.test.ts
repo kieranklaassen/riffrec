@@ -230,14 +230,21 @@ describe("ScreenCapture segmented recording (KTD15)", () => {
 
   it("reports store failures without interrupting the recording", async () => {
     const store = new MemorySegmentStore();
-    store.appendChunk = vi.fn().mockRejectedValue(new Error("idb closed"));
+    const append = store.appendChunk.bind(store);
+    store.appendChunk = vi.fn((sessionId: string, segment: number, index: number, chunk: Blob) => {
+      if (index > 0) return Promise.reject(new Error("idb closed"));
+      return append(sessionId, segment, index, chunk);
+    });
     const onError = vi.fn();
     const screen = capture(store, { onError });
     await screen.tryStart();
     FakeRecorder.instances[0].tick("x");
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.any(Error)));
     expect(screen.isRecording()).toBe(true);
     expect(await (await screen.stop())?.text()).toBe("xtail");
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.any(Error)));
+
+    const segments = await screen.collectSegments();
+    expect(await Promise.all(segments.map((segment) => segment.text()))).toEqual(["xtail"]);
   });
 });

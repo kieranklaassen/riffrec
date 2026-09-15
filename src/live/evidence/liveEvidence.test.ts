@@ -6,6 +6,7 @@ import type { LiveAnnotation, LiveEnvelope } from "../contract";
 import { LiveSession } from "../session";
 import { createFakeEndpoint } from "../testing/fakeEndpoint";
 import type { ClipRecorderLike } from "./audioClip";
+import type { CompositeDrawer } from "./composite";
 import type { EvidenceProfileInput } from "./profile";
 import { LiveEvidence, describeAnnotation } from "./liveEvidence";
 
@@ -42,6 +43,7 @@ interface HarnessOptions {
   display?: boolean;
   mic?: boolean;
   events?: RiffrecEvent[];
+  draw?: CompositeDrawer;
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -75,7 +77,9 @@ function harness(options: HarnessOptions = {}) {
     grabber: options.display === false ? null : grabber,
     micStream: options.mic ? ({} as MediaStream) : null,
     createRecorder: () => new FakeRecorder(),
-    draw: async ({ base, annotations }) => `composite(${base.id}+${annotations.map((annotation) => annotation.id).join("+")})`
+    draw:
+      options.draw ??
+      (async ({ base, annotations }) => `composite(${base.id}+${annotations.map((annotation) => annotation.id).join("+")})`)
   });
   return {
     endpoint,
@@ -169,6 +173,20 @@ describe("LiveEvidence", () => {
     expect(wireUnit.evidence.annotation_ids).toEqual(["ann_1"]);
     expect(h.wire("annotation")[0].payload).toMatchObject({ id: "ann_1", unit_id: unit.id, composite_frame_id: posted.composite_frame_id });
     expect(h.wire("frame").map((envelope) => envelope.payload.kind)).toEqual(["composite"]);
+  });
+
+  it("a composite that does not render falls back to the base view, so no unit references a missing frame", async () => {
+    const h = harness({ profile: "default", draw: async () => null });
+    const base = await h.evidence.gesture();
+
+    await h.evidence.annotationCompleted(stroke("ann_1", 200));
+
+    const [unit] = h.session.allUnits();
+    const [composite] = unit.evidence.frame_ids;
+    expect(h.session.allAnnotations()[0].composite_frame_id).toBe(composite);
+    expect(h.session.frameMetadata().map((frame) => frame.id)).toEqual([base!.id, composite]);
+    await h.settled();
+    expect(h.wire("frame").map((envelope) => envelope.payload.id)).toEqual([composite]);
   });
 
   it("two strokes completing 10 ms apart in silence form one drawing-only unit with two composites", async () => {
