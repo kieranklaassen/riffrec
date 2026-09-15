@@ -205,6 +205,8 @@ export function LiveOverlay({
 
   const onPauseChangeRef = useRef(onPauseChange);
   onPauseChangeRef.current = onPauseChange;
+  const uncontrolledPausedRef = useRef(uncontrolledPaused);
+  uncontrolledPausedRef.current = uncontrolledPaused;
 
   // The overlay outlives a session (U7 keeps it mounted for the ended card), so the next
   // session must not inherit a dismissal, an ended reason or an open confirmation pass.
@@ -212,6 +214,8 @@ export function LiveOverlay({
     setView("board");
     setEndedReason(null);
     setDismissed(false);
+    // Capture only learns pause through the callback, so clearing it has to notify too.
+    if (uncontrolledPausedRef.current) onPauseChangeRef.current?.(false);
     setUncontrolledPaused(false);
   }, [session]);
 
