@@ -353,28 +353,40 @@ describe("LiveOverlay", () => {
     expect(q("[data-riffrec-send-note]")!.textContent).toBe("Nothing held");
   });
 
-  it("a Collect to Smart change emits no page checkpoint and keeps the pending hint until a batch stamped with the new mode is acknowledged", async () => {
+  it("a mode change emits no page checkpoint and keeps the pending hint until the endpoint acts on the new mode (KTD12)", async () => {
     const h = harness();
     const session = await liveSession(h);
+    const pendingSeen: Array<string | null> = [];
+    session.subscribe((snapshot) => pendingSeen.push(snapshot.pendingMode));
 
+    // Into Collect: nothing wakes the agent, so the hint stays until a checkpoint stamped `collect` is acked.
     await click('[data-riffrec-mode-option="collect"]');
     await settled(session);
-    await click('[data-riffrec-mode-option="smart"]');
-    await settled(session);
-
-    expect(received(h.endpoint, "mode").map((entry) => entry.payload)).toEqual([{ mode: "collect" }, { mode: "smart" }]);
+    expect(received(h.endpoint, "mode").map((entry) => entry.payload)).toEqual([{ mode: "collect" }]);
     expect(received(h.endpoint, "checkpoint")).toHaveLength(0);
-    expect(h.endpoint.mode).toBe("smart");
-    expect(q("[data-riffrec-mode-pending]")!.getAttribute("data-riffrec-mode-pending")).toBe("smart");
-    expect(q('[data-riffrec-mode-option="smart"]')!.getAttribute("aria-checked")).toBe("true");
+    expect(h.endpoint.mode).toBe("collect");
+    expect(q('[data-riffrec-mode-option="collect"]')!.getAttribute("aria-checked")).toBe("true");
+    expect(q("[data-riffrec-mode-pending]")!.getAttribute("data-riffrec-mode-pending")).toBe("collect");
 
     await act(async () => {
       session.recordUnit({ statement: "Make this red", transcript_excerpt: "red", anchors: [anchor()] });
     });
+    expect(q("[data-riffrec-mode-pending]")).not.toBeNull();
     await click("[data-riffrec-send]");
     await settled(session);
-    expect(received(h.endpoint, "checkpoint").map((entry) => entry.payload)).toMatchObject([{ trigger: "send", mode: "smart" }]);
+    expect(received(h.endpoint, "checkpoint").map((entry) => entry.payload)).toMatchObject([{ trigger: "send", mode: "collect" }]);
     await vi.waitFor(() => expect(q("[data-riffrec-mode-pending]")).toBeNull());
+
+    // Out of Collect: the endpoint wakes the agent on the `mode` event itself (the backlog batch), so the
+    // hint shows at the switch and clears once that envelope is acked, with no page checkpoint emitted.
+    await click('[data-riffrec-mode-option="smart"]');
+    await settled(session);
+    expect(received(h.endpoint, "mode").map((entry) => entry.payload)).toEqual([{ mode: "collect" }, { mode: "smart" }]);
+    expect(received(h.endpoint, "checkpoint")).toHaveLength(1);
+    expect(h.endpoint.mode).toBe("smart");
+    expect(pendingSeen).toContain("smart");
+    await vi.waitFor(() => expect(q("[data-riffrec-mode-pending]")).toBeNull());
+    expect(q('[data-riffrec-mode-option="smart"]')!.getAttribute("aria-checked")).toBe("true");
   });
 
   it("renders the pending hint from rehydrated session state after a reload", async () => {
