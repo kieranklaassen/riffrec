@@ -30,6 +30,15 @@ import {
   type PersistTier
 } from "./buffer";
 import { CheckpointEmitter, type PageCheckpointTrigger } from "./checkpoints";
+import { clipFileName } from "./evidence/audioClip";
+import {
+  FULL_EVIDENCE_PROFILE,
+  applyEvidenceProfile,
+  frameWirePolicy,
+  resolveEvidenceProfile,
+  type EvidenceProfile,
+  type EvidenceProfileInput
+} from "./evidence/profile";
 import { StreamClient, type StreamClientState, type StreamClientStateDetail } from "./streamClient";
 import { clearStoredBootstrap, readStoredBootstrap, type LiveBootstrap } from "./tokenBootstrap";
 import {
@@ -55,7 +64,8 @@ import {
  * - U5 (overlay) reads `snapshot()`, calls `setMode`, `send`, `finish`, `stop`,
  *   `withdrawUnit`, `answer`, `confirmUnit`.
  * - U6 (evidence) calls `addAnnotation`, `attachAnnotation`, `addFrame`,
- *   and reads `isSpeaking`.
+ *   `addClip`, and reads `isSpeaking`; `evidenceProfile` shapes what `unit`
+ *   and `frame` envelopes carry.
  * - U7 (provider) creates or rehydrates the session, feeds `recordEvent`, and
  *   passes `archiveInputs()` to `SessionWriter.stop`.
  */
@@ -175,6 +185,13 @@ export interface LiveSessionOptions {
   finalAckTimeoutMs?: number;
   /** Keep frame bytes in memory for the archive's `frames/`. Default true. */
   keepFramesForArchive?: boolean;
+  /**
+   * R19: what a unit carries on the wire (U6 `profile.ts`). Local units, the
+   * archive, and `/session/end` keep full evidence. Unset means no shaping —
+   * every frame posts and units keep every reference; the provider resolves
+   * `live.profile` (R19's default when omitted) and passes it here.
+   */
+  evidenceProfile?: EvidenceProfileInput;
 }
 
 interface PersistedLiveSession {
@@ -205,6 +222,9 @@ interface PersistedLiveSession {
   /** Set when the quota guard had to shed transcript, annotations, or frames. */
   degraded?: PersistTier;
 }
+
+/** Gesture frames kept for a later unit reference under `frames: "one"`; matches the U6 ring buffer with slack. */
+const HELD_FRAME_CAP = 24;
 
 export const LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
 export const LIVE_SESSION_KEY_PREFIX = "riffrec:live:session:";
@@ -285,6 +305,10 @@ export class LiveSession {
   private readonly transcript: LiveTranscript[] = [];
   private readonly frames: LiveFrameMeta[] = [];
   private readonly frameBytes = new Map<string, string>();
+  /** Frames the profile posts only once a unit references them (`frames: "one"`). */
+  private readonly heldFrames = new Map<string, string>();
+  private readonly clipBytes = new Map<string, Blob>();
+  private readonly profile: EvidenceProfile;
   /** Set on a rehydrate: the reload of unacked frame bytes the archive needs. */
   private framesRestored: Promise<void> | null = null;
   private readonly answers: LiveAnswer[] = [];
@@ -320,6 +344,7 @@ export class LiveSession {
     this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
     this.finalAckTimeoutMs = options.finalAckTimeoutMs ?? 15000;
     this.keepFrames = options.keepFramesForArchive ?? true;
+    this.profile = options.evidenceProfile ? resolveEvidenceProfile(options.evidenceProfile) : FULL_EVIDENCE_PROFILE;
     this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
     this.pageHideTarget =
       options.pageHideTarget === undefined
@@ -669,8 +694,14 @@ export class LiveSession {
       status: "initial"
     };
     this.units.add(unit);
-    this.emit("unit", unit);
+    const wireUnit = applyEvidenceProfile(unit, this.profile, (frameId) => this.frameKind(frameId));
+    for (const frameId of wireUnit.evidence.frame_ids) this.postHeldFrame(frameId);
+    this.emit("unit", wireUnit);
     return unit;
+  }
+
+  get evidenceProfile(): EvidenceProfile {
+    return { ...this.profile };
   }
 
   updateUnit(id: string, patch: UnitUpdatePatch): UnitUpdateResult {
@@ -778,15 +809,42 @@ export class LiveSession {
     return [...this.annotations];
   }
 
+  /**
+   * Records a frame locally (metadata always, bytes for the archive) and posts
+   * it per the evidence profile: every frame under `all`, composites at once
+   * and gesture frames only when a unit references them under `one`, nothing
+   * under `none`.
+   */
   addFrame(frame: LiveFrame): void {
     const meta: LiveFrameMeta = { id: frame.id, t: frame.t, route: frame.route, kind: frame.kind };
     this.frames.push(meta);
     if (this.keepFrames && frame.jpeg_base64) this.frameBytes.set(frame.id, frame.jpeg_base64);
-    this.emit("frame", frame);
+    const policy = frameWirePolicy(frame.kind, this.profile);
+    switch (policy) {
+      case "post":
+        this.emit("frame", frame);
+        return;
+      case "hold":
+        if (frame.jpeg_base64) this.holdFrame(frame.id, frame.jpeg_base64);
+        break;
+      case "never":
+        break;
+      default: {
+        const exhaustive: never = policy;
+        return exhaustive;
+      }
+    }
+    this.persist();
+    this.notify();
   }
 
   frameMetadata(): LiveFrameMeta[] {
     return [...this.frames];
+  }
+
+  /** An utterance audio clip's bytes for the archive's `clips/` (I6); never posted. */
+  addClip(id: string, blob: Blob): void {
+    this.clipBytes.set(id, blob);
   }
 
   fullTranscript(): LiveTranscript[] {
@@ -923,12 +981,17 @@ export class LiveSession {
       const blob = base64ToBlob(base64, "image/jpeg");
       if (blob) frames[`${id}.jpg`] = blob;
     }
+    const clips: Record<string, Blob> = {};
+    for (const [id, blob] of this.clipBytes) {
+      clips[clipFileName({ id, mimeType: blob.type })] = blob;
+    }
     const units = this.units.all();
     return {
       transcript: this.voiceRan ? [...this.transcript] : null,
       units: this.client || units.length > 0 ? units : null,
       annotations: [...this.annotations],
-      frames
+      frames,
+      ...(Object.keys(clips).length > 0 ? { clips } : {})
     };
   }
 
@@ -1006,6 +1069,30 @@ export class LiveSession {
 
   private linkAnnotation(annotationId: string, unitId: string): void {
     this.units.addAnnotationId(unitId, annotationId);
+  }
+
+  private frameKind(frameId: string): LiveFrame["kind"] | null {
+    return this.frames.find((frame) => frame.id === frameId)?.kind ?? null;
+  }
+
+  /** Only the most recent held frames can still be picked by a unit (the U6 ring buffer keeps 12). */
+  private holdFrame(frameId: string, jpeg: string): void {
+    this.heldFrames.set(frameId, jpeg);
+    while (this.heldFrames.size > HELD_FRAME_CAP) {
+      const oldest = this.heldFrames.keys().next().value;
+      if (oldest === undefined) break;
+      this.heldFrames.delete(oldest);
+    }
+  }
+
+  /** A gesture frame held under `frames: "one"` leaves the page the moment a unit references it. */
+  private postHeldFrame(frameId: string): void {
+    const jpeg = this.heldFrames.get(frameId);
+    if (jpeg === undefined) return;
+    this.heldFrames.delete(frameId);
+    const meta = this.frames.find((frame) => frame.id === frameId);
+    if (!meta) return;
+    this.emit("frame", { id: meta.id, t: meta.t, route: meta.route, kind: meta.kind, jpeg_base64: jpeg });
   }
 
   private handleAck(seq: number): void {

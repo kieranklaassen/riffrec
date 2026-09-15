@@ -178,4 +178,35 @@ describe("SessionWriter live archive additions", () => {
 
     expect(result.filesPresent).toEqual(["session.json", "events.json", "recording.webm", "voice.webm"]);
   });
+
+  it("covers AE7 (KTD15): recording segments replace the single recording and are named in order", async () => {
+    const result = await new SessionWriter().stop(outputs, {
+      download: false,
+      live: { annotations: [] },
+      recordingSegments: [
+        new Blob(["before reload"], { type: "video/webm" }),
+        new Blob([], { type: "video/webm" }),
+        new Blob(["after re-share"], { type: "video/webm" })
+      ]
+    });
+
+    expect(result.filesPresent).toEqual([
+      "session.json",
+      "events.json",
+      "recording.webm",
+      "recording-002.webm",
+      "voice.webm",
+      "annotations.json"
+    ]);
+    const entries = await readEntries(result.archive);
+    expect(entries["recording.webm"]).toBe("before reload");
+    expect(entries["recording-002.webm"]).toBe("after re-share");
+    expect(JSON.parse(entries["session.json"]).files_present).toEqual(result.filesPresent);
+  });
+
+  it("falls back to the screen blob when the segment list is empty", async () => {
+    const result = await new SessionWriter().stop(outputs, { download: false, recordingSegments: [] });
+
+    expect(result.filesPresent).toEqual(["session.json", "events.json", "recording.webm", "voice.webm"]);
+  });
 });
