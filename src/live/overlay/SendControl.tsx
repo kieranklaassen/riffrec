@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 
 export interface SendControlProps {
   /** The session's `send` checkpoint; resolves with whether a checkpoint left the page. */
@@ -51,13 +51,18 @@ export function SendControl({ onSend, onDone, heldCount = 0, disabled = false, c
   const [sending, setSending] = useState(false);
   const [lastSend, setLastSend] = useState<"sent" | "nothing" | null>(null);
 
+  // A ref, not state: a second Send click before React re-renders must not emit a second checkpoint.
+  const sendInFlight = useRef(false);
   const send = async () => {
+    if (sendInFlight.current) return;
+    sendInFlight.current = true;
     setSending(true);
     setLastSend(null);
     try {
       const emitted = await onSend();
       setLastSend(emitted ? "sent" : "nothing");
     } finally {
+      sendInFlight.current = false;
       setSending(false);
     }
   };

@@ -206,6 +206,15 @@ export function LiveOverlay({
   const onPauseChangeRef = useRef(onPauseChange);
   onPauseChangeRef.current = onPauseChange;
 
+  // The overlay outlives a session (U7 keeps it mounted for the ended card), so the next
+  // session must not inherit a dismissal, an ended reason or an open confirmation pass.
+  useEffect(() => {
+    setView("board");
+    setEndedReason(null);
+    setDismissed(false);
+    setUncontrolledPaused(false);
+  }, [session]);
+
   useEffect(() => {
     return session.on("ended", ({ reason }) => setEndedReason(reason ?? "ended"));
   }, [session]);
