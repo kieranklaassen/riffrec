@@ -1,0 +1,328 @@
+import { useState, type CSSProperties, type FormEvent } from "react";
+import type { ExecutionMode, LiveUnit, LiveUnitConfirmation, UnitStatus } from "../contract";
+import type { UnitQuestion } from "../units";
+
+export interface BoardProps {
+  units: readonly LiveUnit[];
+  /** Open and answered questions; the board shows the open one inline (R11). */
+  questions?: readonly UnitQuestion[];
+  /** Instant-mode guesses, by unit id (AE15). */
+  guesses?: Readonly<Record<string, string>>;
+  /** Agent notes (a blocked reason, an applied summary), by unit id. */
+  notes?: Readonly<Record<string, string>>;
+  /** Whether the endpoint has released the unit; withdraw is offered only before release. */
+  isReleased?: (unitId: string) => boolean;
+  mode: ExecutionMode;
+  /** Typed reply is primary when no interviewer can voice the answer (`live_novoice`). */
+  voice?: boolean;
+  onWithdraw?: (unitId: string) => void;
+  onAnswer?: (unitId: string, text: string) => void;
+}
+
+export const STATUS_LABELS: Record<UnitStatus, string> = {
+  initial: "Heard",
+  triaging: "Triaging",
+  accepted: "Accepted",
+  needs_info: "Needs info",
+  applied: "Applied",
+  blocked: "Blocked",
+  withdrawn: "Withdrawn"
+};
+
+const STATUS_COLORS: Record<UnitStatus, string> = {
+  initial: "#667085",
+  triaging: "#b54708",
+  accepted: "#175cd3",
+  needs_info: "#c11574",
+  applied: "#027a48",
+  blocked: "#b42318",
+  withdrawn: "#98a2b3"
+};
+
+const FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+const listStyle: CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  fontFamily: FONT,
+  fontSize: 13,
+  color: "#101828"
+};
+
+const itemStyle: CSSProperties = {
+  border: "1px solid #eaecf0",
+  borderRadius: 6,
+  padding: "8px 10px",
+  background: "#ffffff"
+};
+
+const badgeStyle: CSSProperties = {
+  display: "inline-block",
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "1px 6px",
+  borderRadius: 4,
+  color: "#ffffff",
+  marginRight: 6,
+  verticalAlign: "middle"
+};
+
+const smallButtonStyle: CSSProperties = {
+  border: "1px solid #d0d5dd",
+  borderRadius: 6,
+  background: "#ffffff",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  padding: "3px 8px",
+  cursor: "pointer"
+};
+
+const primaryButtonStyle: CSSProperties = {
+  ...smallButtonStyle,
+  background: "#101828",
+  borderColor: "#344054",
+  color: "#ffffff"
+};
+
+const inputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: "1px solid #d0d5dd",
+  borderRadius: 6,
+  padding: "4px 8px",
+  font: "inherit",
+  fontSize: 12
+};
+
+const noteStyle: CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: 12,
+  color: "#475467"
+};
+
+const emptyStyle: CSSProperties = {
+  ...itemStyle,
+  color: "#667085",
+  fontStyle: "italic",
+  textAlign: "center"
+};
+
+export function describeAnchor(unit: LiveUnit): string | null {
+  const anchor = unit.anchors[0];
+  if (!anchor) return null;
+  const target = anchor.component ? `${anchor.component} (${anchor.selector})` : anchor.selector;
+  return `${target} on ${anchor.route}`;
+}
+
+interface ReplyFieldProps {
+  unitId: string;
+  primary: boolean;
+  onAnswer: (unitId: string, text: string) => void;
+}
+
+function ReplyField({ unitId, primary, onAnswer }: ReplyFieldProps) {
+  const [text, setText] = useState("");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    onAnswer(unitId, trimmed);
+    setText("");
+  };
+  return (
+    <form data-riffrec-unit-reply="" onSubmit={submit} style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <input
+        type="text"
+        aria-label="Type your answer"
+        placeholder={primary ? "Type your answer" : "Or type your answer"}
+        value={text}
+        onChange={(event) => setText(event.currentTarget.value)}
+        style={inputStyle}
+      />
+      <button type="submit" disabled={text.trim().length === 0} style={primary ? primaryButtonStyle : smallButtonStyle}>
+        Reply
+      </button>
+    </form>
+  );
+}
+
+/**
+ * The optimistic units board (R11, R12): every unit with its current status,
+ * the open question inline with a typed reply, strike-through for withdrawn,
+ * the Instant guess note, and withdraw on units not yet released.
+ */
+export function Board({
+  units,
+  questions = [],
+  guesses = {},
+  notes = {},
+  isReleased = () => false,
+  mode,
+  voice = true,
+  onWithdraw,
+  onAnswer
+}: BoardProps) {
+  const openQuestion = (unitId: string) => questions.find((question) => question.unit_id === unitId && !question.answered) ?? null;
+
+  if (units.length === 0) {
+    return (
+      <ul data-riffrec-board="" data-riffrec-board-mode={mode} style={listStyle}>
+        <li data-riffrec-board-empty="" style={emptyStyle}>
+          Say what should change, or draw on the page.
+        </li>
+      </ul>
+    );
+  }
+
+  return (
+    <ul data-riffrec-board="" data-riffrec-board-mode={mode} style={listStyle}>
+      {units.map((unit) => {
+        const withdrawn = unit.status === "withdrawn";
+        const question = openQuestion(unit.id);
+        const guess = guesses[unit.id];
+        const note = notes[unit.id];
+        const canWithdraw = onWithdraw && unit.status === "initial" && !isReleased(unit.id);
+        const anchor = describeAnchor(unit);
+        return (
+          <li key={unit.id} data-riffrec-unit={unit.id} data-riffrec-unit-status={unit.status} style={itemStyle}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ ...badgeStyle, background: STATUS_COLORS[unit.status] }}>{STATUS_LABELS[unit.status]}</span>
+                <span
+                  data-riffrec-unit-statement=""
+                  style={withdrawn ? { textDecoration: "line-through", color: "#98a2b3" } : undefined}
+                >
+                  {unit.statement}
+                </span>
+              </span>
+              {canWithdraw ? (
+                <button
+                  type="button"
+                  data-riffrec-unit-withdraw=""
+                  aria-label={`Withdraw: ${unit.statement}`}
+                  style={smallButtonStyle}
+                  onClick={() => onWithdraw(unit.id)}
+                >
+                  Withdraw
+                </button>
+              ) : null}
+            </div>
+            {anchor && !withdrawn ? (
+              <p data-riffrec-unit-anchor="" style={{ ...noteStyle, color: "#667085" }}>
+                {anchor}
+              </p>
+            ) : null}
+            {guess ? (
+              <p data-riffrec-unit-guess="" style={noteStyle}>
+                <strong>Guess:</strong> {guess}
+              </p>
+            ) : null}
+            {note ? (
+              <p data-riffrec-unit-note="" style={noteStyle}>
+                {note}
+              </p>
+            ) : null}
+            {question ? (
+              <div data-riffrec-unit-question="" style={{ marginTop: 6 }}>
+                <p style={{ ...noteStyle, margin: 0, color: "#c11574" }}>
+                  <strong>Agent asks:</strong> {question.question}
+                </p>
+                {onAnswer ? <ReplyField unitId={unit.id} primary={!voice} onAnswer={onAnswer} /> : null}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export type ConfirmationMap = Record<string, LiveUnitConfirmation>;
+
+export interface ConfirmationPassProps {
+  /** Units to confirm; withdrawn units are skipped by the overlay. */
+  units: readonly LiveUnit[];
+  onComplete: (confirmations: ConfirmationMap) => void;
+  onCancel: () => void;
+  busy?: boolean;
+}
+
+function defaultConfirmations(units: readonly LiveUnit[]): ConfirmationMap {
+  const map: ConfirmationMap = {};
+  for (const unit of units) map[unit.id] = unit.confirmed ?? { element: true, change: true };
+  return map;
+}
+
+/**
+ * KTD22: at Done, the riffer confirms per unit whether the intended element
+ * and the intended change were captured. The overlay emits one `unit_update`
+ * per unit from the result before the `final` checkpoint leaves the page.
+ */
+export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: ConfirmationPassProps) {
+  const [confirmations, setConfirmations] = useState<ConfirmationMap>(() => defaultConfirmations(units));
+
+  const toggle = (unitId: string, field: keyof LiveUnitConfirmation, value: boolean) => {
+    setConfirmations((current) => ({ ...current, [unitId]: { ...current[unitId], [field]: value } }));
+  };
+
+  return (
+    <div data-riffrec-confirmation="" style={{ fontFamily: FONT, fontSize: 13, color: "#101828" }}>
+      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Before you go: did we get each one right?</p>
+      {units.length === 0 ? (
+        <p style={{ ...noteStyle, marginBottom: 8 }}>No units this session. Finishing releases anything the agent still holds.</p>
+      ) : (
+        <ul style={listStyle}>
+          {units.map((unit) => {
+            const confirmation = confirmations[unit.id];
+            const anchor = describeAnchor(unit);
+            return (
+              <li key={unit.id} data-riffrec-confirm-unit={unit.id} style={itemStyle}>
+                <div>{unit.statement}</div>
+                {anchor ? <p style={{ ...noteStyle, marginTop: 2 }}>{anchor}</p> : null}
+                <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 12 }}>
+                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      data-riffrec-confirm-element=""
+                      checked={confirmation.element}
+                      onChange={(event) => toggle(unit.id, "element", event.currentTarget.checked)}
+                    />
+                    Right element
+                  </label>
+                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      data-riffrec-confirm-change=""
+                      checked={confirmation.change}
+                      onChange={(event) => toggle(unit.id, "change", event.currentTarget.checked)}
+                    />
+                    Right change
+                  </label>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+        <button type="button" data-riffrec-confirm-cancel="" disabled={busy} style={smallButtonStyle} onClick={onCancel}>
+          Keep riffing
+        </button>
+        <button
+          type="button"
+          data-riffrec-confirm-finish=""
+          disabled={busy}
+          style={busy ? { ...primaryButtonStyle, opacity: 0.56, cursor: "not-allowed" } : primaryButtonStyle}
+          onClick={() => onComplete(confirmations)}
+        >
+          {busy ? "Finishing…" : "Finish session"}
+        </button>
+      </div>
+    </div>
+  );
+}
