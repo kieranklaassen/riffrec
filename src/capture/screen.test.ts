@@ -12,6 +12,7 @@ describe("ScreenCapture", () => {
   beforeEach(() => {
     getDisplayMedia = vi.fn().mockResolvedValue({
       getTracks: () => [{ stop: vi.fn() }],
+      getVideoTracks: () => [],
     });
 
     vi.stubGlobal("navigator", {
