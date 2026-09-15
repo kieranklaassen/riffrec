@@ -190,7 +190,7 @@ export class UnsentQueue {
   private entries: LiveEnvelope[] = [];
   /** Frame ids whose JPEG lives only in the frame store (rehydrated queue). */
   private readonly detached = new Set<string>();
-  /** Frame ids whose store write has not settled; their bytes stay inline when persisted. */
+  /** Frame ids the store does not hold yet (write pending or failed); their bytes stay inline when persisted. */
   private readonly pendingPuts = new Set<string>();
   private readonly onStoreError: (error: unknown) => void;
   private readonly onStoreSettled: () => void;
@@ -275,13 +275,22 @@ export class UnsentQueue {
   private writeFrame(envelope: LiveEnvelope<"frame">): void {
     const id = envelope.payload.id;
     this.pendingPuts.add(id);
-    this.frameStore
-      .put(this.sessionId, id, envelope.payload.jpeg_base64)
-      .catch(this.onStoreError)
-      .finally(() => {
-        if (!this.pendingPuts.delete(id)) return;
-        this.onStoreSettled();
-      });
+    this.frameStore.put(this.sessionId, id, envelope.payload.jpeg_base64).then(
+      () => {
+        if (this.pendingPuts.delete(id)) {
+          this.onStoreSettled();
+          return;
+        }
+        // Acked, dropped, or evicted while the write was in flight: its delete
+        // ran before the bytes landed, so take them out again.
+        this.frameStore.delete(this.sessionId, id).catch(this.onStoreError);
+      },
+      (error: unknown) => {
+        // The store never took the bytes, so the frame stays pending and its
+        // JPEG stays inline in `sessionStorage`.
+        this.onStoreError(error);
+      }
+    );
   }
 
   /** Drops every envelope the endpoint has acknowledged. */
@@ -398,6 +407,8 @@ export class UnsentQueue {
   }
 
   async clearStore(): Promise<void> {
+    // Nothing queued is owed a write any more; a put still in flight cleans up after itself.
+    this.pendingPuts.clear();
     try {
       await this.frameStore.clear(this.sessionId);
     } catch (error) {

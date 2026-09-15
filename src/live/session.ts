@@ -3,6 +3,7 @@ import type { LiveArchiveInputs } from "../output/session";
 import {
   DEFAULT_EXECUTION_MODE,
   LIVE_SCHEMA_VERSION,
+  isLiveEnvelopeOfType,
   type ExecutionMode,
   type LiveAnchor,
   type LiveAnnotation,
@@ -201,7 +202,6 @@ interface PersistedLiveSession {
   checkpoints: LiveCheckpoint[];
   final_seq: number | null;
   pending_mode_seq: number | null;
-  release_seen_since_mode: boolean;
   /** Set when the quota guard had to shed transcript, annotations, or frames. */
   degraded?: PersistTier;
 }
@@ -266,7 +266,6 @@ export class LiveSession {
   private mode: ExecutionMode;
   private pendingMode: ExecutionMode | null = null;
   private pendingModeSeq: number | null = null;
-  private releaseSeenSinceMode = false;
   private voiceRan = false;
   private muted = false;
   private mic: MicState | null = null;
@@ -286,6 +285,8 @@ export class LiveSession {
   private readonly transcript: LiveTranscript[] = [];
   private readonly frames: LiveFrameMeta[] = [];
   private readonly frameBytes = new Map<string, string>();
+  /** Set on a rehydrate: the reload of unacked frame bytes the archive needs. */
+  private framesRestored: Promise<void> | null = null;
   private readonly answers: LiveAnswer[] = [];
   private readonly checkpoints: LiveCheckpoint[] = [];
 
@@ -336,7 +337,6 @@ export class LiveSession {
       this.mode = persisted.mode;
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
-      this.releaseSeenSinceMode = persisted.release_seen_since_mode ?? false;
       this.voiceRan = persisted.voice_ran;
       this.muted = persisted.muted;
       this.mic = persisted.mic;
@@ -412,6 +412,8 @@ export class LiveSession {
       setTimeout: options.setTimeout,
       clearTimeout: options.clearTimeout
     });
+
+    if (persisted && this.keepFrames) this.framesRestored = this.restoreFrameBytes(options.onError);
   }
 
   // ---------------------------------------------------------------------
@@ -568,12 +570,14 @@ export class LiveSession {
 
   /** Ends the session locally, clears every key and frame it wrote, and returns the archive inputs. */
   async stop(): Promise<LiveArchiveInputs> {
+    if (this.framesRestored) await this.framesRestored;
     const inputs = this.archiveInputs();
     if (this.phase !== "ended") {
       this.phase = "ended";
       this.emitEvent("ended", { reason: "stopped" });
     }
     this.emitter.dispose();
+    for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
     this.client?.close();
     this.detachPageHide();
     this.clearStorage();
@@ -823,10 +827,13 @@ export class LiveSession {
 
   setMode(mode: ExecutionMode): void {
     if (mode === this.mode) return;
+    // Leaving Collect makes the endpoint wake on the `mode` event itself
+    // (KTD12), so that envelope's own ack settles the hint; every other switch
+    // waits for the first checkpoint stamped with the new mode.
+    const wakesOnModeEvent = this.mode === "collect";
     this.mode = mode;
     this.pendingMode = mode;
-    this.pendingModeSeq = this.nextSeq;
-    this.releaseSeenSinceMode = false;
+    this.pendingModeSeq = wakesOnModeEvent ? this.nextSeq : null;
     this.emit("mode", { mode });
   }
 
@@ -938,6 +945,33 @@ export class LiveSession {
     return Math.max(0, this.now() - this.startedAt);
   }
 
+  /**
+   * A reload keeps only frame metadata, so the JPEGs of every unacked frame are
+   * read back for the archive's `frames/`: from the rehydrated queue for a frame
+   * whose bytes stayed inline (its store write had not settled), otherwise from
+   * the frame store.
+   */
+  private async restoreFrameBytes(onError?: (error: unknown) => void): Promise<void> {
+    for (const entry of this.queue?.all() ?? []) {
+      if (!isLiveEnvelopeOfType(entry, "frame") || entry.payload.dropped) continue;
+      if (entry.payload.jpeg_base64 !== "") this.frameBytes.set(entry.payload.id, entry.payload.jpeg_base64);
+    }
+    // Every store read is issued before the first await, so an ack on replay or
+    // a `clearStore` cannot delete a row this still has to read.
+    await Promise.all(
+      this.frames
+        .filter((frame) => !frame.dropped && !this.frameBytes.has(frame.id))
+        .map(async (frame) => {
+          try {
+            const bytes = await this.frameStore.get(this.id, frame.id);
+            if (bytes) this.frameBytes.set(frame.id, bytes);
+          } catch (error) {
+            onError?.(error);
+          }
+        })
+    );
+  }
+
   private emit<T extends LiveEventType>(type: T, payload: LivePayloadMap[T]): LiveEnvelope<T> {
     const envelope = {
       schema_version: LIVE_SCHEMA_VERSION,
@@ -967,10 +1001,10 @@ export class LiveSession {
     this.checkpoints.push(checkpoint);
     this.units.markCheckpointEmitted();
     const envelope = this.emit("checkpoint", checkpoint);
-    if (trigger === "final") {
-      this.finalSeq = envelope.seq;
-      this.persist();
-    }
+    const stampsPendingMode = this.pendingMode !== null && this.pendingModeSeq === null;
+    if (stampsPendingMode) this.pendingModeSeq = envelope.seq;
+    if (trigger === "final") this.finalSeq = envelope.seq;
+    if (trigger === "final" || stampsPendingMode) this.persist();
     this.emitEvent("checkpoint", checkpoint);
     if (this.client) void this.client.flushNow();
   }
@@ -1038,13 +1072,11 @@ export class LiveSession {
         const { unit_id, status, note, guess } = event.data;
         const unit = this.units.applyStatus(unit_id, status, { note, guess });
         if (unit) this.emitEvent("unit_status", { unit, status, ...(note ? { note } : {}), ...(guess ? { guess } : {}) });
-        this.clearPendingModeOnRelease();
         break;
       }
       case "applied": {
         for (const id of event.data.unit_ids) this.units.applyStatus(id, "applied");
         this.emitEvent("applied", event.data);
-        this.clearPendingModeOnRelease();
         break;
       }
       case "ask": {
@@ -1067,22 +1099,15 @@ export class LiveSession {
   }
 
   /**
-   * KTD12 hint: the mode stays "pending" until the endpoint has both received
-   * the `mode` envelope (acked) and acted since (a release or applied notice).
+   * KTD12 hint: the mode stays "pending" until the endpoint acknowledges the
+   * envelope it acts on — the `mode` envelope itself when the switch left
+   * Collect, otherwise the first checkpoint stamped with the new mode.
    */
-  private clearPendingModeOnRelease(): void {
-    if (this.pendingMode === null) return;
-    this.releaseSeenSinceMode = true;
-    this.clearPendingModeIfActedOn();
-  }
-
   private clearPendingModeIfActedOn(): void {
     if (this.pendingMode === null || this.pendingModeSeq === null) return;
-    if (this.releaseSeenSinceMode && this.ackedSeq >= this.pendingModeSeq) {
-      this.pendingMode = null;
-      this.pendingModeSeq = null;
-      this.releaseSeenSinceMode = false;
-    }
+    if (this.ackedSeq < this.pendingModeSeq) return;
+    this.pendingMode = null;
+    this.pendingModeSeq = null;
   }
 
   private handleEnded(reason: string | undefined): void {
@@ -1090,6 +1115,7 @@ export class LiveSession {
     this.phase = "ended";
     this.streamStatus = "ended";
     this.emitter.dispose();
+    this.client?.close();
     this.detachPageHide();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
     this.clearStorage();
@@ -1222,7 +1248,6 @@ export class LiveSession {
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
       pending_mode_seq: this.pendingModeSeq,
-      release_seen_since_mode: this.releaseSeenSinceMode,
       ...(tier === "full" ? {} : { degraded: tier })
     };
   }
