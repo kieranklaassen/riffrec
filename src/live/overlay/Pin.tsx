@@ -49,13 +49,23 @@ function isFormControl(element: Element): element is HTMLInputElement | HTMLText
   );
 }
 
+/** An element's words with any form controls it contains removed, so their contents never leak into a name. */
+function textWithoutControls(element: Element): string | null {
+  const copy = element.cloneNode(true) as Element;
+  copy.querySelectorAll("input, textarea, select").forEach((control) => control.remove());
+  return normalizeText(copy.textContent);
+}
+
 function labelledByText(element: Element): string | null {
   const ids = element.getAttribute("aria-labelledby");
   if (!ids) return null;
   const doc = element.ownerDocument;
   const parts = ids
     .split(/\s+/)
-    .map((id) => normalizeText(doc.getElementById(id)?.textContent))
+    .map((id) => {
+      const labelled = doc.getElementById(id);
+      return labelled ? textWithoutControls(labelled) : null;
+    })
     .filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(" ") : null;
 }
@@ -66,7 +76,7 @@ function labelText(element: Element): string | null {
   const wrapping = element.closest("label");
   if (wrapping && !labels.includes(wrapping)) labels.push(wrapping);
   for (const label of labels) {
-    const text = normalizeText(label.textContent);
+    const text = textWithoutControls(label);
     if (text) return text;
   }
   return null;
@@ -97,7 +107,7 @@ export function getAccessibleName(element: Element): string | null {
     return normalizeText(element.getAttribute("alt")) ?? normalizeText(element.getAttribute("title"));
   }
 
-  return normalizeText(element.textContent) ?? normalizeText(element.getAttribute("title"));
+  return textWithoutControls(element) ?? normalizeText(element.getAttribute("title"));
 }
 
 export function buildPinRecord(element: Element, comment: string): PinRecord {

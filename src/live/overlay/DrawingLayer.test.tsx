@@ -312,6 +312,38 @@ describe("DrawingLayer", () => {
     expect(toggleButton().getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("unbinds the previous shortcut when the binding changes and on unmount", async () => {
+    const onActiveChange = vi.fn();
+    const press = (key: string, code: string) =>
+      act(async () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key, code, altKey: true, shiftKey: true, bubbles: true }));
+      });
+
+    await render({ onActiveChange, shortcut: "Alt+Shift+D" });
+    await render({ onActiveChange, shortcut: "Alt+Shift+K" });
+    await press("D", "KeyD");
+    expect(onActiveChange).not.toHaveBeenCalled();
+    await press("K", "KeyK");
+    expect(onActiveChange).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await press("K", "KeyK");
+    expect(onActiveChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("records only the pathname in the default route", async () => {
+    window.history.replaceState(null, "", "/settings?code=oauth-secret&state=abc#frag");
+    stubHitTest(() => []);
+    await render({ defaultActive: true, route: undefined });
+    await draw([{ x: 5, y: 5 }, { x: 30, y: 30 }, { x: 60, y: 10 }]);
+
+    const annotation = onAnnotation.mock.calls[0][0];
+    expect(annotation.anchor.route).toBe("/settings");
+    expect(JSON.stringify(annotation)).not.toContain("oauth-secret");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("hides the toggle control when asked", async () => {
     await render({ showToggle: false, shortcut: null });
     expect(document.querySelector("[data-riffrec-draw-toggle]")).toBeNull();

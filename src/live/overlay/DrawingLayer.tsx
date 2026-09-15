@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { getStroke, type StrokeOptions } from "perfect-freehand";
 import type { LiveAnnotation, LivePoint } from "../contract";
 import { Pin, PinComposer } from "./Pin";
-import { DEFAULT_DRAW_SHORTCUT, createDrawToggle } from "./shortcuts";
+import { DEFAULT_DRAW_SHORTCUT, createDrawToggle, type DrawToggle } from "./shortcuts";
 import { OVERLAY_ATTRIBUTE, anchorStroke, buildAnchor, buildFallbackAnchor, computeBbox, resolvePointTarget } from "./strokeAnchor";
 
 export interface DrawingLayerProps {
@@ -16,7 +16,7 @@ export interface DrawingLayerProps {
   onActiveChange?: (active: boolean) => void;
   /** `live.drawShortcut` (I5). `null` disables the keyboard binding. Defaults to `DEFAULT_DRAW_SHORTCUT`. */
   shortcut?: string | null;
-  /** Route recorded on every anchor; defaults to the current pathname and search. */
+  /** Route recorded on every anchor; defaults to the current pathname (query strings are never recorded). */
   route?: string;
   /** Clock for `anchor.t` in milliseconds since session start; defaults to `performance.now()`. */
   now?: () => number;
@@ -48,7 +48,7 @@ const DEFAULT_STROKE_COLOR = "#d92d20";
 
 function defaultRoute(): string {
   if (typeof window === "undefined") return "/";
-  return `${window.location.pathname}${window.location.search}`;
+  return window.location.pathname;
 }
 
 function defaultNow(): number {
@@ -196,18 +196,22 @@ export function DrawingLayer({
     onActiveChangeRef.current?.(next);
   }, []);
 
-  const initialActiveRef = useRef(active);
-  initialActiveRef.current = active;
-  const toggle = useMemo(
-    () => createDrawToggle({ shortcut, initialActive: initialActiveRef.current, onChange: setActive }),
-    [shortcut, setActive]
-  );
-
-  useEffect(() => () => toggle.dispose(), [toggle]);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const toggleRef = useRef<DrawToggle | null>(null);
 
   useEffect(() => {
-    toggle.sync(active);
-  }, [toggle, active]);
+    const toggle = createDrawToggle({ shortcut, initialActive: activeRef.current, onChange: setActive });
+    toggleRef.current = toggle;
+    return () => {
+      toggle.dispose();
+      if (toggleRef.current === toggle) toggleRef.current = null;
+    };
+  }, [shortcut, setActive]);
+
+  useEffect(() => {
+    toggleRef.current?.sync(active);
+  }, [active]);
 
   const resetDraft = useCallback(() => {
     draftRef.current = [];
@@ -376,7 +380,7 @@ export function DrawingLayer({
           aria-label={active ? "Stop drawing" : "Draw on the page"}
           title={shortcut ? `Draw (${shortcut})` : "Draw"}
           style={active ? toggleActiveStyle : toggleStyle}
-          onClick={() => toggle.toggle()}
+          onClick={() => setActive(!activeRef.current)}
         >
           ✎
         </button>

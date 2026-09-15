@@ -43,6 +43,17 @@ describe("getAccessibleName", () => {
     expect(getAccessibleName(wrapper.querySelector("textarea")!)).toBeNull();
   });
 
+  it("strips wrapped control contents from labels, labelledby targets, and containers", () => {
+    const wrapper = mount(
+      '<label class="wrap">Notes<textarea>private draft</textarea></label>' +
+        '<div id="pick-lbl">Plan<select><option>Pro tier</option></select></div><input aria-labelledby="pick-lbl" value="x">' +
+        '<div class="group"><span>Message</span><textarea>typed body</textarea></div>'
+    );
+    expect(getAccessibleName(wrapper.querySelector(".wrap textarea")!)).toBe("Notes");
+    expect(getAccessibleName(wrapper.querySelector("input")!)).toBe("Plan");
+    expect(getAccessibleName(wrapper.querySelector(".group")!)).toBe("Message");
+  });
+
   it("uses visible text for other elements", () => {
     const wrapper = mount('<button>  Save   changes </button><img alt="Logo">');
     expect(getAccessibleName(wrapper.querySelector("button")!)).toBe("Save changes");
