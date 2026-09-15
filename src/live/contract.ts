@@ -189,12 +189,19 @@ export interface LiveAnswer {
   text: string;
 }
 
+/** Why a frame reached the endpoint without its JPEG (KTD16 quota guard, I3 413). */
+export type FrameDropReason = "quota" | "oversize";
+
+export const FRAME_DROP_REASONS: readonly FrameDropReason[] = ["quota", "oversize"];
+
 export interface LiveFrame {
   id: string;
   t: number;
   route: string;
   kind: FrameKind;
+  /** Empty when `dropped` is set: the frame kept its `seq` but its bytes were discarded. */
   jpeg_base64: string;
+  dropped?: FrameDropReason;
 }
 
 export interface LiveMic {
@@ -504,7 +511,8 @@ function isPayloadFor(type: LiveEventType, payload: unknown): boolean {
         isFiniteNumber(payload.t) &&
         isString(payload.route) &&
         isOneOf(payload.kind, ["gesture", "periodic", "composite"]) &&
-        isString(payload.jpeg_base64)
+        isString(payload.jpeg_base64) &&
+        (payload.dropped === undefined || isOneOf(payload.dropped, FRAME_DROP_REASONS))
       );
     case "mic":
       return isOneOf(payload.state, ["granted", "denied", "muted", "unmuted"]);

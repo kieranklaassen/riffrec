@@ -249,7 +249,8 @@ to 2 MB. Frames include the overlay's own docked panel region.
 | `t` | number | yes | Capture timestamp. |
 | `route` | string | yes | Route at capture time. |
 | `kind` | one of `gesture`, `periodic`, `composite` | yes | Why the frame was captured. |
-| `jpeg_base64` | string | yes | Base64 JPEG bytes without a data-URL prefix. |
+| `jpeg_base64` | string | yes | Base64 JPEG bytes without a data-URL prefix. Empty when `dropped` is set. |
+| `dropped` | one of `quota`, `oversize` | no | Present when the page discarded the bytes but kept the frame's `seq` so numbering stays contiguous: `quota` when the buffering queue evicted it, `oversize` after a `413`. Consumers keep the id and metadata and treat the frame as absent. |
 
 ### `mic`
 
