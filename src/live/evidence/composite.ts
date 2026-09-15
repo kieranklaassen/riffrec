@@ -59,10 +59,13 @@ export class CompositeRenderer {
   /**
    * Queue one composite for `annotation` over `base`. Resolves null when there
    * is no base frame (no display stream, KTD10) or the drawer produced nothing.
+   * `frameId` lets the caller reserve the id up front so a unit opened at
+   * completion time can already reference the composite.
    */
-  render(annotation: LiveAnnotation, base: LiveFrame | null): Promise<CompositeResult | null> {
+  render(annotation: LiveAnnotation, base: LiveFrame | null, frameId?: string): Promise<CompositeResult | null> {
     if (!base || this.disposed) return Promise.resolve(null);
     this.pendingCount += 1;
+    const id = frameId ?? this.createId();
     const t = this.now();
     const route = this.route();
     const run = this.queue.then(async (): Promise<CompositeResult | null> => {
@@ -74,7 +77,7 @@ export class CompositeRenderer {
         this.onError(error);
       }
       if (!jpeg) return null;
-      const frame: LiveFrame = { id: this.createId(), t, route, kind: "composite", jpeg_base64: jpeg };
+      const frame: LiveFrame = { id, t, route, kind: "composite", jpeg_base64: jpeg };
       this.onFrame(frame);
       return { frame, annotation: { ...annotation, composite_frame_id: frame.id } };
     });

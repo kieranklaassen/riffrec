@@ -171,6 +171,26 @@ describe("LiveEvidence", () => {
     expect(h.wire("frame").map((envelope) => envelope.payload.kind)).toEqual(["composite"]);
   });
 
+  it("two strokes completing 10 ms apart in silence form one drawing-only unit with two composites", async () => {
+    const h = harness({ profile: "default" });
+    await h.evidence.gesture();
+    const first = h.evidence.annotationCompleted(stroke("ann_1", 100));
+    h.advance(10);
+    const second = h.evidence.annotationCompleted(stroke("ann_2", 110));
+
+    expect(await first).toEqual({ kind: "drawing_only" });
+    const [unit] = h.session.allUnits();
+    expect(await second).toEqual({ kind: "attached", unitId: unit.id });
+    expect(h.session.allUnits()).toHaveLength(1);
+    expect(h.session.unit(unit.id)?.evidence.annotation_ids).toEqual(["ann_1", "ann_2"]);
+    const composites = h.session.allAnnotations().map((annotation) => annotation.composite_frame_id);
+    expect(new Set(composites).size).toBe(2);
+    expect(h.session.frameMetadata().filter((frame) => frame.kind === "composite").map((frame) => frame.id)).toEqual(composites);
+    await h.settled();
+    expect(h.wire("unit")[0].payload.evidence.frame_ids).toEqual([composites[0]]);
+    expect(h.wire("annotation").map((envelope) => envelope.payload.unit_id)).toEqual([unit.id, unit.id]);
+  });
+
   it("a stroke in silence within 4 s of a unit attaches to it and posts the annotation with unit_id", async () => {
     const h = harness();
     const unit = h.evidence.recordUnit({ statement: "Make it red", transcript_excerpt: "make it red", anchors: [] });

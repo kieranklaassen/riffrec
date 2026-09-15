@@ -211,42 +211,50 @@ export class LiveEvidence {
   }
 
   /**
-   * The drawing layer's `onAnnotation`. Resolves the attachment at completion
-   * time, renders the composite, then posts the annotation once with
-   * `composite_frame_id` and `unit_id` filled as far as they are known.
+   * The drawing layer's `onAnnotation`. The attachment is resolved and any
+   * drawing-only unit opened synchronously at completion time (so a second
+   * stroke a moment later looks back at that unit); the composite frame id is
+   * reserved up front, rendered through the queue, and the annotation posts
+   * once with `composite_frame_id` and `unit_id` filled as far as known.
    */
   async annotationCompleted(annotation: LiveAnnotation): Promise<AnnotationResolution> {
     if (this.disposed) return { kind: "drawing_only" };
     const resolution = this.attacher.annotationCompleted(annotation);
     const base = this.paused ? null : this.frames.latest();
-    const composite = await this.composites.render(annotation, base);
-    if (this.disposed) return resolution;
-    let posted = annotation;
-    if (composite) {
-      this.compositeIds.set(annotation.id, composite.frame.id);
-      this.session.addFrame(composite.frame);
-      posted = composite.annotation;
-    }
+    const compositeId = base ? this.session.mintId("frame") : null;
+    if (compositeId) this.compositeIds.set(annotation.id, compositeId);
+    const referenced = compositeId ? { ...annotation, composite_frame_id: compositeId } : annotation;
+
+    let unitId: string | null = null;
     switch (resolution.kind) {
-      case "held": {
-        const claimedBy = this.claimedBy.get(annotation.id);
-        this.claimedBy.delete(annotation.id);
-        this.session.addAnnotation(claimedBy ? { ...posted, unit_id: claimedBy } : posted);
-        return resolution;
-      }
+      case "held":
+        break;
       case "attached":
-        this.session.addAnnotation({ ...posted, unit_id: resolution.unitId });
-        return resolution;
-      case "drawing_only": {
-        const unitId = this.attacher.unitExtracted(() => this.createDrawingOnlyUnit(posted, composite?.frame.id ?? null));
-        this.session.addAnnotation({ ...posted, unit_id: unitId });
-        return resolution;
-      }
+        unitId = resolution.unitId;
+        break;
+      case "drawing_only":
+        unitId = this.attacher.unitExtracted(() => this.createDrawingOnlyUnit(referenced, compositeId));
+        break;
       default: {
         const exhaustive: never = resolution;
         return exhaustive;
       }
     }
+
+    const composite = compositeId ? await this.composites.render(referenced, base, compositeId) : null;
+    if (this.disposed) return resolution;
+    if (composite) {
+      this.session.addFrame(composite.frame);
+    } else if (compositeId) {
+      this.compositeIds.delete(annotation.id);
+    }
+    const posted = composite ? referenced : annotation;
+    if (resolution.kind === "held") {
+      unitId = this.claimedBy.get(annotation.id) ?? null;
+      this.claimedBy.delete(annotation.id);
+    }
+    this.session.addAnnotation(unitId ? { ...posted, unit_id: unitId } : posted);
+    return resolution;
   }
 
   /**

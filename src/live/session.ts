@@ -29,6 +29,7 @@ import {
   type PersistTier
 } from "./buffer";
 import { CheckpointEmitter, type PageCheckpointTrigger } from "./checkpoints";
+import { clipFileName } from "./evidence/audioClip";
 import {
   FULL_EVIDENCE_PROFILE,
   applyEvidenceProfile,
@@ -221,6 +222,9 @@ interface PersistedLiveSession {
   /** Set when the quota guard had to shed transcript, annotations, or frames. */
   degraded?: PersistTier;
 }
+
+/** Gesture frames kept for a later unit reference under `frames: "one"`; matches the U6 ring buffer with slack. */
+const HELD_FRAME_CAP = 24;
 
 export const LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
 export const LIVE_SESSION_KEY_PREFIX = "riffrec:live:session:";
@@ -817,17 +821,17 @@ export class LiveSession {
         this.emit("frame", frame);
         return;
       case "hold":
-        if (frame.jpeg_base64) this.heldFrames.set(frame.id, frame.jpeg_base64);
-        this.notify();
-        return;
+        if (frame.jpeg_base64) this.holdFrame(frame.id, frame.jpeg_base64);
+        break;
       case "never":
-        this.notify();
-        return;
+        break;
       default: {
         const exhaustive: never = policy;
         return exhaustive;
       }
     }
+    this.persist();
+    this.notify();
   }
 
   frameMetadata(): LiveFrameMeta[] {
@@ -972,8 +976,7 @@ export class LiveSession {
     }
     const clips: Record<string, Blob> = {};
     for (const [id, blob] of this.clipBytes) {
-      const extension = blob.type.startsWith("audio/ogg") ? "ogg" : "webm";
-      clips[`${id}.${extension}`] = blob;
+      clips[clipFileName({ id, mimeType: blob.type })] = blob;
     }
     const units = this.units.all();
     return {
@@ -1036,6 +1039,16 @@ export class LiveSession {
 
   private frameKind(frameId: string): LiveFrame["kind"] | null {
     return this.frames.find((frame) => frame.id === frameId)?.kind ?? null;
+  }
+
+  /** Only the most recent held frames can still be picked by a unit (the U6 ring buffer keeps 12). */
+  private holdFrame(frameId: string, jpeg: string): void {
+    this.heldFrames.set(frameId, jpeg);
+    while (this.heldFrames.size > HELD_FRAME_CAP) {
+      const oldest = this.heldFrames.keys().next().value;
+      if (oldest === undefined) break;
+      this.heldFrames.delete(oldest);
+    }
   }
 
   /** A gesture frame held under `frames: "one"` leaves the page the moment a unit references it. */

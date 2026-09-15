@@ -75,8 +75,8 @@ export class ScreenCapture {
   private segment: number | null = null;
   private chunkIndex = 0;
   private pendingWrites: Promise<void>[] = [];
-  /** Segments this instance finished, for hosts without a segment store. */
-  private readonly completedSegments: Blob[] = [];
+  /** Segments this instance finished, with whether the store holds them too. */
+  private readonly completedSegments: Array<{ blob: Blob; persisted: boolean }> = [];
   private readonly segmentStore: SegmentStore | null;
   private readonly sessionId: string | null;
   private readonly timesliceMs: number;
@@ -141,9 +141,7 @@ export class ScreenCapture {
         video
       };
       this.stream = await navigator.mediaDevices.getDisplayMedia(options);
-      if (this.segmentStore && this.sessionId) {
-        this.segment = await this.segmentStore.openSegment(this.sessionId, this.mimeType);
-      }
+      this.segment = await this.openSegment();
       this.recorder = new MediaRecorder(this.stream, { mimeType: this.mimeType });
       this.recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -199,13 +197,14 @@ export class ScreenCapture {
     await Promise.allSettled(this.pendingWrites);
     if (this.segmentStore && this.sessionId) {
       try {
-        const segments = await assembleRecordingSegments(this.segmentStore, this.sessionId);
-        if (segments.length > 0 || this.completedSegments.length === 0) return segments;
+        const persisted = await assembleRecordingSegments(this.segmentStore, this.sessionId);
+        const unpersisted = this.completedSegments.filter((entry) => !entry.persisted).map((entry) => entry.blob);
+        return [...persisted, ...unpersisted];
       } catch (error) {
         this.options.onError?.(error);
       }
     }
-    return [...this.completedSegments];
+    return this.completedSegments.map((entry) => entry.blob);
   }
 
   /** Whether a previous page load left segments behind (drives the re-share prompt after rehydration). */
@@ -227,6 +226,17 @@ export class ScreenCapture {
 
   isRecording(): boolean {
     return this.recorder?.state === "recording";
+  }
+
+  /** A store that cannot open a segment degrades to in-memory recording rather than failing the share. */
+  private async openSegment(): Promise<number | null> {
+    if (!this.segmentStore || !this.sessionId) return null;
+    try {
+      return await this.segmentStore.openSegment(this.sessionId, this.mimeType);
+    } catch (error) {
+      this.options.onError?.(error);
+      return null;
+    }
   }
 
   private handleChunk(chunk: Blob): void {
@@ -252,7 +262,7 @@ export class ScreenCapture {
     return new Promise<Blob | null>((resolve, reject) => {
       recorder.onstop = () => {
         const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mimeType }) : null;
-        if (blob) this.completedSegments.push(blob);
+        if (blob) this.completedSegments.push({ blob, persisted: segment !== null });
         this.closeSegment(segment, reason);
         this.reset();
         resolve(blob);
