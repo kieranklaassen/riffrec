@@ -495,6 +495,11 @@ export class LiveSession {
     return this.endpointOrigin;
   }
 
+  /** The page token, for the voice interviewer's `/mint` (I2); never leaves the page. */
+  get pageToken(): string | null {
+    return this.token;
+  }
+
   get currentMode(): ExecutionMode {
     return this.mode;
   }
