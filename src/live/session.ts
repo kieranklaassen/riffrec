@@ -25,7 +25,8 @@ import {
   persistWithQuotaGuard,
   type FrameStore,
   type PersistedQueueEntry,
-  type PersistOutcome
+  type PersistOutcome,
+  type PersistTier
 } from "./buffer";
 import { CheckpointEmitter, type PageCheckpointTrigger } from "./checkpoints";
 import { StreamClient, type StreamClientState, type StreamClientStateDetail } from "./streamClient";
@@ -200,6 +201,9 @@ interface PersistedLiveSession {
   checkpoints: LiveCheckpoint[];
   final_seq: number | null;
   pending_mode_seq: number | null;
+  release_seen_since_mode: boolean;
+  /** Set when the quota guard had to shed transcript, annotations, or frames. */
+  degraded?: PersistTier;
 }
 
 export const LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
@@ -332,6 +336,7 @@ export class LiveSession {
       this.mode = persisted.mode;
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
+      this.releaseSeenSinceMode = persisted.release_seen_since_mode ?? false;
       this.voiceRan = persisted.voice_ran;
       this.muted = persisted.muted;
       this.mic = persisted.mic;
@@ -363,10 +368,19 @@ export class LiveSession {
     this.streamStatus = canStream ? "idle" : "offline";
 
     if (canStream) {
-      const onStoreError = (error: unknown) => options.onError?.(error);
-      this.queue = persisted?.queue
-        ? UnsentQueue.fromPersisted(this.id, persisted.queue, this.frameStore, onStoreError)
-        : new UnsentQueue(this.id, this.frameStore, onStoreError);
+      const queueOptions = {
+        onStoreError: (error: unknown) => options.onError?.(error),
+        onStoreSettled: () => this.persist()
+      };
+      this.queue = persisted
+        ? UnsentQueue.fromPersisted(
+            this.id,
+            persisted.queue,
+            { ackedSeq: this.ackedSeq, nextSeq: this.nextSeq, t: this.elapsed() },
+            this.frameStore,
+            queueOptions
+          )
+        : new UnsentQueue(this.id, this.frameStore, queueOptions);
       this.client = new StreamClient({
         endpoint: this.endpointOrigin!,
         token: this.token!,
@@ -377,6 +391,7 @@ export class LiveSession {
         setTimeout: options.setTimeout,
         clearTimeout: options.clearTimeout,
         backoffMs: options.backoffMs,
+        elapsed: () => this.elapsed(),
         onAck: (seq) => this.handleAck(seq),
         onStateChange: (state, detail) => this.handleStreamState(state, detail),
         onServerEvent: (event) => this.handleServerEvent(event),
@@ -1175,7 +1190,8 @@ export class LiveSession {
     this.persist();
   }
 
-  private toPersisted(queue: PersistedQueueEntry[] | null): PersistedLiveSession {
+  private toPersisted(tier: PersistTier, queue: PersistedQueueEntry[] | null): PersistedLiveSession {
+    const minimal = tier === "minimal";
     return {
       version: 1,
       session_id: this.id,
@@ -1194,13 +1210,15 @@ export class LiveSession {
       next_id: this.nextId,
       queue,
       units: this.units.snapshot(),
-      annotations: this.annotations,
-      transcript: this.transcript,
-      frames: this.frames,
+      annotations: minimal ? [] : this.annotations,
+      transcript: minimal ? [] : this.transcript,
+      frames: minimal ? [] : this.frames,
       answers: this.answers,
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
-      pending_mode_seq: this.pendingModeSeq
+      pending_mode_seq: this.pendingModeSeq,
+      release_seen_since_mode: this.releaseSeenSinceMode,
+      ...(tier === "full" ? {} : { degraded: tier })
     };
   }
 
@@ -1212,8 +1230,12 @@ export class LiveSession {
     } catch {
       // The record write below reports the outcome.
     }
-    this.persistOutcome = persistWithQuotaGuard(this.storage, key, this.queue, (entries) =>
-      JSON.stringify(this.toPersisted(entries))
+    this.persistOutcome = persistWithQuotaGuard(
+      this.storage,
+      key,
+      this.queue,
+      (tier, entries) => JSON.stringify(this.toPersisted(tier, entries)),
+      { t: this.elapsed() }
     );
     if (this.persistOutcome === "failed") {
       this.error = { reason: "persist_failed", message: "riffrec live: sessionStorage write failed" };

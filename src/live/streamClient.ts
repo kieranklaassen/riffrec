@@ -46,6 +46,8 @@ export interface StreamClientOptions {
   clearTimeout?: (handle: unknown) => void;
   failureThreshold?: number;
   backoffMs?: readonly number[];
+  /** Milliseconds since session start, stamped on fillers the client has to create. */
+  elapsed?: () => number;
   onAck?: (ackedSeq: number) => void;
   onStateChange?: (state: StreamClientState, detail: StreamClientStateDetail) => void;
   onServerEvent?: (event: LiveServerEvent) => void;
@@ -123,6 +125,8 @@ export class StreamClient {
 
   private flushScheduled = false;
   private inflight = false;
+  /** Upper bound on envelopes per batch; halved after a 413 on a multi-envelope body, doubled after each success. */
+  private batchLimit = Number.POSITIVE_INFINITY;
   private retryTimer: unknown = null;
   private streamAbort: AbortController | null = null;
   private streamRetryTimer: unknown = null;
@@ -240,7 +244,7 @@ export class StreamClient {
     try {
       for (;;) {
         if (this.closed || this.isTerminal) return;
-        const batch = await this.queue.nextBatch();
+        const batch = await this.queue.nextBatch(this.batchLimit);
         if (!batch) return;
         const outcome = await this.post(batch.envelopes, batch.frame);
         if (outcome === "stop") return;
@@ -268,6 +272,7 @@ export class StreamClient {
       const body = await readJson(response);
       if (body && typeof body.acked_seq === "number") this.applyAck(body.acked_seq);
       this.consecutiveFailures = 0;
+      if (this.batchLimit !== Number.POSITIVE_INFINITY) this.batchLimit *= 2;
       if (this.state !== "streaming") this.setState("streaming");
       return "continue";
     }
@@ -281,11 +286,19 @@ export class StreamClient {
           this.options.onQueueChange?.();
           return "continue";
         }
+        if (envelopes.length > 1) {
+          this.batchLimit = Math.max(1, Math.floor(envelopes.length / 2));
+          return "continue";
+        }
+        const replaced = this.queue.shrinkOrFill(envelopes[0].seq, this.options.elapsed?.() ?? 0);
         this.options.onError?.(
-          new Error(`riffrec live: ${envelopes.length}-envelope batch rejected with 413 (max ${String(body?.max_bytes)})`)
+          new Error(
+            `riffrec live: ${envelopes[0].type} envelope seq ${envelopes[0].seq} exceeded ${String(body?.max_bytes)} bytes; ` +
+              (replaced && replaced.type === envelopes[0].type ? "retrying without its unbounded evidence" : "replaced by a filler")
+          )
         );
-        this.recordFailure(null);
-        return "stop";
+        this.options.onQueueChange?.();
+        return "continue";
       }
       case 409: {
         if (body && typeof body.expected_schema_version === "string") {

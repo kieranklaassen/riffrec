@@ -530,7 +530,7 @@ describe("LiveSession buffering, persistence, and rehydration", () => {
     expect(h.frameStore.entries.size).toBe(0);
   });
 
-  it("evicts the oldest queued frames on QuotaExceededError and keeps the session live with sequencing intact", async () => {
+  it("evicts the oldest queued envelopes on QuotaExceededError, keeps their seq as fillers, and stays live", async () => {
     const h = harness();
     const session = track(LiveSession.create(h.options({ keepFramesForArchive: false })));
     session.start();
@@ -539,13 +539,15 @@ describe("LiveSession buffering, persistence, and rehydration", () => {
     await settled(session);
 
     h.setDown(true);
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 2; i += 1) {
       session.addFrame({ id: `frame_${i}`, t: i * 100, route: "/settings", kind: "gesture", jpeg_base64: "c".repeat(2048) });
     }
+    recordUnits(session, 6);
     await vi.waitFor(() => expect(session.status).toBe("buffering"));
-    const { nextSeq, ackedSeq } = session.sequence;
+    const { nextSeq, ackedSeq, queueLength } = session.sequence;
+    expect(queueLength).toBe(8);
 
-    let throwsLeft = 2;
+    let throwsLeft = 1;
     h.storage.quotaGate = (key) => {
       if (key === liveSessionStorageKey(session.id) && throwsLeft > 0) {
         throwsLeft -= 1;
@@ -553,26 +555,116 @@ describe("LiveSession buffering, persistence, and rehydration", () => {
       }
       return false;
     };
-    recordUnits(session, 1);
+    session.addAnnotation(stroke("ann_1"));
     h.storage.quotaGate = null;
 
     expect(throwsLeft).toBe(0);
-    expect(session.lastPersistOutcome).toBe("stored");
     expect(session.snapshot().error).toBeNull();
     expect(session.status).toBe("buffering");
-    expect(session.sequence.ackedSeq).toBe(ackedSeq);
-    expect(session.sequence.nextSeq).toBe(nextSeq + 1);
+    expect(session.sequence).toEqual({ nextSeq: nextSeq + 1, ackedSeq, queueLength: queueLength + 1 });
     const persisted = JSON.parse(h.storage.getItem(liveSessionStorageKey(session.id))!) as {
-      queue: Array<{ type: string; payload: { id?: string; dropped?: string } }>;
+      queue: Array<{ seq: number; type: string; payload: { dropped?: string; state?: string } }>;
     };
-    const frames = persisted.queue.filter((entry) => entry.type === "frame");
-    expect(frames.map((entry) => entry.payload.dropped)).toEqual(["quota", "quota", undefined, undefined]);
+    expect(persisted.queue.map((entry) => entry.seq)).toEqual(Array.from({ length: 9 }, (_, i) => ackedSeq + 1 + i));
+    expect(persisted.queue.slice(0, 2).map((entry) => `${entry.type}:${entry.payload.dropped}`)).toEqual([
+      "frame:quota",
+      "frame:quota"
+    ]);
+    expect(persisted.queue[2]).toMatchObject({ type: "stream_state", payload: { state: "buffering" } });
+    expect(persisted.queue[3].type).toBe("unit");
+    expect(session.allUnits()).toHaveLength(7);
 
     h.setDown(false);
     await vi.waitFor(() => expect(session.status).toBe("live"));
     await settled(session);
     expect(h.endpoint.received.map((entry) => entry.seq)).toEqual(Array.from({ length: nextSeq }, (_, i) => i + 1));
-    expect(h.endpoint.frames.map((frame) => frame.dropped)).toEqual(["quota", "quota", undefined, undefined]);
+    expect(h.endpoint.frames.map((frame) => frame.dropped)).toEqual(["quota", "quota"]);
+    expect(h.endpoint.units.size).toBe(6);
+  });
+
+  it("falls back to a queue-less record when eviction cannot help and gap-fills on rehydrate", async () => {
+    const h = harness();
+    const session = LiveSession.create(h.options({ keepFramesForArchive: false }));
+    session.start();
+    recordUnits(session, 1);
+    await settled(session);
+    h.setDown(true);
+    recordUnits(session, 3);
+    await vi.waitFor(() => expect(session.status).toBe("buffering"));
+    const { nextSeq, ackedSeq } = session.sequence;
+
+    h.storage.quotaGate = (key, value) => key === liveSessionStorageKey(session.id) && value.includes('"queue":[');
+    session.addTranscript({ id: "tr_1", role: "riffer", text: "still talking", t_start: 0, t_end: 1, final: true });
+    h.storage.quotaGate = null;
+
+    expect(session.lastPersistOutcome).toBe("stored_without_queue");
+    const persisted = JSON.parse(h.storage.getItem(liveSessionStorageKey(session.id))!) as { queue: null; degraded: string };
+    expect(persisted.queue).toBeNull();
+    expect(persisted.degraded).toBe("without_queue");
+
+    const restored = track(LiveSession.rehydrate(h.options({ sessionId: undefined }))!);
+    expect(restored.sequence).toEqual({ nextSeq: nextSeq + 1, ackedSeq, queueLength: nextSeq - ackedSeq });
+    restored.start();
+    h.setDown(false);
+    await settled(restored);
+
+    expect(h.endpoint.received.map((entry) => entry.seq)).toEqual(Array.from({ length: nextSeq }, (_, i) => i + 1));
+    const fillers = h.endpoint.received.filter((entry) => entry.seq > ackedSeq);
+    expect(fillers.every((entry) => entry.type === "stream_state" && entry.payload.state === "buffering")).toBe(true);
+    expect(h.endpoint.ackedSeq).toBe(nextSeq);
+  });
+
+  it("keeps a frame's bytes inline in sessionStorage until the frame store write settles", async () => {
+    const h = harness();
+    let release: (() => void) | null = null;
+    const slowStore: FrameStore = {
+      put: (sessionId, frameId, bytes) =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            void h.frameStore.put(sessionId, frameId, bytes).then(resolve);
+          };
+        }),
+      get: (sessionId, frameId) => h.frameStore.get(sessionId, frameId),
+      delete: (sessionId, frameId) => h.frameStore.delete(sessionId, frameId),
+      clear: (sessionId) => h.frameStore.clear(sessionId)
+    };
+    const session = track(LiveSession.create(h.options({ frameStore: slowStore, keepFramesForArchive: false })));
+    session.start();
+    h.setDown(true);
+    session.addFrame({ id: "frame_slow", t: 1, route: "/settings", kind: "gesture", jpeg_base64: "d".repeat(4096) });
+
+    const inline = JSON.parse(h.storage.getItem(liveSessionStorageKey(session.id))!) as {
+      queue: Array<{ payload: { jpeg_base64: string } }>;
+    };
+    expect(inline.queue[0].payload.jpeg_base64).toHaveLength(4096);
+
+    release!();
+    await vi.waitFor(() => {
+      const stripped = JSON.parse(h.storage.getItem(liveSessionStorageKey(session.id))!) as {
+        queue: Array<{ payload: { jpeg_base64: string } }>;
+      };
+      expect(stripped.queue[0].payload.jpeg_base64).toBe("");
+    });
+    expect(h.frameStore.entries.size).toBe(1);
+  });
+
+  it("persists the pending-mode bookkeeping across a reload", async () => {
+    const h = harness();
+    const session = LiveSession.create(h.options());
+    session.start();
+    session.setMode("collect");
+    recordUnits(session, 1);
+    await settled(session);
+    expect(session.snapshot().pendingMode).toBe("collect");
+
+    const restored = track(LiveSession.rehydrate(h.options({ sessionId: undefined }))!);
+    expect(restored.snapshot().pendingMode).toBe("collect");
+    restored.start();
+    await vi.waitFor(() => expect(h.requests.filter((request) => request.url.endsWith("/stream")).length).toBeGreaterThan(1));
+    await restored.send();
+    await settled(restored);
+
+    await vi.waitFor(() => expect(restored.snapshot().pendingMode).toBeNull());
   });
 
   it("enters incompatible on a schema-version 409 instead of buffering", async () => {

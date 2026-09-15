@@ -188,6 +188,112 @@ describe("StreamClient", () => {
     client.close();
   });
 
+  it("shrinks a lone oversized unit after a 413 instead of retrying it forever", async () => {
+    const h = harness();
+    const errors: unknown[] = [];
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: h.endpoint.fetch,
+      schedule: (callback) => queueMicrotask(callback),
+      onError: (error) => errors.push(error)
+    });
+    client.start();
+    client.enqueue(micEnvelope(1));
+    client.enqueue(
+      envelope(2, "unit", {
+        id: "unit_big",
+        statement: "Fix the crash",
+        transcript_excerpt: "fix the crash",
+        anchors: [],
+        evidence: {
+          frame_ids: [],
+          annotation_ids: [],
+          transcript_span: { t_start: 0, t_end: 1 },
+          telemetry_window: {
+            t_start: 0,
+            t_end: 1,
+            events: [{ t: 0, type: "console_error", message: "x".repeat(70 * 1024), stack: null, component: null }]
+          }
+        },
+        status: "initial"
+      })
+    );
+    client.enqueue(micEnvelope(3));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(3));
+
+    expect(client.consecutiveFailures).toBe(0);
+    expect(client.state).toBe("streaming");
+    expect(h.endpoint.units.get("unit_big")?.evidence.telemetry_window).toBeUndefined();
+    expect(h.endpoint.received.map((entry) => entry.seq)).toEqual([1, 2, 3]);
+    expect(errors).toHaveLength(1);
+    client.close();
+  });
+
+  it("replaces a lone oversized envelope that cannot shrink with a same-seq filler", async () => {
+    const h = harness();
+    let rejectOnce = true;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (rejectOnce && String(input).endsWith("/events") && init?.method === "POST") {
+        rejectOnce = false;
+        return new Response(JSON.stringify({ max_bytes: 1 }), { status: 413 });
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback),
+      elapsed: () => 4242
+    });
+    client.start();
+    client.enqueue(envelope(1, "transcript", { id: "tr", role: "riffer", text: "hello", t_start: 0, t_end: 1, final: true }));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(1));
+
+    expect(h.endpoint.received).toEqual([
+      expect.objectContaining({ seq: 1, t: 4242, type: "stream_state", payload: { state: "buffering" } })
+    ]);
+    client.close();
+  });
+
+  it("halves the batch after a 413 on a multi-envelope body", async () => {
+    const h = harness();
+    const sizes: number[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/events") && init?.method === "POST") {
+        const count = (JSON.parse(String(init.body)) as unknown[]).length;
+        sizes.push(count);
+        if (count > 2) return new Response(JSON.stringify({ max_bytes: 100 }), { status: 413 });
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback)
+    });
+    client.start();
+    for (let seq = 1; seq <= 8; seq += 1) client.enqueue(micEnvelope(seq));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(8));
+
+    expect(sizes[0]).toBe(8);
+    expect(sizes.slice(1).every((count) => count <= 4)).toBe(true);
+    expect(client.consecutiveFailures).toBe(0);
+    expect(h.endpoint.received.map((entry) => entry.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    client.close();
+  });
+
   it("enters incompatible on a 409 version mismatch instead of buffering", async () => {
     const h = harness();
     h.client.start();
