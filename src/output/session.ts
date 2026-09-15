@@ -1,6 +1,7 @@
 import type { CaptureOutputs, EventsJson, SessionJson, SessionResult } from "../types";
 import { RIFFREC_SCHEMA_VERSION } from "../types";
 import type { LiveAnnotation, LiveTranscript, LiveUnit } from "../live/contract";
+import { RECORDING_FILE_NAME, segmentFileName } from "./segmentStore";
 import { filterZipSessionFiles, ZipWriter } from "./zip";
 
 interface SessionWriterOptions {
@@ -26,6 +27,12 @@ export interface LiveArchiveInputs {
 interface SessionStopOptions {
   download?: boolean;
   live?: LiveArchiveInputs | null;
+  /**
+   * KTD15: the recording as ordered segments (one per share). When given and
+   * non-empty they replace `outputs.screenBlob`: the first is `recording.webm`,
+   * the rest `recording-002.webm`, `recording-003.webm`, ...
+   */
+  recordingSegments?: Blob[] | null;
 }
 
 export const LIVE_TRANSCRIPT_FILE = "transcript.json";
@@ -45,6 +52,19 @@ function addLiveFiles(files: Map<string, Blob>, live: LiveArchiveInputs | null |
   for (const [name, blob] of Object.entries(live.clips ?? {})) {
     files.set(`${LIVE_CLIPS_DIR}/${name}`, blob);
   }
+}
+
+function addRecordingFiles(
+  files: Map<string, Blob>,
+  screenBlob: Blob | null,
+  segments: Blob[] | null | undefined
+): void {
+  const present = (segments ?? []).filter((segment) => segment.size > 0);
+  if (present.length > 0) {
+    present.forEach((segment, index) => files.set(segmentFileName(index + 1), segment));
+    return;
+  }
+  if (screenBlob) files.set(RECORDING_FILE_NAME, screenBlob);
 }
 
 function pad(value: number): string {
@@ -135,9 +155,7 @@ export class SessionWriter {
     const files = new Map<string, Blob>();
 
     files.set("events.json", jsonBlob(eventsJson));
-    if (outputs.screenBlob) {
-      files.set("recording.webm", outputs.screenBlob);
-    }
+    addRecordingFiles(files, outputs.screenBlob, options.recordingSegments);
     if (outputs.voiceBlob) {
       files.set("voice.webm", outputs.voiceBlob);
     }

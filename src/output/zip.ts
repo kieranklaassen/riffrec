@@ -1,4 +1,5 @@
 import { zip, zipSync, type Zippable } from "fflate";
+import { isRecordingFileName } from "./segmentStore";
 
 export const MAX_RECORDING_IN_ZIP_BYTES = 50 * 1024 * 1024;
 
@@ -73,11 +74,22 @@ export function isSupported(): boolean {
   return typeof window !== "undefined" && typeof document !== "undefined" && typeof URL !== "undefined";
 }
 
+/**
+ * Drops the screen recording when it would not fit the zip. KTD15: the
+ * `recording(-NNN)?.webm` family shares one budget, so once the segments
+ * together exceed the guard every segment is excluded and `events.json`,
+ * `voice.webm`, and the live files stay.
+ */
 export function filterZipSessionFiles(files: Map<string, Blob>): Map<string, Blob> {
-  const filtered = new Map<string, Blob>();
-
+  let recordingBytes = 0;
   for (const [filename, blob] of files) {
-    if (filename === "recording.webm" && blob.size > MAX_RECORDING_IN_ZIP_BYTES) {
+    if (isRecordingFileName(filename)) recordingBytes += blob.size;
+  }
+  const dropRecordings = recordingBytes > MAX_RECORDING_IN_ZIP_BYTES;
+
+  const filtered = new Map<string, Blob>();
+  for (const [filename, blob] of files) {
+    if (dropRecordings && isRecordingFileName(filename)) {
       continue;
     }
     filtered.set(filename, blob);
