@@ -155,11 +155,8 @@ const endedWrapStyle: CSSProperties = {
 
 type PanelView = "board" | "confirming";
 
-function heldCount(snapshot: LiveSessionSnapshot, session: LiveSession): number {
-  return snapshot.units.filter((unit) => unit.status === "initial" && !session.isReleased(unit.id)).length;
-}
-
-function questionsIndex(snapshot: LiveSessionSnapshot, session: LiveSession) {
+/** Instant guesses and agent notes the store keeps beside the units, keyed by unit id. */
+function agentNotes(snapshot: LiveSessionSnapshot, session: LiveSession) {
   const guesses: Record<string, string> = {};
   const notes: Record<string, string> = {};
   for (const unit of snapshot.units) {
@@ -296,8 +293,8 @@ export function LiveOverlay({
 
   if (snapshot.phase === "idle") return null;
 
-  const { guesses, notes } = questionsIndex(snapshot, session);
-  const held = heldCount(snapshot, session);
+  const { guesses, notes } = agentNotes(snapshot, session);
+  const held = session.heldUnits().length;
   const confirmable: LiveUnit[] = snapshot.units.filter((unit) => unit.status !== "withdrawn");
   const errored = snapshot.phase === "error";
 
