@@ -50,7 +50,8 @@
     "react-dom": ">=16.8.0"
   },
   "dependencies": {
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "perfect-freehand": "^1.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",
