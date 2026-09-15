@@ -355,7 +355,7 @@ Per-session disk cap is 500 MB; beyond it frames are refused with a
 | `POST /checkpoints/:id/ack` | — | `200 {}`. A batch served without an ack is re-served before any new batch. |
 | `POST /units/:id/status` | `{ status, note?, guess? }` | `200 {}`; broadcast to the page as `unit_status`. |
 | `POST /units/:id/ask` | `{ question }` | `200 {}`; broadcast to the page as `ask`; the unit becomes `needs_info`. |
-| `GET /status` | — | Board summary: `{ session_id, ended, mode, acked_seq, units[], held_unit_ids[], pending_batch_ids[] }`. |
+| `GET /status` | — | Board summary: `{ session_id, ended, mode, acked_seq, mic, stream_state, units[], held_unit_ids[], pending_batch_ids[] }`. |
 
 ## I4 — Wake envelope and CLI
 

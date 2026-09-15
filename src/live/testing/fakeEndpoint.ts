@@ -180,9 +180,9 @@ export class FakeEndpoint {
 
   /** Posts a batch of envelopes as the page would. */
   postEvents(envelopes: unknown[], sessionId?: string): Promise<FakeResponse> {
-    const id = sessionId ?? (isRecord(envelopes[0]) && typeof envelopes[0].session_id === "string"
-      ? envelopes[0].session_id
-      : this.sessionId ?? "sess_fake");
+    const first = envelopes[0];
+    const fromEnvelope = isRecord(first) && typeof first.session_id === "string" ? first.session_id : undefined;
+    const id = sessionId ?? this.sessionId ?? fromEnvelope ?? "sess_fake";
     return this.handle({ method: "POST", path: "/events", headers: this.pageHeaders(id), body: envelopes });
   }
 
