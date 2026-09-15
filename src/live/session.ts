@@ -3,6 +3,7 @@ import type { LiveArchiveInputs } from "../output/session";
 import {
   DEFAULT_EXECUTION_MODE,
   LIVE_SCHEMA_VERSION,
+  isLiveEnvelopeOfType,
   type ExecutionMode,
   type LiveAnchor,
   type LiveAnnotation,
@@ -940,19 +941,30 @@ export class LiveSession {
   }
 
   /**
-   * A reload keeps only frame metadata, so the JPEGs the frame store still
-   * holds (every unacked frame) are read back for the archive's `frames/`.
+   * A reload keeps only frame metadata, so the JPEGs of every unacked frame are
+   * read back for the archive's `frames/`: from the rehydrated queue for a frame
+   * whose bytes stayed inline (its store write had not settled), otherwise from
+   * the frame store.
    */
   private async restoreFrameBytes(onError?: (error: unknown) => void): Promise<void> {
-    for (const frame of [...this.frames]) {
-      if (frame.dropped) continue;
-      try {
-        const bytes = await this.frameStore.get(this.id, frame.id);
-        if (bytes) this.frameBytes.set(frame.id, bytes);
-      } catch (error) {
-        onError?.(error);
-      }
+    for (const entry of this.queue?.all() ?? []) {
+      if (!isLiveEnvelopeOfType(entry, "frame") || entry.payload.dropped) continue;
+      if (entry.payload.jpeg_base64 !== "") this.frameBytes.set(entry.payload.id, entry.payload.jpeg_base64);
     }
+    // Every store read is issued before the first await, so an ack on replay or
+    // a `clearStore` cannot delete a row this still has to read.
+    await Promise.all(
+      this.frames
+        .filter((frame) => !frame.dropped && !this.frameBytes.has(frame.id))
+        .map(async (frame) => {
+          try {
+            const bytes = await this.frameStore.get(this.id, frame.id);
+            if (bytes) this.frameBytes.set(frame.id, bytes);
+          } catch (error) {
+            onError?.(error);
+          }
+        })
+    );
   }
 
   private emit<T extends LiveEventType>(type: T, payload: LivePayloadMap[T]): LiveEnvelope<T> {

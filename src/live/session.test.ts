@@ -648,6 +648,27 @@ describe("LiveSession buffering, persistence, and rehydration", () => {
     expect(h.frameStore.entries.size).toBe(1);
   });
 
+  it("keeps a frame whose store write never settled in the archive across a reload", async () => {
+    const h = harness();
+    const pendingStore: FrameStore = {
+      put: () => new Promise<void>(() => {}),
+      get: (sessionId, frameId) => h.frameStore.get(sessionId, frameId),
+      delete: (sessionId, frameId) => h.frameStore.delete(sessionId, frameId),
+      clear: (sessionId) => h.frameStore.clear(sessionId)
+    };
+    const session = LiveSession.create(h.options({ frameStore: pendingStore }));
+    session.start();
+    h.setDown(true);
+    session.addFrame({ id: "frame_1", t: 5, route: "/settings", kind: "gesture", jpeg_base64: btoa("jpeg") });
+    await vi.waitFor(() => expect(session.status).toBe("buffering"));
+    expect(h.frameStore.entries.size).toBe(0);
+
+    const restored = LiveSession.rehydrate(h.options({ sessionId: undefined, frameStore: pendingStore }))!;
+    const inputs = await restored.stop();
+
+    expect(Object.keys(inputs.frames ?? {})).toEqual(["frame_1.jpg"]);
+  });
+
   it("persists the pending-mode bookkeeping across a reload", async () => {
     const h = harness();
     const session = LiveSession.create(h.options());
