@@ -198,6 +198,7 @@ export function LiveOverlay({
   const [drawing, setDrawing] = useState(false);
   const [view, setView] = useState<PanelView>("board");
   const [finishing, setFinishing] = useState(false);
+  const [finished, setFinished] = useState(false);
   const [uncontrolledPaused, setUncontrolledPaused] = useState(false);
   const [endedReason, setEndedReason] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -209,10 +210,11 @@ export function LiveOverlay({
   uncontrolledPausedRef.current = uncontrolledPaused;
 
   // The overlay outlives a session (U7 keeps it mounted for the ended card), so the next
-  // session must not inherit a dismissal, an ended reason or an open confirmation pass.
+  // session must not inherit a dismissal, an ended reason, a spent Done or an open confirmation pass.
   useEffect(() => {
     setView("board");
     setDrawing(false);
+    setFinished(false);
     setEndedReason(null);
     setDismissed(false);
     // Capture only learns pause through the callback, so clearing it has to notify too.
@@ -264,13 +266,16 @@ export function LiveOverlay({
   const finishInFlight = useRef(false);
   const handleConfirmations = useCallback(
     async (confirmations: ConfirmationMap) => {
-      if (finishInFlight.current) return;
+      if (finishInFlight.current || finished) return;
       finishInFlight.current = true;
       setFinishing(true);
       try {
         for (const [unitId, confirmation] of Object.entries(confirmations)) {
           session.confirmUnit(unitId, confirmation);
         }
+        // `finish()` emits the one `final` (KTD9) whether or not the endpoint ends the session,
+        // so Done is spent from here on even when the board comes back.
+        setFinished(true);
         const result = await session.finish();
         onFinished?.(result);
       } finally {
@@ -279,10 +284,12 @@ export function LiveOverlay({
         setView("board");
       }
     },
-    [session, onFinished]
+    [session, onFinished, finished]
   );
 
-  const running = snapshot.phase === "running";
+  // A finished Done leaves the board read-only: the endpoint may never end the session
+  // (no endpoint, or a lost one), and U7's `stop()` assembles the archive from here.
+  const running = snapshot.phase === "running" && !finished;
 
   if (snapshot.phase === "consenting") {
     return (
