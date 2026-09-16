@@ -18,6 +18,7 @@ import { ScreenCapture } from "./capture/screen";
 import { VoiceCapture } from "./capture/voice";
 import { SessionWriter } from "./output/session";
 import type { LiveHandle } from "./live/LiveOverlay";
+import { parseLiveFragment, readStoredBootstrap } from "./live/tokenBootstrap";
 import type { LiveSessionSnapshot } from "./live/session";
 import type {
   CaptureOutputs,
@@ -245,6 +246,17 @@ export function RiffrecProvider({
   const liveStopping = useRef<Promise<SessionResult | null> | null>(null);
   const [isLiveStopping, setLiveStopping] = useState(false);
   const didAutoStart = useRef(false);
+  /**
+   * `autoStart` defaults to "the page was opened with live credentials": a
+   * `#riffrec_live=` fragment at mount (read before the lazy chunk strips it)
+   * or stored credentials from a reload. Hosts can still force it either way.
+   */
+  const [hasLiveBootstrap] = useState(() => {
+    if (live === undefined || typeof window === "undefined") return false;
+    if (parseLiveFragment(window.location.hash).bootstrap !== null) return true;
+    return readStoredBootstrap() !== null;
+  });
+  const shouldAutoStart = live?.autoStart ?? hasLiveBootstrap;
 
   useEffect(() => {
     configRef.current = {
@@ -526,11 +538,11 @@ export function RiffrecProvider({
   }, []);
 
   useEffect(() => {
-    if (!isLiveConfigured || !live?.autoStart || !isLiveReady || didAutoStart.current) return;
+    if (!isLiveConfigured || !shouldAutoStart || !isLiveReady || didAutoStart.current) return;
     if (statusRef.current !== "idle" || liveActive.current) return;
     didAutoStart.current = true;
     void start();
-  }, [isLiveConfigured, isLiveReady, live?.autoStart, start]);
+  }, [isLiveConfigured, isLiveReady, shouldAutoStart, start]);
 
   const liveControls = useMemo<RiffrecLiveControls>(
     () => ({

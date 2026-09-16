@@ -138,7 +138,7 @@ Enable it with the `live` prop:
 interface RiffrecLiveConfig {
   endpoint?: string;        // fallback endpoint origin when the URL fragment carries none
   profile?: EvidenceProfileName | Partial<EvidenceProfile>; // what a unit carries on the wire; default "default"
-  autoStart?: boolean;      // open the consent step as soon as the live code is ready
+  autoStart?: boolean;      // default: true only when the page carries #riffrec_live= credentials
   drawShortcut?: string | null; // drawing-layer shortcut; default "Alt+Shift+D", null disables
   endpointOwner?: string;   // who runs the endpoint, named in the consent copy
 }
