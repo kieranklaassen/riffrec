@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  MemorySegmentStore,
   RECORDING_FILE_PATTERN,
   assembleRecordingSegments,
-  createDefaultSegmentStore,
   isRecordingFileName,
   segmentFileName
 } from "./segmentStore";
+import { MemorySegmentStore, createDefaultSegmentStore } from "./segmentStores";
 
 async function text(blob: Blob | null): Promise<string | null> {
   return blob ? blob.text() : null;

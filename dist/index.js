@@ -1,6 +1,46 @@
+import "./chunk-2GWEBU4Q.js";
+import {
+  ConsoleCapture,
+  DEFAULT_DISPLAY_MEDIA_OPTIONS,
+  DEFAULT_DISPLAY_MEDIA_VIDEO,
+  EventCapture,
+  NetworkCapture,
+  RECORDING_FILE_NAME,
+  ScreenCapture,
+  VoiceCapture,
+  isRecordingFileName,
+  segmentFileName
+} from "./chunk-VSLQO3S3.js";
+import {
+  CHECKPOINT_TRIGGERS,
+  DEFAULT_EXECUTION_MODE,
+  EXECUTION_MODES,
+  FRAME_DROP_REASONS,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_EVENT_TYPES,
+  LIVE_FRAME_BODY_MAX_BYTES,
+  LIVE_SCHEMA_VERSION,
+  LIVE_SESSION_HEADER,
+  LIVE_TOOLS,
+  LIVE_TOOL_NAMES,
+  RECORD_UNIT_TOOL,
+  RELAY_ANSWER_TOOL,
+  UNIT_STATUSES,
+  UPDATE_UNIT_TOOL,
+  WITHDRAW_UNIT_TOOL,
+  getLiveTool,
+  inspectEnvelope,
+  isLiveEnvelopeOfType,
+  isLiveEventType,
+  isLiveToolName,
+  validateEnvelope
+} from "./chunk-J2APQL3M.js";
+
 // src/RiffrecProvider.tsx
 import {
+  Suspense,
   createContext,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -8,1012 +48,6 @@ import {
   useState
 } from "react";
 import * as React from "react";
-
-// src/capture/fiber.ts
-var FiberTags = {
-  FunctionComponent: 0,
-  ClassComponent: 1,
-  IndeterminateComponent: 2,
-  HostRoot: 3,
-  HostPortal: 4,
-  HostComponent: 5,
-  HostText: 6,
-  Fragment: 7,
-  Mode: 8,
-  ContextConsumer: 9,
-  ContextProvider: 10,
-  ForwardRef: 11,
-  Profiler: 12,
-  SuspenseComponent: 13,
-  MemoComponent: 14,
-  SimpleMemoComponent: 15,
-  LazyComponent: 16
-};
-var MAX_COMPONENTS = 6;
-var MAX_DEPTH = 30;
-var SKIP_EXACT = /* @__PURE__ */ new Set([
-  "Component",
-  "ErrorBoundaryHandler",
-  "Fragment",
-  "Hot",
-  "HotReload",
-  "Outlet",
-  "Profiler",
-  "PureComponent",
-  "Route",
-  "Routes",
-  "Root",
-  "StrictMode",
-  "Suspense"
-]);
-var SKIP_PATTERNS = [
-  /Boundary$/,
-  /BoundaryHandler$/,
-  /Consumer$/,
-  /^Client(Page|Root|Segment)/,
-  /^Dev(Overlay|Tools|Root)/,
-  /Handler$/,
-  /^Hot(Reload)?$/,
-  /^Inner/,
-  /^LayoutSegment/,
-  /Overlay$/,
-  /Provider$/,
-  /^React(Overlay|Tools|Root)/,
-  /Router$/,
-  /^RSC/,
-  /^Segment(ViewNode|Node)$/,
-  /^Server(Root|Component|Render)/,
-  /^With[A-Z]/,
-  /Wrapper$/
-];
-function isComponentType(value) {
-  return typeof value === "function" || typeof value === "object" && value !== null;
-}
-function isMinifiedName(name) {
-  if (name.length <= 2) {
-    return true;
-  }
-  return name.length <= 3 && name === name.toLowerCase();
-}
-function isFrameworkInternal(name) {
-  return SKIP_EXACT.has(name) || SKIP_PATTERNS.some((pattern) => pattern.test(name));
-}
-function readDisplayName(type) {
-  if (!isComponentType(type)) {
-    return null;
-  }
-  const candidate = type.displayName ?? type.name;
-  if (!candidate || isMinifiedName(candidate) || isFrameworkInternal(candidate)) {
-    return null;
-  }
-  return candidate;
-}
-function getDataComponent(el) {
-  const candidate = el.closest("[data-component]")?.dataset.component ?? null;
-  return candidate && candidate.trim().length > 0 ? candidate : null;
-}
-function getReactFiberKey(el) {
-  return Object.keys(el).find(
-    (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
-  ) ?? null;
-}
-function getComponentNameFromFiber(fiber) {
-  const tag = fiber.tag;
-  if (tag === FiberTags.HostRoot || tag === FiberTags.HostPortal || tag === FiberTags.HostComponent || tag === FiberTags.HostText || tag === FiberTags.Fragment || tag === FiberTags.Mode || tag === FiberTags.Profiler || tag === FiberTags.SuspenseComponent) {
-    return null;
-  }
-  if (tag === FiberTags.ForwardRef) {
-    const elementType = fiber.elementType;
-    return readDisplayName(elementType?.render) ?? readDisplayName(elementType) ?? readDisplayName(fiber.type);
-  }
-  if (tag === FiberTags.MemoComponent || tag === FiberTags.SimpleMemoComponent) {
-    const elementType = fiber.elementType;
-    return readDisplayName(elementType?.type) ?? readDisplayName(elementType) ?? readDisplayName(fiber.type);
-  }
-  if (tag === FiberTags.ContextProvider) {
-    const type = fiber.type;
-    const name = type?._context?.displayName;
-    return name && !isMinifiedName(name) ? `${name}.Provider` : null;
-  }
-  if (tag === FiberTags.ContextConsumer) {
-    const name = readDisplayName(fiber.type);
-    return name ? `${name}.Consumer` : null;
-  }
-  if (tag === FiberTags.LazyComponent) {
-    const elementType = fiber.elementType;
-    return elementType?._status === 1 ? readDisplayName(elementType._result) : null;
-  }
-  if (typeof fiber.type === "string") {
-    return null;
-  }
-  return readDisplayName(fiber.type) ?? readDisplayName(fiber.elementType);
-}
-function getComponentPath(el) {
-  if (!el) {
-    return null;
-  }
-  try {
-    const dataComponent = getDataComponent(el);
-    const fiberKey = getReactFiberKey(el);
-    if (!fiberKey) {
-      return dataComponent ? [dataComponent] : null;
-    }
-    let fiber = el[fiberKey] ?? null;
-    const components = [];
-    let depth = 0;
-    while (fiber && depth < MAX_DEPTH && components.length < MAX_COMPONENTS) {
-      const componentName = getComponentNameFromFiber(fiber);
-      if (componentName) {
-        components.push(componentName);
-      }
-      fiber = fiber.return ?? null;
-      depth++;
-    }
-    if (components.length === 0) {
-      return dataComponent ? [dataComponent] : null;
-    }
-    return components.reverse();
-  } catch {
-    return null;
-  }
-}
-function getComponentName(el) {
-  const dataComponent = el ? getDataComponent(el) : null;
-  const path = getComponentPath(el);
-  if (!path || path.length === 0) {
-    return dataComponent;
-  }
-  return path[path.length - 1] ?? dataComponent;
-}
-
-// src/capture/console.ts
-function timestamp(sessionStart) {
-  return (Date.now() - sessionStart) / 1e3;
-}
-function isTestEnvironment() {
-  const maybeProcess = globalThis;
-  const nodeEnv = maybeProcess.process?.env?.NODE_ENV;
-  return nodeEnv === "test" || typeof globalThis !== "undefined" && "jest" in globalThis || typeof globalThis !== "undefined" && "vi" in globalThis;
-}
-function stringifyConsoleArgs(args) {
-  return args.map((arg) => {
-    if (arg instanceof Error) {
-      return arg.message;
-    }
-    if (typeof arg === "string") {
-      return arg;
-    }
-    try {
-      return JSON.stringify(arg);
-    } catch {
-      return String(arg);
-    }
-  }).join(" ");
-}
-function readStack(value) {
-  return value instanceof Error ? value.stack ?? null : null;
-}
-var ConsoleCapture = class {
-  constructor() {
-    this.onEvent = null;
-    this.sessionStart = 0;
-    this.originalConsoleError = null;
-    this.originalOnError = null;
-    this.unhandledRejectionHandler = null;
-  }
-  start(sessionStart, onEvent, sanitize) {
-    if (typeof window === "undefined" || isTestEnvironment() || this.onEvent) {
-      return;
-    }
-    this.sessionStart = sessionStart;
-    this.onEvent = onEvent;
-    this.sanitize = sanitize;
-    this.patchWindowOnError();
-    this.patchConsoleError();
-    this.patchUnhandledRejection();
-  }
-  stop() {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (this.originalConsoleError) {
-      console.error = this.originalConsoleError;
-    }
-    window.onerror = this.originalOnError;
-    if (this.unhandledRejectionHandler) {
-      window.removeEventListener("unhandledrejection", this.unhandledRejectionHandler);
-    }
-    this.onEvent = null;
-    this.sanitize = void 0;
-    this.originalConsoleError = null;
-    this.originalOnError = null;
-    this.unhandledRejectionHandler = null;
-  }
-  patchWindowOnError() {
-    this.originalOnError = window.onerror;
-    window.onerror = (message, source, lineno, colno, error) => {
-      const renderedMessage = [
-        String(message),
-        source ? `at ${source}:${lineno ?? 0}:${colno ?? 0}` : null
-      ].filter(Boolean).join(" ");
-      this.emit(renderedMessage, readStack(error));
-      if (this.originalOnError) {
-        return this.originalOnError(message, source, lineno, colno, error) === true;
-      }
-      return false;
-    };
-  }
-  patchConsoleError() {
-    this.originalConsoleError = console.error;
-    console.error = (...args) => {
-      this.emit(stringifyConsoleArgs(args), args.map(readStack).find(Boolean) ?? null);
-      this.originalConsoleError?.(...args);
-    };
-  }
-  patchUnhandledRejection() {
-    this.unhandledRejectionHandler = (event) => {
-      const reason = event.reason;
-      const message = reason instanceof Error ? reason.message : stringifyConsoleArgs([reason]);
-      this.emit(message, readStack(reason));
-    };
-    window.addEventListener("unhandledrejection", this.unhandledRejectionHandler);
-  }
-  emit(message, stack) {
-    if (!this.onEvent) {
-      return;
-    }
-    let sanitizedMessage = message;
-    try {
-      sanitizedMessage = this.sanitize ? this.sanitize(message, stack) : message;
-    } catch {
-      sanitizedMessage = message;
-    }
-    const event = {
-      t: timestamp(this.sessionStart),
-      type: "console_error",
-      message: sanitizedMessage,
-      stack,
-      component: typeof document !== "undefined" ? getComponentName(document.activeElement ?? document.body) : null
-    };
-    this.onEvent(event);
-  }
-};
-
-// src/capture/element.ts
-var TEXT_LIMIT = 200;
-var CONTEXT_LIMIT = 300;
-var PATH_LIMIT = 300;
-var DEFAULT_STYLE_VALUES = /* @__PURE__ */ new Set([
-  "",
-  "none",
-  "normal",
-  "auto",
-  "0px",
-  "rgba(0, 0, 0, 0)",
-  "transparent",
-  "static",
-  "visible"
-]);
-var TEXT_ELEMENTS = /* @__PURE__ */ new Set([
-  "a",
-  "b",
-  "blockquote",
-  "caption",
-  "code",
-  "dd",
-  "dt",
-  "em",
-  "figcaption",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "i",
-  "label",
-  "li",
-  "p",
-  "pre",
-  "q",
-  "span",
-  "strong",
-  "td",
-  "th",
-  "time"
-]);
-var FORM_ELEMENTS = /* @__PURE__ */ new Set(["input", "textarea", "select"]);
-var MEDIA_ELEMENTS = /* @__PURE__ */ new Set(["canvas", "img", "svg", "video"]);
-var CONTAINER_ELEMENTS = /* @__PURE__ */ new Set([
-  "article",
-  "aside",
-  "div",
-  "fieldset",
-  "footer",
-  "form",
-  "header",
-  "main",
-  "nav",
-  "ol",
-  "section",
-  "ul"
-]);
-function truncate(value, limit) {
-  return value.length > limit ? value.slice(0, limit) : value;
-}
-function cleanClassName(value) {
-  return value.replace(/[_-][a-zA-Z0-9]{5,}.*$/, "");
-}
-function meaningfulClasses(el, limit = 2) {
-  if (!(el instanceof HTMLElement) || typeof el.className !== "string") {
-    return [];
-  }
-  const classes = el.className.split(/\s+/).map(cleanClassName).filter((className) => className.length > 2 && !/^[a-z]{1,2}$/.test(className));
-  return Array.from(new Set(classes)).slice(0, limit);
-}
-function escapeCssIdentifier(value) {
-  return typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-}
-function getParentElement(el) {
-  if (el.parentElement) {
-    return el.parentElement;
-  }
-  const root = el.getRootNode();
-  return typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot ? root.host : null;
-}
-function selectorPart(el) {
-  const tag = el.tagName.toLowerCase();
-  const id = el.id ? `#${escapeCssIdentifier(el.id)}` : "";
-  const classes = Array.from(el.classList).slice(0, 2).map((className) => `.${escapeCssIdentifier(className)}`).join("");
-  return `${tag}${id}${classes}`;
-}
-function pathPart(el) {
-  const tag = el.tagName.toLowerCase();
-  if (el.id) {
-    return `${tag}#${escapeCssIdentifier(el.id)}`;
-  }
-  const className = meaningfulClasses(el, 1)[0];
-  return className ? `${tag}.${escapeCssIdentifier(className)}` : tag;
-}
-function buildSelector(el) {
-  const parts = [];
-  let current = el;
-  while (current && parts.length < 4) {
-    parts.unshift(selectorPart(current));
-    current = getParentElement(current);
-  }
-  return truncate(parts.join(" > "), PATH_LIMIT);
-}
-function buildFullPath(el) {
-  const parts = [];
-  let current = el;
-  while (current && current.tagName.toLowerCase() !== "html") {
-    const nextParent = getParentElement(current);
-    const prefix = !current.parentElement && nextParent ? "[shadow] " : "";
-    parts.unshift(`${prefix}${pathPart(current)}`);
-    current = nextParent;
-  }
-  return truncate(parts.join(" > "), PATH_LIMIT);
-}
-function isSensitiveInput(el) {
-  return el instanceof HTMLInputElement && (el.type === "password" || el.type === "hidden");
-}
-function isUnsafeTextElement(el) {
-  if (isSensitiveInput(el)) {
-    return true;
-  }
-  return el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el instanceof HTMLElement && el.getAttribute("aria-hidden") === "true";
-}
-function safeTextContent(el, limit = TEXT_LIMIT) {
-  if (isUnsafeTextElement(el)) {
-    return null;
-  }
-  if (el instanceof HTMLInputElement) {
-    return null;
-  }
-  const text = el.textContent?.replace(/\s+/g, " ").trim();
-  return text ? truncate(text, limit) : null;
-}
-function identifyElement(el) {
-  if (!(el instanceof HTMLElement)) {
-    return el.tagName.toLowerCase();
-  }
-  if (el.dataset.element) {
-    return el.dataset.element;
-  }
-  const tag = el.tagName.toLowerCase();
-  if (["path", "circle", "rect", "line", "g"].includes(tag)) {
-    return "graphic element";
-  }
-  if (tag === "svg") {
-    const parent = getParentElement(el);
-    if (parent?.tagName.toLowerCase() === "button") {
-      const text = safeTextContent(parent);
-      return text ? `icon in "${truncate(text, 25)}" button` : "button icon";
-    }
-    return "icon";
-  }
-  if (tag === "button") {
-    const ariaLabel2 = el.getAttribute("aria-label");
-    const text = safeTextContent(el);
-    if (ariaLabel2) return `button [${truncate(ariaLabel2, 50)}]`;
-    return text ? `button "${truncate(text, 50)}"` : "button";
-  }
-  if (tag === "a") {
-    const text = safeTextContent(el);
-    const href = el.getAttribute("href");
-    if (text) return `link "${truncate(text, 50)}"`;
-    if (href) return `link to ${truncate(href, 50)}`;
-    return "link";
-  }
-  if (el instanceof HTMLInputElement) {
-    const type = el.getAttribute("type") || "text";
-    const placeholder = el.getAttribute("placeholder");
-    const name = el.getAttribute("name");
-    if (placeholder) return `input "${truncate(placeholder, 50)}"`;
-    if (name) return `input [${truncate(name, 50)}]`;
-    return `${type} input`;
-  }
-  if (tag === "img") {
-    const alt = el.getAttribute("alt");
-    return alt ? `image "${truncate(alt, 50)}"` : "image";
-  }
-  const ariaLabel = el.getAttribute("aria-label");
-  const role = el.getAttribute("role");
-  if (ariaLabel) return `${tag} [${truncate(ariaLabel, 50)}]`;
-  if (role) return role;
-  if (TEXT_ELEMENTS.has(tag)) {
-    const text = safeTextContent(el);
-    return text ? `${tag} "${truncate(text, 50)}"` : tag;
-  }
-  if (CONTAINER_ELEMENTS.has(tag)) {
-    const words = meaningfulClasses(el, 2);
-    if (words.length > 0) return words.join(" ");
-    return tag === "div" ? "container" : tag;
-  }
-  return tag;
-}
-function getNearbyText(el) {
-  const texts = [];
-  const ownText = safeTextContent(el, CONTEXT_LIMIT);
-  if (ownText) {
-    texts.push(ownText);
-  }
-  for (const [label, sibling] of [
-    ["before", el.previousElementSibling],
-    ["after", el.nextElementSibling]
-  ]) {
-    if (!sibling) continue;
-    const text = safeTextContent(sibling, 80);
-    if (text) {
-      texts.push(`[${label}: "${text}"]`);
-    }
-  }
-  return texts.length > 0 ? truncate(texts.join(" "), CONTEXT_LIMIT) : null;
-}
-function getNearbyElements(el) {
-  const parent = getParentElement(el);
-  if (!parent) {
-    return null;
-  }
-  const siblings = Array.from(parent.children).filter((child) => child !== el);
-  if (siblings.length === 0) {
-    return null;
-  }
-  const labels = siblings.slice(0, 4).map((sibling) => {
-    const tag = sibling.tagName.toLowerCase();
-    const cls = meaningfulClasses(sibling, 1)[0];
-    const classPart = cls ? `.${cls}` : "";
-    const text = tag === "button" || tag === "a" ? safeTextContent(sibling, 30) : null;
-    return text ? `${tag}${classPart} "${text}"` : `${tag}${classPart}`;
-  });
-  const suffix = parent.children.length > siblings.length + 1 ? ` (${parent.children.length} total)` : "";
-  return truncate(`${labels.join(", ")}${suffix}`, CONTEXT_LIMIT);
-}
-function getBoundingBox(el) {
-  const rect = el.getBoundingClientRect();
-  return {
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height
-  };
-}
-function computedStyleProperties(el) {
-  const tag = el.tagName.toLowerCase();
-  if (TEXT_ELEMENTS.has(tag)) {
-    return ["color", "font-size", "font-weight", "font-family", "line-height"];
-  }
-  if (tag === "button" || tag === "a" && el.getAttribute("role") === "button") {
-    return ["background-color", "color", "padding", "border-radius", "font-size"];
-  }
-  if (FORM_ELEMENTS.has(tag)) {
-    return ["background-color", "color", "padding", "border-radius", "font-size"];
-  }
-  if (MEDIA_ELEMENTS.has(tag)) {
-    return ["width", "height", "object-fit", "border-radius"];
-  }
-  if (CONTAINER_ELEMENTS.has(tag)) {
-    return ["display", "padding", "margin", "gap", "background-color"];
-  }
-  return ["color", "font-size", "margin", "padding", "background-color"];
-}
-function getComputedStylesSnapshot(el) {
-  if (typeof window === "undefined") {
-    return void 0;
-  }
-  const styles = window.getComputedStyle(el);
-  const snapshot = {};
-  for (const property of computedStyleProperties(el)) {
-    const value = styles.getPropertyValue(property);
-    if (!DEFAULT_STYLE_VALUES.has(value)) {
-      snapshot[property] = value;
-    }
-  }
-  return Object.keys(snapshot).length > 0 ? snapshot : void 0;
-}
-function buildElementInfo(el) {
-  const rawText = safeTextContent(el);
-  const classes = meaningfulClasses(el, 8);
-  const role = el.getAttribute("role");
-  const ariaLabel = el.getAttribute("aria-label");
-  return {
-    tag: el.tagName.toLowerCase(),
-    text: rawText,
-    id: el.id || null,
-    selector: buildSelector(el),
-    name: identifyElement(el),
-    fullPath: buildFullPath(el),
-    classes: classes.length > 0 ? classes : void 0,
-    role,
-    ariaLabel,
-    nearbyText: getNearbyText(el),
-    nearbyElements: getNearbyElements(el),
-    boundingBox: getBoundingBox(el),
-    computedStyles: getComputedStylesSnapshot(el)
-  };
-}
-
-// src/capture/events.ts
-function timestamp2(sessionStart) {
-  return (Date.now() - sessionStart) / 1e3;
-}
-function isElement(value) {
-  return value instanceof Element;
-}
-var EventCapture = class {
-  constructor() {
-    this.onEvent = null;
-    this.sessionStart = 0;
-    this.clickHandler = null;
-    this.popstateHandler = null;
-    this.originalPushState = null;
-    this.originalReplaceState = null;
-    this.previousUrl = null;
-  }
-  start(sessionStart, onEvent) {
-    if (typeof window === "undefined" || typeof document === "undefined" || this.onEvent) {
-      return;
-    }
-    this.sessionStart = sessionStart;
-    this.onEvent = onEvent;
-    this.previousUrl = window.location.href;
-    this.clickHandler = (event) => this.handleClick(event);
-    this.popstateHandler = () => this.emitNavigation(window.location.href);
-    document.addEventListener("click", this.clickHandler, true);
-    this.patchHistory();
-    window.addEventListener("popstate", this.popstateHandler);
-  }
-  stop() {
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
-    if (this.clickHandler) {
-      document.removeEventListener("click", this.clickHandler, true);
-    }
-    if (this.popstateHandler) {
-      window.removeEventListener("popstate", this.popstateHandler);
-    }
-    if (this.originalPushState) {
-      window.history.pushState = this.originalPushState;
-    }
-    if (this.originalReplaceState) {
-      window.history.replaceState = this.originalReplaceState;
-    }
-    this.onEvent = null;
-    this.clickHandler = null;
-    this.popstateHandler = null;
-    this.originalPushState = null;
-    this.originalReplaceState = null;
-    this.previousUrl = null;
-  }
-  handleClick(event) {
-    if (!this.onEvent || !isElement(event.target)) {
-      return;
-    }
-    const element = event.target;
-    const clickEvent = {
-      t: timestamp2(this.sessionStart),
-      type: "click",
-      component: getComponentName(element),
-      componentPath: getComponentPath(element),
-      element: buildElementInfo(element)
-    };
-    this.onEvent(clickEvent);
-  }
-  patchHistory() {
-    this.originalPushState = window.history.pushState;
-    this.originalReplaceState = window.history.replaceState;
-    window.history.pushState = this.wrapHistoryMethod(this.originalPushState);
-    window.history.replaceState = this.wrapHistoryMethod(this.originalReplaceState);
-  }
-  wrapHistoryMethod(original) {
-    return ((...args) => {
-      const result = original.apply(window.history, args);
-      window.setTimeout(() => this.emitNavigation(window.location.href), 0);
-      return result;
-    });
-  }
-  emitNavigation(nextUrl) {
-    if (!this.onEvent) {
-      return;
-    }
-    const from = this.previousUrl ?? nextUrl;
-    if (from === nextUrl) {
-      return;
-    }
-    const navigationEvent = {
-      t: timestamp2(this.sessionStart),
-      type: "navigation",
-      from,
-      to: nextUrl
-    };
-    this.previousUrl = nextUrl;
-    this.onEvent(navigationEvent);
-  }
-};
-
-// src/capture/network.ts
-var REDACTED_QUERY_KEYS = /* @__PURE__ */ new Set(["token", "api_key", "client_secret"]);
-function timestamp3(sessionStart) {
-  return (Date.now() - sessionStart) / 1e3;
-}
-function extractRequestUrl(input) {
-  if (typeof input === "string") {
-    return input;
-  }
-  if (input instanceof URL) {
-    return input.href;
-  }
-  return input.url;
-}
-function extractRequestMethod(input, init) {
-  if (init?.method) {
-    return init.method.toUpperCase();
-  }
-  if (typeof input === "object" && "method" in input && input.method) {
-    return input.method.toUpperCase();
-  }
-  return "GET";
-}
-function redactUrl(value) {
-  try {
-    const base = typeof window !== "undefined" ? window.location.href : "http://riffrec.local";
-    const url = new URL(value, base);
-    for (const key of Array.from(url.searchParams.keys())) {
-      if (REDACTED_QUERY_KEYS.has(key.toLowerCase())) {
-        url.searchParams.set(key, "[redacted]");
-      }
-    }
-    if (value.startsWith("/") || value.startsWith("?")) {
-      return `${url.pathname}${url.search}${url.hash}`.replace(/%5Bredacted%5D/g, "[redacted]");
-    }
-    return url.href.replace(/%5Bredacted%5D/g, "[redacted]");
-  } catch {
-    return value.replace(/([?&](?:token|api_key|client_secret)=)[^&]+/gi, "$1[redacted]");
-  }
-}
-function shouldExclude(url, excludeUrls) {
-  return excludeUrls.some((excludeUrl) => url.includes(excludeUrl));
-}
-var NetworkCapture = class {
-  constructor() {
-    this.onEvent = null;
-    this.sessionStart = 0;
-    this.excludeUrls = [];
-    this.originalFetch = null;
-    this.originalOpen = null;
-    this.originalSend = null;
-    this.xhrMeta = /* @__PURE__ */ new WeakMap();
-  }
-  start(sessionStart, onEvent, excludeUrls = []) {
-    if (typeof window === "undefined" || this.onEvent) {
-      return;
-    }
-    this.sessionStart = sessionStart;
-    this.onEvent = onEvent;
-    this.excludeUrls = excludeUrls;
-    this.patchFetch();
-    this.patchXhr();
-  }
-  stop() {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (this.originalFetch) {
-      window.fetch = this.originalFetch;
-    }
-    if (this.originalOpen) {
-      XMLHttpRequest.prototype.open = this.originalOpen;
-    }
-    if (this.originalSend) {
-      XMLHttpRequest.prototype.send = this.originalSend;
-    }
-    this.onEvent = null;
-    this.originalFetch = null;
-    this.originalOpen = null;
-    this.originalSend = null;
-    this.xhrMeta = /* @__PURE__ */ new WeakMap();
-  }
-  patchFetch() {
-    if (typeof window.fetch !== "function") {
-      return;
-    }
-    this.originalFetch = window.fetch;
-    const capture = this;
-    window.fetch = new Proxy(window.fetch, {
-      async apply(target, thisArg, argArray) {
-        const [input, init] = argArray;
-        const rawUrl = extractRequestUrl(input);
-        const method = extractRequestMethod(input, init);
-        const start = Date.now();
-        try {
-          const response = await Reflect.apply(target, thisArg, argArray);
-          capture.emitNetworkEvent(rawUrl, method, response.status, Date.now() - start);
-          return response;
-        } catch (error) {
-          capture.emitNetworkEvent(rawUrl, method, -1, Date.now() - start);
-          throw error;
-        }
-      }
-    });
-  }
-  patchXhr() {
-    if (typeof XMLHttpRequest === "undefined") {
-      return;
-    }
-    this.originalOpen = XMLHttpRequest.prototype.open;
-    this.originalSend = XMLHttpRequest.prototype.send;
-    const capture = this;
-    XMLHttpRequest.prototype.open = function open(method, url, async, username, password) {
-      capture.xhrMeta.set(this, {
-        method: method.toUpperCase(),
-        url: String(url),
-        start: 0
-      });
-      return capture.originalOpen.call(
-        this,
-        method,
-        url,
-        async ?? true,
-        username ?? void 0,
-        password ?? void 0
-      );
-    };
-    XMLHttpRequest.prototype.send = function send(body) {
-      const meta = capture.xhrMeta.get(this);
-      if (meta) {
-        meta.start = Date.now();
-        this.addEventListener(
-          "loadend",
-          () => {
-            capture.emitNetworkEvent(meta.url, meta.method, this.status || -1, Date.now() - meta.start);
-          },
-          { once: true }
-        );
-      }
-      return capture.originalSend.call(this, body);
-    };
-  }
-  emitNetworkEvent(rawUrl, method, status, durationMs) {
-    if (!this.onEvent || shouldExclude(rawUrl, this.excludeUrls)) {
-      return;
-    }
-    const event = {
-      t: timestamp3(this.sessionStart),
-      type: "network_request",
-      url: redactUrl(rawUrl),
-      method,
-      status,
-      duration_ms: durationMs
-    };
-    this.onEvent(event);
-  }
-};
-
-// src/capture/screen.ts
-var VIDEO_MIME_TYPES = [
-  "video/webm;codecs=vp9",
-  "video/webm;codecs=vp8",
-  "video/webm"
-];
-var DEFAULT_DISPLAY_MEDIA_VIDEO = {
-  frameRate: 5,
-  displaySurface: "browser"
-};
-var DEFAULT_DISPLAY_MEDIA_OPTIONS = {
-  audio: false,
-  video: DEFAULT_DISPLAY_MEDIA_VIDEO,
-  preferCurrentTab: true,
-  selfBrowserSurface: "include",
-  monitorTypeSurfaces: "exclude",
-  surfaceSwitching: "exclude",
-  systemAudio: "exclude"
-};
-function browserSupportsScreenCapture() {
-  return typeof window !== "undefined" && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia) && typeof MediaRecorder !== "undefined";
-}
-function chooseVideoMimeType() {
-  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
-    return "video/webm";
-  }
-  return VIDEO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "video/webm";
-}
-var ScreenCapture = class {
-  constructor(displayMediaOverrides = {}, displayMediaVideoOverrides = {}) {
-    this.displayMediaOverrides = displayMediaOverrides;
-    this.displayMediaVideoOverrides = displayMediaVideoOverrides;
-    this.recorder = null;
-    this.stream = null;
-    this.chunks = [];
-    this.mimeType = "video/webm";
-  }
-  async start() {
-    if (!browserSupportsScreenCapture()) {
-      throw new Error("Screen capture is not supported in this browser.");
-    }
-    try {
-      this.mimeType = chooseVideoMimeType();
-      this.chunks = [];
-      const displayMediaVideoOverrides = typeof this.displayMediaOverrides.video === "object" && this.displayMediaOverrides.video !== null ? this.displayMediaOverrides.video : {};
-      const video = {
-        ...DEFAULT_DISPLAY_MEDIA_VIDEO,
-        ...this.displayMediaVideoOverrides,
-        ...displayMediaVideoOverrides
-      };
-      const options = {
-        ...DEFAULT_DISPLAY_MEDIA_OPTIONS,
-        ...this.displayMediaOverrides,
-        video
-      };
-      this.stream = await navigator.mediaDevices.getDisplayMedia(options);
-      this.recorder = new MediaRecorder(this.stream, { mimeType: this.mimeType });
-      this.recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.chunks.push(event.data);
-        }
-      };
-      this.recorder.start(1e3);
-    } catch (error) {
-      this.cleanupStream();
-      throw new Error(`Screen capture failed to start: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  async stop() {
-    if (!this.recorder) {
-      this.cleanupStream();
-      return null;
-    }
-    const recorder = this.recorder;
-    return new Promise((resolve, reject) => {
-      recorder.onstop = () => {
-        const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mimeType }) : null;
-        this.reset();
-        resolve(blob);
-      };
-      recorder.onerror = () => {
-        this.reset();
-        reject(new Error("Screen recorder failed while stopping."));
-      };
-      if (recorder.state === "inactive") {
-        recorder.onstop?.(new Event("stop"));
-      } else {
-        recorder.stop();
-      }
-    });
-  }
-  isRecording() {
-    return this.recorder?.state === "recording";
-  }
-  reset() {
-    this.recorder = null;
-    this.cleanupStream();
-  }
-  cleanupStream() {
-    this.stream?.getTracks().forEach((track) => track.stop());
-    this.stream = null;
-  }
-};
-
-// src/capture/voice.ts
-var AUDIO_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
-function browserSupportsVoiceCapture() {
-  return typeof window !== "undefined" && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
-}
-function chooseAudioMimeType() {
-  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
-    return "audio/webm";
-  }
-  return AUDIO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "audio/webm";
-}
-var VoiceCapture = class {
-  constructor() {
-    this.recorder = null;
-    this.stream = null;
-    this.chunks = [];
-    this.mimeType = "audio/webm";
-  }
-  async start() {
-    if (!browserSupportsVoiceCapture()) {
-      return false;
-    }
-    try {
-      this.mimeType = chooseAudioMimeType();
-      this.chunks = [];
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.recorder = new MediaRecorder(this.stream, { mimeType: this.mimeType });
-      this.recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.chunks.push(event.data);
-        }
-      };
-      this.recorder.start(1e3);
-      return true;
-    } catch (error) {
-      this.cleanupStream();
-      if (typeof console !== "undefined") {
-        console.warn(
-          `[riffrec] Voice capture skipped: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-      return false;
-    }
-  }
-  async stop() {
-    if (!this.recorder) {
-      this.cleanupStream();
-      return null;
-    }
-    const recorder = this.recorder;
-    return new Promise((resolve) => {
-      recorder.onstop = () => {
-        const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mimeType }) : null;
-        this.reset();
-        resolve(blob);
-      };
-      recorder.onerror = () => {
-        this.reset();
-        resolve(null);
-      };
-      if (recorder.state === "inactive") {
-        recorder.onstop?.(new Event("stop"));
-      } else {
-        recorder.stop();
-      }
-    });
-  }
-  isRecording() {
-    return this.recorder?.state === "recording";
-  }
-  reset() {
-    this.recorder = null;
-    this.cleanupStream();
-  }
-  cleanupStream() {
-    this.stream?.getTracks().forEach((track) => track.stop());
-    this.stream = null;
-  }
-};
 
 // src/types.ts
 var RIFFREC_SCHEMA_VERSION = "1.0.0";
@@ -1075,9 +109,14 @@ var ZipWriter = class {
   }
 };
 function filterZipSessionFiles(files) {
+  let recordingBytes = 0;
+  for (const [filename, blob] of files) {
+    if (isRecordingFileName(filename)) recordingBytes += blob.size;
+  }
+  const dropRecordings = recordingBytes > MAX_RECORDING_IN_ZIP_BYTES;
   const filtered = /* @__PURE__ */ new Map();
   for (const [filename, blob] of files) {
-    if (filename === "recording.webm" && blob.size > MAX_RECORDING_IN_ZIP_BYTES) {
+    if (dropRecordings && isRecordingFileName(filename)) {
       continue;
     }
     filtered.set(filename, blob);
@@ -1086,6 +125,31 @@ function filterZipSessionFiles(files) {
 }
 
 // src/output/session.ts
+var LIVE_TRANSCRIPT_FILE = "transcript.json";
+var LIVE_UNITS_FILE = "units.json";
+var LIVE_ANNOTATIONS_FILE = "annotations.json";
+var LIVE_FRAMES_DIR = "frames";
+var LIVE_CLIPS_DIR = "clips";
+function addLiveFiles(files, live) {
+  if (!live) return;
+  if (live.transcript) files.set(LIVE_TRANSCRIPT_FILE, jsonBlob(live.transcript));
+  if (live.units) files.set(LIVE_UNITS_FILE, jsonBlob(live.units));
+  if (live.annotations) files.set(LIVE_ANNOTATIONS_FILE, jsonBlob(live.annotations));
+  for (const [name, blob] of Object.entries(live.frames ?? {})) {
+    files.set(`${LIVE_FRAMES_DIR}/${name}`, blob);
+  }
+  for (const [name, blob] of Object.entries(live.clips ?? {})) {
+    files.set(`${LIVE_CLIPS_DIR}/${name}`, blob);
+  }
+}
+function addRecordingFiles(files, screenBlob, segments) {
+  const present = (segments ?? []).filter((segment) => segment.size > 0);
+  if (present.length > 0) {
+    present.forEach((segment, index) => files.set(segmentFileName(index + 1), segment));
+    return;
+  }
+  if (screenBlob) files.set(RECORDING_FILE_NAME, screenBlob);
+}
 function pad(value) {
   return String(value).padStart(2, "0");
 }
@@ -1154,12 +218,11 @@ var SessionWriter = class {
     const eventsJson = buildEventsJson(outputs);
     const files = /* @__PURE__ */ new Map();
     files.set("events.json", jsonBlob(eventsJson));
-    if (outputs.screenBlob) {
-      files.set("recording.webm", outputs.screenBlob);
-    }
+    addRecordingFiles(files, outputs.screenBlob, options.recordingSegments);
     if (outputs.voiceBlob) {
       files.set("voice.webm", outputs.voiceBlob);
     }
+    addLiveFiles(files, options.live);
     const zipSession = withSessionJson(
       filterZipSessionFiles(files),
       outputs,
@@ -1184,6 +247,8 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
+var LiveMount = lazy(() => import("./LiveOverlay-NUPCMTAK.js"));
+var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
 var recordingOverlayStyle = {
@@ -1316,6 +381,7 @@ function RiffrecProvider({
   downloadNoticeMessage = "Share the zip file for feedback.",
   forceEnable,
   forceEnableParam,
+  live,
   onError,
   sanitizeError
 }) {
@@ -1328,21 +394,32 @@ function RiffrecProvider({
     displayMediaVideo,
     forceEnable,
     forceEnableParam,
+    live,
     onError,
     sanitizeError
   });
   const didWarnDisabled = useRef(false);
   const isEnabled = forceEnable || isEnabledByUrlParam(forceEnableParam) || readNodeEnv() !== "production";
+  const isLiveConfigured = live !== void 0 && isEnabled;
+  const liveHandle = useRef(null);
+  const liveHandleWaiters = useRef([]);
+  const [isLiveReady, setLiveReady] = useState(false);
+  const [liveSnapshot, setLiveSnapshot] = useState(null);
+  const liveActive = useRef(false);
+  const liveStopping = useRef(null);
+  const [isLiveStopping, setLiveStopping] = useState(false);
+  const didAutoStart = useRef(false);
   useEffect(() => {
     configRef.current = {
       displayMedia,
       displayMediaVideo,
       forceEnable,
       forceEnableParam,
+      live,
       onError,
       sanitizeError
     };
-  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, live, onError, sanitizeError]);
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
@@ -1353,7 +430,54 @@ function RiffrecProvider({
       setStatus("disabled");
     }
   }, [isEnabled]);
+  const setStatusNow = useCallback((next) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+  const stopLive = useCallback(async () => {
+    if (liveStopping.current) return liveStopping.current;
+    const handle = liveHandle.current;
+    if (!handle) return null;
+    const run = (async () => {
+      setLiveStopping(true);
+      setStatusNow("stopping");
+      try {
+        const stopped = await handle.stop();
+        liveActive.current = false;
+        if (!stopped) {
+          setStatusNow("idle");
+          return null;
+        }
+        const writer = new SessionWriter({ reactVersion: React.version });
+        const result = await writer.stop(stopped.outputs, {
+          download: stopped.options.download,
+          live: stopped.live,
+          recordingSegments: stopped.recordingSegments
+        });
+        await stopped.options.onSessionComplete?.(result);
+        setStatusNow("idle");
+        setDownloadNoticeVisible(stopped.options.download !== false && stopped.endedBy === "stop");
+        return result;
+      } catch (error) {
+        liveActive.current = false;
+        configRef.current.onError?.(toError(error));
+        setStatusNow("error");
+        return null;
+      } finally {
+        setLiveStopping(false);
+      }
+    })();
+    liveStopping.current = run;
+    try {
+      return await run;
+    } finally {
+      liveStopping.current = null;
+    }
+  }, [setStatusNow]);
   const stop = useCallback(async () => {
+    if (liveActive.current) {
+      return stopLive();
+    }
     const session = activeSession.current;
     if (!session || statusRef.current !== "recording") {
       return null;
@@ -1397,12 +521,23 @@ function RiffrecProvider({
       setStatus("error");
       return null;
     }
+  }, [stopLive]);
+  const awaitLiveHandle = useCallback(() => {
+    if (liveHandle.current) return Promise.resolve(liveHandle.current);
+    return new Promise((resolve) => liveHandleWaiters.current.push(resolve));
   }, []);
   const start = useCallback(async (options = {}) => {
     if (!isEnabled || typeof window === "undefined") {
       return;
     }
-    if (statusRef.current === "recording" || statusRef.current === "stopping") {
+    if (statusRef.current === "recording" || statusRef.current === "stopping" || liveActive.current) {
+      return;
+    }
+    if (isLiveConfigured) {
+      setDownloadNoticeVisible(false);
+      const handle = await awaitLiveHandle();
+      if (!handle || liveActive.current || liveStopping.current) return;
+      handle.begin(options);
       return;
     }
     setDownloadNoticeVisible(false);
@@ -1461,20 +596,104 @@ function RiffrecProvider({
       setStatus("error");
       throw err;
     }
-  }, [isEnabled]);
-  useEffect(() => () => void stop(), [stop]);
+  }, [awaitLiveHandle, isEnabled, isLiveConfigured]);
+  useEffect(
+    () => () => {
+      if (!liveActive.current) void stop();
+    },
+    [stop]
+  );
+  const handleLiveHandle = useCallback((handle) => {
+    liveHandle.current = handle;
+    setLiveReady(handle !== null);
+    if (handle) {
+      for (const resolve of liveHandleWaiters.current.splice(0)) resolve(handle);
+    }
+  }, []);
+  const handleLiveSnapshot = useCallback(
+    (snapshot) => {
+      setLiveSnapshot(snapshot);
+      if (liveStopping.current) return;
+      switch (snapshot.status) {
+        case "idle":
+          if (liveActive.current) {
+            liveActive.current = false;
+            setStatusNow("idle");
+          }
+          return;
+        case "ended":
+          return;
+        case "error":
+          liveActive.current = true;
+          setStatusNow("error");
+          return;
+        case "consenting":
+        case "connecting":
+        case "live":
+        case "live_novoice":
+        case "buffering":
+        case "reconnecting":
+        case "incompatible":
+          liveActive.current = true;
+          if (statusRef.current !== "live") setStatusNow("live");
+          return;
+        default: {
+          const exhaustive = snapshot.status;
+          return exhaustive;
+        }
+      }
+    },
+    [setStatusNow]
+  );
+  const handleLiveEnded = useCallback(() => {
+    liveActive.current = true;
+    void stopLive();
+  }, [stopLive]);
+  const handleLiveError = useCallback((error) => {
+    configRef.current.onError?.(error);
+  }, []);
+  useEffect(() => {
+    if (!isLiveConfigured || !live?.autoStart || !isLiveReady || didAutoStart.current) return;
+    if (statusRef.current !== "idle" || liveActive.current) return;
+    didAutoStart.current = true;
+    void start();
+  }, [isLiveConfigured, isLiveReady, live?.autoStart, start]);
+  const liveControls = useMemo(
+    () => ({
+      status: isLiveConfigured ? liveSnapshot?.status ?? "idle" : "disabled",
+      mode: liveSnapshot?.mode ?? DEFAULT_LIVE_MODE,
+      setMode: (mode) => liveHandle.current?.setMode(mode),
+      muted: liveSnapshot?.muted ?? false,
+      setMuted: (muted) => liveHandle.current?.setMuted(muted),
+      send: () => liveHandle.current?.send() ?? Promise.resolve(false),
+      stop: stopLive
+    }),
+    [isLiveConfigured, liveSnapshot, stopLive]
+  );
   const value = useMemo(
     () => ({
       start,
       stop,
       status,
-      isEnabled
+      isEnabled,
+      live: liveControls
     }),
-    [isEnabled, start, status, stop]
+    [isEnabled, liveControls, start, status, stop]
   );
-  const isRecordingVisible = status === "recording" || status === "stopping";
+  const isRecordingVisible = status === "recording" || status === "stopping" && !isLiveStopping;
   return /* @__PURE__ */ jsxs(RiffrecContext.Provider, { value, children: [
     children,
+    isLiveConfigured && live ? /* @__PURE__ */ jsx(Suspense, { fallback: null, children: /* @__PURE__ */ jsx(
+      LiveMount,
+      {
+        config: live,
+        capture: { displayMedia, displayMediaVideo, sanitizeError },
+        onHandle: handleLiveHandle,
+        onSnapshot: handleLiveSnapshot,
+        onEnded: handleLiveEnded,
+        onError: handleLiveError
+      }
+    ) }) : null,
     isRecordingVisible ? /* @__PURE__ */ jsxs("div", { "aria-live": "polite", role: "status", style: recordingOverlayStyle, children: [
       /* @__PURE__ */ jsx("span", { "aria-hidden": "true", style: recordingDotStyle }),
       /* @__PURE__ */ jsxs("span", { style: recordingTextStyle, children: [
@@ -1681,15 +900,38 @@ function useRiffrec() {
   return {
     start: context.start,
     stop: context.stop,
-    status: context.status
+    status: context.status,
+    live: context.live
   };
 }
 export {
+  CHECKPOINT_TRIGGERS,
   DEFAULT_DISPLAY_MEDIA_OPTIONS,
   DEFAULT_DISPLAY_MEDIA_VIDEO,
+  DEFAULT_EXECUTION_MODE,
+  EXECUTION_MODES,
+  FRAME_DROP_REASONS,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_EVENT_TYPES,
+  LIVE_FRAME_BODY_MAX_BYTES,
+  LIVE_SCHEMA_VERSION,
+  LIVE_SESSION_HEADER,
+  LIVE_TOOLS,
+  LIVE_TOOL_NAMES,
+  RECORD_UNIT_TOOL,
+  RELAY_ANSWER_TOOL,
   RiffrecProvider,
   RiffrecRecorder,
+  UNIT_STATUSES,
+  UPDATE_UNIT_TOOL,
+  WITHDRAW_UNIT_TOOL,
   downloadSessionArchive,
-  useRiffrec
+  getLiveTool,
+  inspectEnvelope,
+  isLiveEnvelopeOfType,
+  isLiveEventType,
+  isLiveToolName,
+  useRiffrec,
+  validateEnvelope
 };
 //# sourceMappingURL=index.js.map

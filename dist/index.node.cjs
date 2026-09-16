@@ -1,41 +1,52 @@
-"use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }require('./chunk-G4R6R3NJ.cjs');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+var _chunkN4M47HUUcjs = require('./chunk-N4M47HUU.cjs');
 
 // src/noop.tsx
-var noop_exports = {};
-__export(noop_exports, {
-  RiffrecProvider: () => RiffrecProvider,
-  RiffrecRecorder: () => RiffrecRecorder,
-  downloadSessionArchive: () => downloadSessionArchive,
-  useRiffrec: () => useRiffrec
-});
-module.exports = __toCommonJS(noop_exports);
 function RiffrecProvider({ children }) {
-  return children ?? null;
+  return _nullishCoalesce(children, () => ( null));
 }
+var noopStop = async () => null;
 function useRiffrec() {
   return {
     start: async () => {
     },
-    stop: async () => null,
+    stop: noopStop,
     status: "disabled",
-    isEnabled: false
+    isEnabled: false,
+    live: {
+      status: "disabled",
+      mode: "smart",
+      setMode: () => {
+      },
+      muted: false,
+      setMuted: () => {
+      },
+      send: async () => false,
+      stop: noopStop
+    }
   };
 }
 function RiffrecRecorder() {
@@ -44,11 +55,32 @@ function RiffrecRecorder() {
 function downloadSessionArchive(_filename, _archive) {
   throw new Error("Browser download APIs are not available.");
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  RiffrecProvider,
-  RiffrecRecorder,
-  downloadSessionArchive,
-  useRiffrec
-});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.CHECKPOINT_TRIGGERS = _chunkN4M47HUUcjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_EXECUTION_MODE = _chunkN4M47HUUcjs.DEFAULT_EXECUTION_MODE; exports.EXECUTION_MODES = _chunkN4M47HUUcjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunkN4M47HUUcjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunkN4M47HUUcjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunkN4M47HUUcjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunkN4M47HUUcjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunkN4M47HUUcjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunkN4M47HUUcjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunkN4M47HUUcjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunkN4M47HUUcjs.LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = _chunkN4M47HUUcjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunkN4M47HUUcjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.UNIT_STATUSES = _chunkN4M47HUUcjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunkN4M47HUUcjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunkN4M47HUUcjs.WITHDRAW_UNIT_TOOL; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunkN4M47HUUcjs.getLiveTool; exports.inspectEnvelope = _chunkN4M47HUUcjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunkN4M47HUUcjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunkN4M47HUUcjs.isLiveEventType; exports.isLiveToolName = _chunkN4M47HUUcjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunkN4M47HUUcjs.validateEnvelope;
 //# sourceMappingURL=index.node.cjs.map

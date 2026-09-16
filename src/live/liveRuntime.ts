@@ -4,7 +4,7 @@ import { NetworkCapture } from "../capture/network";
 import { ScreenCapture } from "../capture/screen";
 import { VoiceCapture } from "../capture/voice";
 import type { LiveArchiveInputs } from "../output/session";
-import { createDefaultSegmentStore } from "../output/segmentStore";
+import { createDefaultSegmentStore } from "../output/segmentStores";
 import type {
   CaptureOutputs,
   ClickEvent,
