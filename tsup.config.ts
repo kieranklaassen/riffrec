@@ -9,6 +9,7 @@ export default defineConfig([
     format: ["cjs", "esm"],
     dts: true,
     external: ["react", "react-dom"],
+    splitting: true,
     sourcemap: true,
     clean: true
   }

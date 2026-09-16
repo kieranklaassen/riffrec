@@ -4,7 +4,7 @@
 
 There are already great tools for analytics and passive session replay. Riffrec is for the moments you intentionally turn on recording and capture the gold: the bug reproduction, the confused reaction, the broken flow, the product insight. In the age of AI slop, Riffrec gives agents concrete evidence instead of vague prompts.
 
-Riffrec does not analyze sessions and does not call an LLM. It writes local session files that agents, teammates, or Compound Engineering can inspect after recording.
+Riffrec does not analyze sessions itself. Classic recording calls no LLM and writes local session files that agents, teammates, or Compound Engineering can inspect afterwards. **Live mode**, enabled per provider, streams the session to an endpoint you configure as it happens and runs a voice interviewer that connects to OpenAI Realtime from the browser with an ephemeral secret that endpoint mints; the package never holds a long-lived key and no option accepts one. See [Live Mode](#live-mode).
 
 ## Why
 
@@ -64,6 +64,7 @@ interface RiffrecConfig {
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
   sanitizeError?: (msg: string, stack: string | null) => string;
+  live?: RiffrecLiveConfig; // see Live Mode
 }
 ```
 
@@ -92,10 +93,10 @@ That enables recording for URLs such as `?recordingDebug=1`. The param only bypa
 Use the hook when you want to build your own recording controls:
 
 ```ts
-const { start, stop, status } = useRiffrec();
+const { start, stop, status, live } = useRiffrec();
 ```
 
-`status` is one of `"idle"`, `"recording"`, `"stopping"`, `"disabled"`, or `"error"`. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. After the download starts, it shows a confirmation telling the user to share the zip for feedback. Host apps can customize that confirmation with `downloadNoticeTitle` and `downloadNoticeMessage`. `stop()` downloads a zip file and returns:
+`status` is one of `"idle"`, `"recording"`, `"live"`, `"stopping"`, `"disabled"`, or `"error"`. `live` is the live-mode control slice described under [Live Mode](#live-mode); it reads `"disabled"` for hosts that do not enable live mode. While recording, `RiffrecProvider` renders a fixed stop control above the host app so the user always has a clear "Stop and save" action. After the download starts, it shows a confirmation telling the user to share the zip for feedback. Host apps can customize that confirmation with `downloadNoticeTitle` and `downloadNoticeMessage`. `stop()` downloads a zip file and returns:
 
 ```ts
 {
@@ -120,6 +121,67 @@ Hosts that upload or otherwise manage the archive can disable the automatic down
 ```
 
 Use the exported `downloadSessionArchive(filename, archive)` helper when a host-managed flow needs to offer a later local-download fallback.
+
+## Live Mode
+
+Live mode turns a session into a stream instead of a zip you hand over afterwards. While the person riffs, a **voice interviewer** listens, extracts one **unit** per requested change, and asks a clarifying question the moment something is ambiguous; a **drawing layer** lets them circle and pin elements; a **board** shows every unit and its status; and every event streams to an **endpoint** you configure, where a consumer such as `ce-polish` wakes a coding agent at each **checkpoint**. Live mode still records the screen and microphone locally, and `stop()` still assembles the zip.
+
+Enable it with the `live` prop:
+
+```tsx
+<RiffrecProvider forceEnable live={{}}>
+  <App />
+</RiffrecProvider>
+```
+
+```ts
+interface RiffrecLiveConfig {
+  endpoint?: string;        // fallback endpoint origin when the URL fragment carries none
+  profile?: EvidenceProfileName | Partial<EvidenceProfile>; // what a unit carries on the wire; default "default"
+  autoStart?: boolean;      // open the consent step as soon as the live code is ready
+  drawShortcut?: string | null; // drawing-layer shortcut; default "Alt+Shift+D", null disables
+  endpointOwner?: string;   // who runs the endpoint, named in the consent copy
+}
+```
+
+**Lazy loading.** The live subtree — session, stream client, Realtime client, overlay, drawing layer, evidence capture — is a separate chunk loaded with `React.lazy` only when `live` is set and the production guard allows. A host that never sets `live` ships none of it and makes no new network calls. The production guard applies unchanged: without `forceEnable` (or the URL param) live mode renders nothing in production.
+
+**Bootstrap.** The consumer hands the page its session credentials in the URL fragment: `#riffrec_live=<page token>&endpoint=<origin>`. Riffrec reads both on load, strips them from the URL before any history entry exists, and keeps them in `sessionStorage` for the session. `live.endpoint` is a fallback for hosts that run a fixed endpoint. Every request to the endpoint carries `Authorization: Bearer <page token>` and `X-Riffrec-Session`; the token never travels in a URL. Requests to the endpoint origin and to `api.openai.com` are excluded from network capture, and `riffrec_live`/`endpoint` fragment keys are stripped from every captured URL.
+
+**Starting.** `start()` opens a consent step that names what will be streamed and to whom, derived from the active evidence profile: microphone audio and the session brief to OpenAI Realtime; transcript, units, strokes, frames, events, and any profile-enabled audio clips or telemetry to the named endpoint. Accepting acquires one microphone stream that is shared by the interviewer, the local `voice.webm` recording, and the utterance audio clips, then asks to share the screen. A denied microphone or a declined screen share keeps the session going with drawing and board only. With no endpoint configured the interviewer does not run (nothing can mint its secret) and the session records locally with annotations.
+
+**Voice.** The interviewer connects to OpenAI Realtime over WebRTC from the browser using an ephemeral client secret the endpoint mints (`POST /mint`); the package holds no OpenAI key and no provider option accepts one. Frames and screenshots go to the endpoint only, never to OpenAI. The endpoint's mint, stream, and wake contract is documented in [docs/live-stream-contract.md](docs/live-stream-contract.md), and the types, `validateEnvelope`, and fixtures are exported from the package root and the Node entry for endpoint authors.
+
+**Controls.** `useRiffrec().live` exposes:
+
+```ts
+interface RiffrecLiveControls {
+  status: LiveSessionStatus | "disabled"; // idle | consenting | connecting | live | live_novoice | buffering | reconnecting | incompatible | ended | error
+  mode: "instant" | "smart" | "collect";  // execution mode; each change streams a "mode" event
+  setMode: (mode) => void;                // leaving Collect makes the endpoint wake the agent (mode_change)
+  muted: boolean;
+  setMuted: (muted: boolean) => void;     // mutes the interviewer, voice.webm, and clips together
+  send: () => Promise<boolean>;           // emits a "send" checkpoint
+  stop: () => Promise<SessionResult | null>; // ends the session and assembles the archive
+}
+```
+
+The overlay's own controls cover the same ground: a live indicator that distinguishes streaming, buffering, muted, and paused; the Instant / Smart / Collect switch; Send (a `send` checkpoint) and Done (the confirmation pass, then the `final` checkpoint, which always wakes the agent with the remaining backlog); withdraw and typed replies on the board; and a pause that stops frames and the stream while the local screen recording continues.
+
+**Reloads.** A live session survives a page reload, a crash, and the provider unmounting: its state is persisted to `sessionStorage` and rehydrated on the next mount, delivery resumes with sequence numbers intact, the interviewer reconnects and re-seeds from the transcript, and the overlay asks once to share the screen again. Only `stop()`, the Done control, or the endpoint ending the session end it, and each assembles the archive.
+
+**Archive additions.** A live session's zip adds to the classic files:
+
+```text
+transcript.json      # when the interviewer ran
+units.json           # units with status and the end-of-session confirmations
+annotations.json     # strokes and pins with their anchors
+frames/<id>.jpg      # gesture, periodic, and composited frames
+clips/<id>.webm      # utterance audio clips, when the profile enables them
+recording.webm, recording-002.webm, ...  # one segment per screen share, split at reloads
+```
+
+`events.json` is unchanged, `voice.webm` stays, and `session.json.files_present` lists every file.
 
 ## Built-In Consent UI
 
@@ -151,6 +213,8 @@ events.json
 recording.webm
 voice.webm         # when microphone narration was captured
 ```
+
+Live sessions add `transcript.json`, `units.json`, `annotations.json`, `frames/`, `clips/`, and further `recording-NNN.webm` segments; see [Live Mode](#live-mode).
 
 The experimental desktop preview uses the same core session format and may additionally include `context.json` and `notes.md`.
 
@@ -210,7 +274,7 @@ Riffrec stores website cookies and local storage only in its dedicated local bro
 
 ## Privacy Notes
 
-Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. The React integration excludes password and hidden input values. The experimental desktop preview excludes text inside form fields and editable controls from DOM click evidence. Screen video and microphone audio can still contain sensitive content.
+Riffrec is development tooling. It can record anything visible on screen and anything spoken into the microphone. The React integration excludes password and hidden input values. In live mode, microphone audio and the consumer's session brief go to OpenAI Realtime, and transcript, units, strokes, frames, and events go to the configured endpoint as they happen; the consent step names both destinations, screenshots and frames exclude nothing automatically, and the riffer can mute the microphone or pause frames and the stream at any time. The experimental desktop preview excludes text inside form fields and editable controls from DOM click evidence. Screen video and microphone audio can still contain sensitive content.
 
 Uninstrumented production sessions still include rich DOM context. Production React component names are only reliable when elements include `data-component`. React Fiber names are useful in development but often minified in production. A future `riffrec-babel-plugin` package can automate production component attributes.
 
@@ -218,4 +282,4 @@ The experimental desktop preview loads remote pages in an Electron browser surfa
 
 ## Bundle Notes
 
-React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` is the only runtime dependency and powers zip downloads.
+React and React DOM are peer dependencies and are externalized from the package bundle. `fflate` powers zip downloads. `perfect-freehand` (MIT, ~4.5 KB minified) draws the live drawing layer and lives only in the lazily loaded live chunk; hosts that never set `live` do not download it.

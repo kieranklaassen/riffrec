@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added **live mode**: `RiffrecProvider` accepts `live={{ endpoint?, profile?, autoStart?, drawShortcut?, endpointOwner? }}` and `useRiffrec()` gains `live: { status, mode, setMode, muted, setMuted, send, stop }`. A live session streams transcript, units, annotations, frames, and the existing events to a configured endpoint as they happen (stream contract `live/1`, see `docs/live-stream-contract.md`), runs a voice interviewer that connects to OpenAI Realtime from the browser with an ephemeral secret the endpoint mints, adds a drawing layer, a units board, an Instant / Smart / Collect execution-mode switch, Send and Done controls, a consent step derived from the evidence profile, and a live indicator. Credentials arrive in the URL fragment (`#riffrec_live=<token>&endpoint=<origin>`) and are stripped before any history entry; no provider option accepts an OpenAI key.
+- Added a `"live"` `RiffrecStatus`. A live session survives page reloads and the provider unmounting; it ends only through `stop()`, the Done control (which emits the `final` checkpoint), or the endpoint. Checkpoints of kind `answer`, `mode_change`, and `final` always wake the consumer (`ALWAYS_WAKE_TRIGGERS`).
+- The live subtree is lazy-loaded (`React.lazy`) and emitted as a separate chunk in both ESM and CJS output; hosts that do not set `live` ship no live code and make no new network calls.
+- Live archives add `transcript.json`, `units.json`, `annotations.json`, `frames/`, `clips/`, and segmented `recording-NNN.webm` files listed in `session.json.files_present`; `events.json` and `voice.webm` are unchanged. The 50 MB recording guard applies to the whole recording family.
+- Network capture excludes the live endpoint origin and `api.openai.com`, and `redactUrl` strips the `riffrec_live` and `endpoint` fragment keys from captured URLs.
+- Exported the live stream contract (types, `validateEnvelope`, tool definitions, fixtures) from the package root and the Node entry, plus `EvidenceProfile`, `EvidenceProfileName`, and `LiveSessionStatus` types.
 - Added host-managed session output: completed ZIPs now include their archive, filename, and session ID in `SessionResult`.
 - Added a per-recording `download` option and reliable completion callbacks for both recorder and provider stop controls while keeping automatic downloads as the default.
 - Exported `downloadSessionArchive` for explicit local-download fallbacks.

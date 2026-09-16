@@ -4,7 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RiffrecContext } from "./RiffrecProvider";
 import { RiffrecRecorder } from "./RiffrecRecorder";
-import type { RiffrecContextValue } from "./types";
+import type { RiffrecContextValue, RiffrecLiveControls } from "./types";
+
+const noopLive: RiffrecLiveControls = {
+  status: "disabled",
+  mode: "smart",
+  setMode: () => {},
+  muted: false,
+  setMuted: () => {},
+  send: async () => false,
+  stop: async () => null
+};
 
 const actEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -33,7 +43,8 @@ describe("RiffrecRecorder", () => {
       start,
       stop: vi.fn(async () => null),
       status: "idle",
-      isEnabled: true
+      isEnabled: true,
+      live: noopLive
     };
 
     await act(async () => {
@@ -70,7 +81,8 @@ describe("RiffrecRecorder", () => {
       start,
       stop: vi.fn(async () => null),
       status: "idle",
-      isEnabled: true
+      isEnabled: true,
+      live: noopLive
     };
 
     await act(async () => {

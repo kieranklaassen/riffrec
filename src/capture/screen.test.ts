@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemorySegmentStore, type SegmentStore } from "../output/segmentStore";
+import type { SegmentStore } from "../output/segmentStore";
+import { MemorySegmentStore } from "../output/segmentStores";
 import {
   DEFAULT_DISPLAY_MEDIA_OPTIONS,
   DEFAULT_DISPLAY_MEDIA_VIDEO,

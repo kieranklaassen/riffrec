@@ -5,3 +5,7 @@ export { DEFAULT_DISPLAY_MEDIA_OPTIONS, DEFAULT_DISPLAY_MEDIA_VIDEO } from "./ca
 export { downloadSessionArchive } from "./output/zip";
 export type * from "./types";
 export * from "./live";
+// Live-mode types hosts need for `live.profile` and `useRiffrec().live.status`;
+// type-only, so the live chunk stays lazy (KTD1).
+export type { EvidenceFrames, EvidenceProfile, EvidenceProfileName } from "./live/evidence/profile";
+export type { LiveSessionStatus } from "./live/session";

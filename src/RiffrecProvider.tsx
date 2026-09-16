@@ -1,5 +1,7 @@
 import {
+  Suspense,
   createContext,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -15,15 +17,28 @@ import { NetworkCapture } from "./capture/network";
 import { ScreenCapture } from "./capture/screen";
 import { VoiceCapture } from "./capture/voice";
 import { SessionWriter } from "./output/session";
+import type { LiveHandle } from "./live/LiveOverlay";
+import type { LiveSessionSnapshot } from "./live/session";
 import type {
   CaptureOutputs,
   RiffrecConfig,
   RiffrecContextValue,
   RiffrecEvent,
+  RiffrecLiveControls,
+  RiffrecLiveMode,
   RiffrecSessionOptions,
   RiffrecStatus,
   SessionResult
 } from "./types";
+
+/**
+ * KTD1: the live subtree (session, interviewer, overlay, evidence) is a
+ * separate chunk requested only when `live` is configured and the production
+ * guard allows. Nothing else in this module imports `./live` at runtime.
+ */
+const LiveMount = lazy(() => import("./live/LiveOverlay"));
+
+const DEFAULT_LIVE_MODE: RiffrecLiveMode = "smart";
 
 const DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 const ENABLE_PARAM_VALUES = new Set(["", "1", "true", "on", "yes"]);
@@ -198,6 +213,7 @@ export function RiffrecProvider({
   downloadNoticeMessage = "Share the zip file for feedback.",
   forceEnable,
   forceEnableParam,
+  live,
   onError,
   sanitizeError
 }: RiffrecProviderProps): React.ReactElement {
@@ -210,12 +226,25 @@ export function RiffrecProvider({
     displayMediaVideo,
     forceEnable,
     forceEnableParam,
+    live,
     onError,
     sanitizeError
   });
   const didWarnDisabled = useRef(false);
   const isEnabled =
     forceEnable || isEnabledByUrlParam(forceEnableParam) || readNodeEnv() !== "production";
+  const isLiveConfigured = live !== undefined && isEnabled;
+
+  // Live mode (U7). The handle arrives once the lazy chunk has mounted; `start()` waits for it.
+  const liveHandle = useRef<LiveHandle | null>(null);
+  const liveHandleWaiters = useRef<Array<(handle: LiveHandle | null) => void>>([]);
+  const [isLiveReady, setLiveReady] = useState(false);
+  const [liveSnapshot, setLiveSnapshot] = useState<LiveSessionSnapshot | null>(null);
+  /** True from consent through the archive: `stop()` routes to the live path and unmount leaves it alone (KTD16). */
+  const liveActive = useRef(false);
+  const liveStopping = useRef<Promise<SessionResult | null> | null>(null);
+  const [isLiveStopping, setLiveStopping] = useState(false);
+  const didAutoStart = useRef(false);
 
   useEffect(() => {
     configRef.current = {
@@ -223,10 +252,11 @@ export function RiffrecProvider({
       displayMediaVideo,
       forceEnable,
       forceEnableParam,
+      live,
       onError,
       sanitizeError
     };
-  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, onError, sanitizeError]);
+  }, [displayMedia, displayMediaVideo, forceEnable, forceEnableParam, live, onError, sanitizeError]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -240,7 +270,60 @@ export function RiffrecProvider({
     }
   }, [isEnabled]);
 
+  const setStatusNow = useCallback((next: RiffrecStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
+  /** Ends a live session and assembles the archive (R4): recording segments, voice, events, and the live files. */
+  const stopLive = useCallback(async (): Promise<SessionResult | null> => {
+    if (liveStopping.current) return liveStopping.current;
+    const handle = liveHandle.current;
+    if (!handle) return null;
+
+    const run = (async (): Promise<SessionResult | null> => {
+      setLiveStopping(true);
+      setStatusNow("stopping");
+      try {
+        const stopped = await handle.stop();
+        liveActive.current = false;
+        if (!stopped) {
+          setStatusNow("idle");
+          return null;
+        }
+        const writer = new SessionWriter({ reactVersion: React.version });
+        const result = await writer.stop(stopped.outputs, {
+          download: stopped.options.download,
+          live: stopped.live,
+          recordingSegments: stopped.recordingSegments
+        });
+        await stopped.options.onSessionComplete?.(result);
+        setStatusNow("idle");
+        // The ended card already stands in for the notice when the endpoint ended the session.
+        setDownloadNoticeVisible(stopped.options.download !== false && stopped.endedBy === "stop");
+        return result;
+      } catch (error) {
+        liveActive.current = false;
+        configRef.current.onError?.(toError(error));
+        setStatusNow("error");
+        return null;
+      } finally {
+        setLiveStopping(false);
+      }
+    })();
+    liveStopping.current = run;
+    try {
+      return await run;
+    } finally {
+      liveStopping.current = null;
+    }
+  }, [setStatusNow]);
+
   const stop = useCallback(async (): Promise<SessionResult | null> => {
+    if (liveActive.current) {
+      return stopLive();
+    }
+
     const session = activeSession.current;
     if (!session || statusRef.current !== "recording") {
       return null;
@@ -291,6 +374,11 @@ export function RiffrecProvider({
       setStatus("error");
       return null;
     }
+  }, [stopLive]);
+
+  const awaitLiveHandle = useCallback((): Promise<LiveHandle | null> => {
+    if (liveHandle.current) return Promise.resolve(liveHandle.current);
+    return new Promise((resolve) => liveHandleWaiters.current.push(resolve));
   }, []);
 
   const start = useCallback(async (options: RiffrecSessionOptions = {}): Promise<void> => {
@@ -298,7 +386,15 @@ export function RiffrecProvider({
       return;
     }
 
-    if (statusRef.current === "recording" || statusRef.current === "stopping") {
+    if (statusRef.current === "recording" || statusRef.current === "stopping" || liveActive.current) {
+      return;
+    }
+
+    if (isLiveConfigured) {
+      setDownloadNoticeVisible(false);
+      const handle = await awaitLiveHandle();
+      if (!handle || liveActive.current || liveStopping.current) return;
+      handle.begin(options);
       return;
     }
 
@@ -365,25 +461,118 @@ export function RiffrecProvider({
       setStatus("error");
       throw err;
     }
-  }, [isEnabled]);
+  }, [awaitLiveHandle, isEnabled, isLiveConfigured]);
 
-  useEffect(() => () => void stop(), [stop]);
+  // KTD16: a live session survives the provider unmounting; only classic sessions stop here.
+  useEffect(
+    () => () => {
+      if (!liveActive.current) void stop();
+    },
+    [stop]
+  );
+
+  const handleLiveHandle = useCallback((handle: LiveHandle | null) => {
+    liveHandle.current = handle;
+    setLiveReady(handle !== null);
+    if (handle) {
+      for (const resolve of liveHandleWaiters.current.splice(0)) resolve(handle);
+    }
+  }, []);
+
+  const handleLiveSnapshot = useCallback(
+    (snapshot: LiveSessionSnapshot) => {
+      setLiveSnapshot(snapshot);
+      if (liveStopping.current) return;
+      switch (snapshot.status) {
+        case "idle":
+          if (liveActive.current) {
+            liveActive.current = false;
+            setStatusNow("idle");
+          }
+          return;
+        case "ended":
+          // The runtime reports `onEnded`; the archive path owns the status from there.
+          return;
+        case "error":
+          liveActive.current = true;
+          setStatusNow("error");
+          return;
+        case "consenting":
+        case "connecting":
+        case "live":
+        case "live_novoice":
+        case "buffering":
+        case "reconnecting":
+        case "incompatible":
+          liveActive.current = true;
+          if (statusRef.current !== "live") setStatusNow("live");
+          return;
+        default: {
+          const exhaustive: never = snapshot.status;
+          return exhaustive;
+        }
+      }
+    },
+    [setStatusNow]
+  );
+
+  const handleLiveEnded = useCallback(() => {
+    liveActive.current = true;
+    void stopLive();
+  }, [stopLive]);
+
+  const handleLiveError = useCallback((error: Error) => {
+    configRef.current.onError?.(error);
+  }, []);
+
+  useEffect(() => {
+    if (!isLiveConfigured || !live?.autoStart || !isLiveReady || didAutoStart.current) return;
+    if (statusRef.current !== "idle" || liveActive.current) return;
+    didAutoStart.current = true;
+    void start();
+  }, [isLiveConfigured, isLiveReady, live?.autoStart, start]);
+
+  const liveControls = useMemo<RiffrecLiveControls>(
+    () => ({
+      status: isLiveConfigured ? (liveSnapshot?.status ?? "idle") : "disabled",
+      mode: liveSnapshot?.mode ?? DEFAULT_LIVE_MODE,
+      setMode: (mode) => liveHandle.current?.setMode(mode),
+      muted: liveSnapshot?.muted ?? false,
+      setMuted: (muted) => liveHandle.current?.setMuted(muted),
+      send: () => liveHandle.current?.send() ?? Promise.resolve(false),
+      stop: stopLive
+    }),
+    [isLiveConfigured, liveSnapshot, stopLive]
+  );
 
   const value = useMemo<RiffrecContextValue>(
     () => ({
       start,
       stop,
       status,
-      isEnabled
+      isEnabled,
+      live: liveControls
     }),
-    [isEnabled, start, status, stop]
+    [isEnabled, liveControls, start, status, stop]
   );
 
-  const isRecordingVisible = status === "recording" || status === "stopping";
+  const isRecordingVisible = status === "recording" || (status === "stopping" && !isLiveStopping);
 
   return (
     <RiffrecContext.Provider value={value}>
       {children}
+      {isLiveConfigured && live ? (
+        <Suspense fallback={null}>
+          <LiveMount
+            config={live}
+            capture={{ displayMedia, displayMediaVideo, sanitizeError }}
+            onHandle={handleLiveHandle}
+            onSnapshot={handleLiveSnapshot}
+            onEnded={handleLiveEnded}
+            onError={handleLiveError}
+          />
+        </Suspense>
+      ) : null}
       {isRecordingVisible ? (
         <div aria-live="polite" role="status" style={recordingOverlayStyle}>
           <span aria-hidden="true" style={recordingDotStyle} />

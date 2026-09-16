@@ -1,5 +1,5 @@
 import type { LiveAnchor, LiveMintResponse, LiveTranscript, LiveUnit } from "../contract";
-import type { LiveSession } from "../session";
+import type { LiveSession, RecordUnitInput } from "../session";
 import type {
   LiveToolCall,
   LiveToolResult,
@@ -82,11 +82,24 @@ export interface DrawingAnnouncement {
   kind?: "stroke" | "pin";
 }
 
+/**
+ * Evidence capture (U6) sits between the tools and the session: `record_unit`
+ * goes through `LiveEvidence.recordUnit` so the unit carries its frame, clip,
+ * and claimed annotations, and speech events reach the attacher and the clip
+ * recorder beside the session's checkpoint emitter.
+ */
+export interface InterviewerEvidenceHooks {
+  recordUnit?: (input: RecordUnitInput) => LiveUnit;
+  speechStarted?: () => void;
+  speechStopped?: () => void;
+}
+
 export interface InterviewerOptions {
   session: LiveSession;
   /** Builds a transport for one connection; called again on every reconnect. */
   connect: (secret: LiveMintResponse) => RealtimeTransport | Promise<RealtimeTransport>;
   microphone?: SharedMicrophone | null;
+  evidence?: InterviewerEvidenceHooks | null;
   fetch?: typeof fetch;
   now?: () => number;
   setTimeout?: (callback: () => void, ms: number) => unknown;
@@ -195,6 +208,7 @@ export class Interviewer {
   private readonly session: LiveSession;
   private readonly connectTransport: InterviewerOptions["connect"];
   private readonly microphone: SharedMicrophone | null;
+  private readonly evidence: InterviewerEvidenceHooks | null;
   private readonly fetchImpl: typeof fetch | undefined;
   private readonly now: () => number;
   private readonly schedule: (callback: () => void, ms: number) => unknown;
@@ -235,6 +249,7 @@ export class Interviewer {
     this.session = options.session;
     this.connectTransport = options.connect;
     this.microphone = options.microphone ?? null;
+    this.evidence = options.evidence ?? null;
     this.fetchImpl = options.fetch;
     this.now = options.now ?? (() => Date.now());
     this.schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
@@ -525,11 +540,13 @@ export class Interviewer {
         this.clearFlushTimer();
         if (this.voicing) this.voicingInterrupted = true;
         this.session.speechStarted();
+        this.evidence?.speechStarted?.();
         break;
       case "speech_stopped":
         this.rifferSpeaking = false;
         this.silenceAnchor = this.now();
         this.session.speechStopped();
+        this.evidence?.speechStopped?.();
         this.scheduleFlush();
         break;
       case "transcript":
@@ -650,12 +667,13 @@ export class Interviewer {
     const span = this.lastRifferTranscript
       ? { t_start: this.lastRifferTranscript.t_start, t_end: this.lastRifferTranscript.t_end }
       : undefined;
-    const unit = this.session.recordUnit({
+    const input: RecordUnitInput = {
       statement,
       transcript_excerpt: excerpt,
       anchors,
       ...(span ? { evidence: { transcript_span: span } } : {})
-    });
+    };
+    const unit = this.evidence?.recordUnit ? this.evidence.recordUnit(input) : this.session.recordUnit(input);
     return {
       ok: true,
       unit_id: unit.id,

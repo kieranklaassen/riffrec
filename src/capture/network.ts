@@ -11,6 +11,23 @@ interface XhrMeta {
 }
 
 const REDACTED_QUERY_KEYS = new Set(["token", "api_key", "client_secret"]);
+/** Live-mode bootstrap keys (KTD3) — never recorded, even when a captured URL still carries them. */
+const STRIPPED_FRAGMENT_KEYS = new Set(["riffrec_live", "endpoint"]);
+
+function redactFragment(hash: string): string {
+  if (!hash || hash === "#") return hash;
+  const params = new URLSearchParams(hash.slice(1));
+  let stripped = false;
+  for (const key of Array.from(params.keys())) {
+    if (STRIPPED_FRAGMENT_KEYS.has(key.toLowerCase())) {
+      params.delete(key);
+      stripped = true;
+    }
+  }
+  if (!stripped) return hash;
+  const rest = params.toString();
+  return rest ? `#${rest}` : "";
+}
 
 function timestamp(sessionStart: number): number {
   return (Date.now() - sessionStart) / 1000;
@@ -45,12 +62,16 @@ export function redactUrl(value: string): string {
         url.searchParams.set(key, "[redacted]");
       }
     }
+    url.hash = redactFragment(url.hash);
     if (value.startsWith("/") || value.startsWith("?")) {
       return `${url.pathname}${url.search}${url.hash}`.replace(/%5Bredacted%5D/g, "[redacted]");
     }
     return url.href.replace(/%5Bredacted%5D/g, "[redacted]");
   } catch {
-    return value.replace(/([?&](?:token|api_key|client_secret)=)[^&]+/gi, "$1[redacted]");
+    const hashIndex = value.indexOf("#");
+    const withoutHash = hashIndex === -1 ? value : value.slice(0, hashIndex);
+    const hash = hashIndex === -1 ? "" : redactFragment(value.slice(hashIndex));
+    return `${withoutHash.replace(/([?&](?:token|api_key|client_secret)=)[^&#]+/gi, "$1[redacted]")}${hash}`;
   }
 }
 
