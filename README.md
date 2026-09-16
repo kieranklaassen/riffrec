@@ -157,8 +157,8 @@ interface RiffrecLiveConfig {
 ```ts
 interface RiffrecLiveControls {
   status: LiveSessionStatus | "disabled"; // idle | consenting | connecting | live | live_novoice | buffering | reconnecting | incompatible | ended | error
-  mode: "instant" | "smart" | "collect";  // execution mode carried on the next checkpoint
-  setMode: (mode) => void;
+  mode: "instant" | "smart" | "collect";  // execution mode; each change streams a "mode" event
+  setMode: (mode) => void;                // leaving Collect makes the endpoint wake the agent (mode_change)
   muted: boolean;
   setMuted: (muted: boolean) => void;     // mutes the interviewer, voice.webm, and clips together
   send: () => Promise<boolean>;           // emits a "send" checkpoint
@@ -166,7 +166,7 @@ interface RiffrecLiveControls {
 }
 ```
 
-The overlay's own controls cover the same ground: a live indicator that distinguishes streaming, buffering, muted, and paused; the Instant / Smart / Collect switch; Send and Done; withdraw and typed replies on the board; and a pause that stops frames and the stream while the local screen recording continues.
+The overlay's own controls cover the same ground: a live indicator that distinguishes streaming, buffering, muted, and paused; the Instant / Smart / Collect switch; Send (a `send` checkpoint) and Done (the confirmation pass, then the `final` checkpoint, which always wakes the agent with the remaining backlog); withdraw and typed replies on the board; and a pause that stops frames and the stream while the local screen recording continues.
 
 **Reloads.** A live session survives a page reload, a crash, and the provider unmounting: its state is persisted to `sessionStorage` and rehydrated on the next mount, delivery resumes with sequence numbers intact, the interviewer reconnects and re-seeds from the transcript, and the overlay asks once to share the screen again. Only `stop()`, the Done control, or the endpoint ending the session end it, and each assembles the archive.
 
