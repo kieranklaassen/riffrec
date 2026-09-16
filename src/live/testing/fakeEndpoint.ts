@@ -1,4 +1,5 @@
 import {
+  ALWAYS_WAKE_TRIGGERS,
   LIVE_EVENTS_BODY_MAX_BYTES,
   LIVE_FRAME_BODY_MAX_BYTES,
   LIVE_SCHEMA_VERSION,
@@ -144,6 +145,7 @@ export class FakeEndpoint {
   private unackedBatches: LiveWakeBatch[] = [];
   private batchCheckpointByUnit = new Map<string, string>();
   private answerCheckpointCount = 0;
+  private modeChangeCheckpointCount = 0;
   private waiter: ((response: FakeResponse) => void) | null = null;
   private pageLostPending = false;
   private readonly listeners = new Set<ServerEventListener>();
@@ -407,9 +409,26 @@ export class FakeEndpoint {
       case "mic":
         this.mic = envelope.payload.state;
         return;
-      case "mode":
+      case "mode": {
+        const previous = this.mode;
         this.mode = envelope.payload.mode;
+        // KTD12: leaving Collect releases the accepted-but-unapplied backlog as a
+        // `mode_change` wake, served even when nothing is newly held.
+        if (previous === "collect" && this.mode !== "collect") {
+          this.modeChangeCheckpointCount += 1;
+          this.enqueue({
+            schema_version: LIVE_SCHEMA_VERSION,
+            checkpoint_id: `cp_mode_${String(this.modeChangeCheckpointCount).padStart(4, "0")}`,
+            kind: "mode_change",
+            mode_at_checkpoint: this.mode,
+            session_status: "live",
+            units: this.acceptedBacklog(),
+            annotations: [],
+            answers: []
+          });
+        }
         return;
+      }
       case "stream_state":
         this.streamState = envelope.payload.state;
         return;
@@ -420,9 +439,20 @@ export class FakeEndpoint {
     }
   }
 
-  /** Releases held units; a checkpoint that releases nothing does not create a batch. */
+  /** Units the agent reported `accepted` with no `applied`/`blocked` since (KTD12 backlog). */
+  private acceptedBacklog(): LiveUnit[] {
+    return [...this.units.values()].filter((unit) => unit.status === "accepted");
+  }
+
+  /**
+   * Releases held units. A `silence`/`page_change`/`send` checkpoint that releases
+   * nothing does not create a batch; `final` always does and also carries the
+   * accepted-but-unapplied backlog (KTD9, KTD12).
+   */
   release(checkpointId: string, trigger: CheckpointTrigger, mode: ExecutionMode = this.mode): LiveWakeBatch | null {
-    if (this.heldUnitIds.length === 0 && this.postReleaseWithdrawals.length === 0) return null;
+    const alwaysWakes = ALWAYS_WAKE_TRIGGERS.includes(trigger);
+    if (!alwaysWakes && this.heldUnitIds.length === 0 && this.postReleaseWithdrawals.length === 0) return null;
+    const backlog = trigger === "final" ? this.acceptedBacklog() : [];
 
     const released: LiveUnit[] = [];
     for (const id of this.heldUnitIds) {
@@ -441,7 +471,7 @@ export class FakeEndpoint {
       kind: trigger,
       mode_at_checkpoint: mode,
       session_status: "live",
-      units: [...released, ...this.postReleaseWithdrawals],
+      units: [...released, ...this.postReleaseWithdrawals, ...backlog],
       annotations: this.heldAnnotations,
       answers: []
     };
