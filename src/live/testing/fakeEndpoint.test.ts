@@ -32,7 +32,7 @@ function unit(id: string, overrides: Partial<LiveUnit> = {}): LiveUnit {
   return { ...fixturePayload("unit"), id, status: "initial", ...overrides };
 }
 
-function checkpoint(seq: number, id: string, trigger: "silence" | "send" | "page_change" = "silence") {
+function checkpoint(seq: number, id: string, trigger: "silence" | "send" | "page_change" | "final" = "silence") {
   return envelope(seq, "checkpoint", { id, trigger, mode: "smart" });
 }
 
@@ -177,6 +177,43 @@ describe("FakeEndpoint release semantics", () => {
     expect(batch.kind).toBe("answer");
     expect(batch.units).toEqual([]);
     expect(batch.answers).toEqual([{ unit_id: "unit_a", text: "The header one." }]);
+  });
+
+  it("serves a final checkpoint even with nothing held and carries the accepted backlog (KTD9, KTD12)", async () => {
+    const endpoint = await seeded();
+    await endpoint.postEvents([envelope(2, "mode", { mode: "collect" })], SESSION);
+    await endpoint.postEvents([envelope(3, "unit", unit("unit_a")), checkpoint(4, "cp_1", "page_change")], SESSION);
+    await endpoint.wait();
+    await endpoint.ack("cp_1");
+    await endpoint.setUnitStatus("unit_a", "accepted");
+
+    expect(endpoint.release("cp_empty", "silence")).toBeNull();
+
+    await endpoint.postEvents([checkpoint(5, "cp_final", "final")], SESSION);
+    const batch = (await endpoint.wait()).body as LiveWakeBatch;
+    expect(batch.kind).toBe("final");
+    expect(batch.checkpoint_id).toBe("cp_final");
+    expect(batch.units.map((entry) => [entry.id, entry.status])).toEqual([["unit_a", "accepted"]]);
+  });
+
+  it("emits a mode_change wake with the accepted backlog when a mode event leaves Collect (KTD12)", async () => {
+    const endpoint = await seeded();
+    await endpoint.postEvents([envelope(2, "mode", { mode: "collect" })], SESSION);
+    await endpoint.postEvents([envelope(3, "unit", unit("unit_a")), checkpoint(4, "cp_1", "page_change")], SESSION);
+    await endpoint.wait();
+    await endpoint.ack("cp_1");
+    await endpoint.setUnitStatus("unit_a", "accepted");
+
+    await endpoint.postEvents([envelope(5, "mode", { mode: "smart" })], SESSION);
+    const batch = (await endpoint.wait()).body as LiveWakeBatch;
+    expect(batch.kind).toBe("mode_change");
+    expect(batch.mode_at_checkpoint).toBe("smart");
+    expect(batch.units.map((entry) => entry.id)).toEqual(["unit_a"]);
+    expect(batch.answers).toEqual([]);
+
+    await endpoint.ack(batch.checkpoint_id);
+    await endpoint.postEvents([envelope(6, "mode", { mode: "instant" })], SESSION);
+    expect(endpoint.release("cp_none", "send")).toBeNull();
   });
 
   it("re-serves an unacknowledged batch before any new batch and rejects a second waiter", async () => {

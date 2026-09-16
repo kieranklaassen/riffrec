@@ -217,14 +217,19 @@ with the stroke drawn on it) cross-references by `composite_frame_id`.
 ### `checkpoint`
 
 Marks the point up to which held units are released to the consumer. The page
-emits `silence`, `page_change`, and `send`; the endpoint itself produces
-`answer` and `final` checkpoints (they appear in wake batches, not on the wire
-from the page). A checkpoint that releases nothing does not wake the agent.
+emits `silence`, `page_change`, `send`, and `final` (the overlay's Done control,
+after the confirmation pass and before `/session/end`). The endpoint itself
+produces `answer` checkpoints (when an `answer` event arrives) and `mode_change`
+checkpoints (when a `mode` event leaves Collect, KTD12); those two appear only as
+wake-batch kinds, never on the wire from the page. A `silence`, `page_change`,
+or `send` checkpoint that releases nothing does not wake the agent; an `answer`,
+`mode_change`, or `final` checkpoint always wakes it, carrying the answers and
+the accepted-but-unapplied backlog even when the held queue is empty (KTD9).
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | string | yes | Checkpoint id, echoed as `checkpoint_id` in the wake batch. |
-| `trigger` | one of `silence`, `page_change`, `send`, `answer`, `final` | yes | What produced the checkpoint. |
+| `trigger` | one of `silence`, `page_change`, `send`, `answer`, `mode_change`, `final` | yes | What produced the checkpoint. The page sends only `silence`, `page_change`, `send`, `final`. |
 | `mode` | one of `instant`, `smart`, `collect` | yes | Execution mode at emission. |
 
 ### `answer`
@@ -373,10 +378,10 @@ returned once per lost episode. The agent acknowledges a batch with
 |---|---|---|---|
 | `schema_version` | `"live/1"` | yes | Contract version. |
 | `checkpoint_id` | string | yes | Id of the releasing checkpoint. |
-| `kind` | one of `silence`, `page_change`, `send`, `answer`, `final` | yes | What produced the checkpoint. |
+| `kind` | one of `silence`, `page_change`, `send`, `answer`, `mode_change`, `final` | yes | What produced the checkpoint. `answer`, `mode_change`, and `final` batches are served even when no unit was newly held. |
 | `mode_at_checkpoint` | one of `instant`, `smart`, `collect` | yes | Execution mode stamped at release. |
 | `session_status` | one of `live`, `page_lost` | yes | Whether the page is still connected. |
-| `units` | unit[] | yes | Released units (status `triaging`), plus post-release withdrawals as `withdrawn`. |
+| `units` | unit[] | yes | Released units (status `triaging`), plus post-release withdrawals as `withdrawn`. `mode_change` and `final` batches also carry the accepted-but-unapplied backlog (units the agent reported `accepted` with no `applied`/`blocked` since), which is how Collect applies at done (KTD12). |
 | `annotations` | annotation[] | yes | Annotations released with this batch. |
 | `answers` | answer[] | yes | Answers since the last batch; the only member of an `answer` checkpoint. |
 
