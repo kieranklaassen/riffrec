@@ -13,6 +13,8 @@ Riffrec captures everything simultaneously from inside your React app: screen re
 
 The primary loop: install once → record sessions → agents analyze → iterate.
 
+Live mode shortens that loop to the moment itself: with an endpoint configured, the session streams as it happens, a voice interviewer asks while the person is still looking, and a consumer such as `ce-polish` wakes a coding agent at checkpoints. Its requirements, decisions, and units live in the [Live Voice Mode plan](plans/2026-09-15-001-feat-live-voice-mode-plan.md); this document keeps the classic recording contract and records where live mode changes it.
+
 ## Architecture
 
 ```
@@ -101,7 +103,7 @@ Rich DOM context on every event - not just that someone clicked a button, but wh
 
 **Integration**
 - R8. Single `<RiffrecProvider>` component wraps the React app; all capture starts automatically when recording begins
-- R9. `useRiffrec()` hook exposes `{ start, stop, status }` for programmatic control
+- R9. `useRiffrec()` hook exposes `{ start, stop, status, live }` for programmatic control; `live` is the live-mode control slice (`{ status, mode, setMode, muted, setMuted, send, stop }`) and reads `"disabled"` for hosts without live mode
 - R10. Recording requires explicit user gesture to start (`start()` called from a button or keyboard shortcut) due to browser `getDisplayMedia()` requirements
 - R11. Dev-only by default: `RiffrecProvider` checks `process.env.NODE_ENV` at mount time; if `production`, all capture is disabled and a `console.warn` is emitted; explicit opt-in via `<RiffrecProvider forceEnable={true}>` is documented but discouraged; runtime guard only (bundle impact documented, not tree-shaken)
 
@@ -113,7 +115,7 @@ Rich DOM context on every event - not just that someone clicked a button, but wh
 
 **Agent Integration**
 - R16. Session format is the public API - versioned via `schema_version` field in `events.json`; breaking changes documented in CHANGELOG; TypeScript types exported from package for agent authors
-- R17. No LLM calls inside riffrec; no API keys stored in the package; agents supply all analysis capability
+- R17. The package holds no long-lived key and makes no server-side LLM calls; no provider option accepts an API key. Classic recording calls no LLM at all. In live mode the voice interviewer connects to OpenAI Realtime from the browser using an ephemeral client secret minted by the consumer's endpoint, and analysis of the stream is the consumer's job (the coding agent behind the endpoint); riffrec itself still judges nothing. Rewritten for live mode per the [Live Voice Mode plan](plans/2026-09-15-001-feat-live-voice-mode-plan.md) (Key Decisions: "R17 of the original RiffRec requirements is rewritten, not deleted")
 - R18. Sessions are shareable as a zip file; session.json and events.json are always included; recording.webm is optional due to size
 
 ## Success Criteria
@@ -127,8 +129,8 @@ Rich DOM context on every event - not just that someone clicked a button, but wh
 
 - React only in v1 - no Vue, Svelte, Angular, or vanilla JS
 - No Riffrec-operated backend or cloud in v1 - local files only
-- No real-time analysis - analysis happens after `stop()`
-- No LLM calls inside the package - agents analyze the output
+- No analysis inside the package. Classic sessions are analyzed after `stop()` from the zip; live sessions are analyzed by the consumer behind the configured endpoint as the stream arrives. Riffrec extracts and streams, it does not judge (see the [Live Voice Mode plan](plans/2026-09-15-001-feat-live-voice-mode-plan.md), R1–R12)
+- No server-side LLM calls and no stored keys inside the package (R17); the only model call the package makes is the live interviewer's browser-side Realtime connection, with a secret the endpoint mints
 - No plugin architecture in v1 - capture targets are hardcoded
 - File writes are browser-sandboxed; no arbitrary filesystem path access
 
