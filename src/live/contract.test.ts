@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  ALWAYS_WAKE_TRIGGERS,
+  CHECKPOINT_TRIGGERS,
   LIVE_EVENT_TYPES,
   LIVE_SCHEMA_VERSION,
   inspectEnvelope,
@@ -185,6 +187,14 @@ describe("validateEnvelope", () => {
     const unknown = { ...base, type: "telemetry" };
     expect(validateEnvelope(unknown)).toBe(false);
     expect(inspectEnvelope(unknown)).toEqual({ ok: false, reason: "unknown_type", detail: "telemetry" });
+  });
+
+  it("accepts every checkpoint trigger, including the endpoint-emitted mode_change", () => {
+    for (const trigger of CHECKPOINT_TRIGGERS) {
+      expect(validateEnvelope({ ...base, payload: { id: "cp", trigger, mode: "smart" } })).toBe(true);
+    }
+    expect(CHECKPOINT_TRIGGERS).toContain("mode_change");
+    expect(ALWAYS_WAKE_TRIGGERS).toEqual(["answer", "mode_change", "final"]);
   });
 
   it("rejects a payload that does not match its type", () => {

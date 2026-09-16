@@ -74,16 +74,25 @@ export const UNIT_STATUSES: readonly UnitStatus[] = [
   "withdrawn"
 ];
 
-/** `silence`, `page_change`, `send` are page-emitted (KTD9); `answer`, `final` are endpoint-emitted. */
-export type CheckpointTrigger = "silence" | "page_change" | "send" | "answer" | "final";
+/**
+ * KTD9/KTD12: `silence`, `page_change`, `send`, and `final` are page-emitted;
+ * `answer` and `mode_change` are endpoint-emitted and appear only as wake kinds.
+ * `answer`, `mode_change`, and `final` always wake the agent, even with nothing
+ * newly held; `silence`, `page_change`, and `send` wake only when they release work.
+ */
+export type CheckpointTrigger = "silence" | "page_change" | "send" | "answer" | "mode_change" | "final";
 
 export const CHECKPOINT_TRIGGERS: readonly CheckpointTrigger[] = [
   "silence",
   "page_change",
   "send",
   "answer",
+  "mode_change",
   "final"
 ];
+
+/** Wake kinds served even when the held queue is empty (KTD9). */
+export const ALWAYS_WAKE_TRIGGERS: readonly CheckpointTrigger[] = ["answer", "mode_change", "final"];
 
 export type MicState = "granted" | "denied" | "muted" | "unmuted";
 
