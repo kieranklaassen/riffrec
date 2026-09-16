@@ -12,6 +12,7 @@ export function useRiffrec(): UseRiffrecResult {
   return {
     start: context.start,
     stop: context.stop,
-    status: context.status
+    status: context.status,
+    live: context.live
   };
 }

@@ -5,12 +5,23 @@ export function RiffrecProvider({ children }: { children?: ReactNode }): ReactNo
   return children ?? null;
 }
 
+const noopStop = async (): Promise<SessionResult | null> => null;
+
 export function useRiffrec(): RiffrecContextValue {
   return {
     start: async () => {},
-    stop: async (): Promise<SessionResult | null> => null,
+    stop: noopStop,
     status: "disabled",
-    isEnabled: false
+    isEnabled: false,
+    live: {
+      status: "disabled",
+      mode: "smart",
+      setMode: () => {},
+      muted: false,
+      setMuted: () => {},
+      send: async () => false,
+      stop: noopStop
+    }
   };
 }
 

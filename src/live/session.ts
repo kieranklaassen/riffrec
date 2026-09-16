@@ -299,6 +299,7 @@ export class LiveSession {
   private error: LiveSessionError | null = null;
   private rehydrated = false;
   private started = false;
+  private suspended = false;
 
   private readonly units: UnitStore;
   private readonly annotations: LiveAnnotation[] = [];
@@ -591,6 +592,27 @@ export class LiveSession {
     }
     this.persist();
     this.notify();
+  }
+
+  /**
+   * Detaches from the page without ending the session (KTD16): the provider
+   * unmounting mid-session persists the state, closes delivery, and leaves
+   * every `sessionStorage` key and stored frame in place for `rehydrate()`.
+   * The instance is inert afterwards.
+   */
+  suspend(): void {
+    if (this.phase === "ended" || this.suspended) return;
+    this.suspended = true;
+    this.persist();
+    this.emitter.dispose();
+    for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
+    this.client?.close();
+    this.detachPageHide();
+    this.notify();
+  }
+
+  get isSuspended(): boolean {
+    return this.suspended;
   }
 
   /** Ends the session locally, clears every key and frame it wrote, and returns the archive inputs. */

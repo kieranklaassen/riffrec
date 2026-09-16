@@ -1,8 +1,16 @@
+import type { ExecutionMode } from "./live/contract";
+import type { EvidenceProfile, EvidenceProfileName } from "./live/evidence/profile";
+import type { LiveSessionStatus } from "./live/session";
+
 export const RIFFREC_SCHEMA_VERSION = "1.0.0" as const;
 
 export type RiffrecSchemaVersion = typeof RIFFREC_SCHEMA_VERSION;
 
-export type RiffrecStatus = "idle" | "recording" | "stopping" | "disabled" | "error";
+/**
+ * `live` marks a live session (KTD16): unlike `recording`, unmounting the
+ * provider does not end it, and the next mount rehydrates it.
+ */
+export type RiffrecStatus = "idle" | "recording" | "live" | "stopping" | "disabled" | "error";
 
 export type RiffrecWriteMethod = "zip";
 
@@ -113,6 +121,46 @@ export type RiffrecDisplayMediaOptions = DisplayMediaStreamOptions & {
   systemAudio?: "include" | "exclude";
 };
 
+export type RiffrecLiveMode = ExecutionMode;
+
+/**
+ * Live mode (I5). Setting `live` on the provider lazy-loads the live subtree;
+ * `start()` then runs a live session instead of a classic recording. The page
+ * token and endpoint origin normally arrive in the URL fragment
+ * (`#riffrec_live=<token>&endpoint=<origin>`); `endpoint` is a fallback for
+ * hosts that run a fixed endpoint. No option accepts an OpenAI key: the
+ * endpoint mints the interviewer's ephemeral secret (R5).
+ */
+export interface RiffrecLiveConfig {
+  /** Fallback endpoint origin when the fragment carries none. */
+  endpoint?: string;
+  /** Evidence profile applied on the wire (R19); defaults to `"default"`. */
+  profile?: EvidenceProfileName | Partial<EvidenceProfile>;
+  /** Begin the consent step as soon as the live subtree is ready. */
+  autoStart?: boolean;
+  /** Keyboard shortcut for the drawing layer; `null` disables it. Defaults to `Alt+Shift+D`. */
+  drawShortcut?: string | null;
+  /** Who runs the endpoint, named in the consent copy (R26). */
+  endpointOwner?: string;
+}
+
+/** `"disabled"` when the provider has no `live` config or is disabled in production. */
+export type RiffrecLiveStatus = LiveSessionStatus | "disabled";
+
+export interface RiffrecLiveControls {
+  status: RiffrecLiveStatus;
+  mode: RiffrecLiveMode;
+  /** Takes effect at the next checkpoint (KTD12). */
+  setMode: (mode: RiffrecLiveMode) => void;
+  muted: boolean;
+  /** Mutes the interviewer, the voice recording, and the audio clips together (KTD21). */
+  setMuted: (muted: boolean) => void;
+  /** Emits a `send` checkpoint; resolves with whether one left the page. */
+  send: () => Promise<boolean>;
+  /** Ends the live session and assembles the archive (R4). */
+  stop: () => Promise<SessionResult | null>;
+}
+
 export interface RiffrecConfig {
   /**
    * Override default screen-capture options passed to `getDisplayMedia()`.
@@ -128,6 +176,8 @@ export interface RiffrecConfig {
   forceEnableParam?: boolean | string;
   onError?: (err: Error) => void;
   sanitizeError?: (msg: string, stack: string | null) => string;
+  /** Enable live mode (I5). Absent: classic recording, no live code loaded. */
+  live?: RiffrecLiveConfig;
 }
 
 export interface RiffrecContextValue {
@@ -135,9 +185,10 @@ export interface RiffrecContextValue {
   stop: () => Promise<SessionResult | null>;
   status: RiffrecStatus;
   isEnabled: boolean;
+  live: RiffrecLiveControls;
 }
 
-export type UseRiffrecResult = Pick<RiffrecContextValue, "start" | "stop" | "status">;
+export type UseRiffrecResult = Pick<RiffrecContextValue, "start" | "stop" | "status" | "live">;
 
 export interface CaptureOutputs {
   sessionId: string;
