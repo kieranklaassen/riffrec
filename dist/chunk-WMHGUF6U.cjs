@@ -1,4 +1,4 @@
-// src/live/tools.ts
+"use strict";Object.defineProperty(exports, "__esModule", {value: true});// src/live/tools.ts
 var LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer"];
 var anchorsProperty = {
   type: "array",
@@ -126,8 +126,10 @@ var CHECKPOINT_TRIGGERS = [
   "page_change",
   "send",
   "answer",
+  "mode_change",
   "final"
 ];
+var ALWAYS_WAKE_TRIGGERS = ["answer", "mode_change", "final"];
 var FRAME_DROP_REASONS = ["quota", "oversize"];
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -269,28 +271,29 @@ function isLiveEnvelopeOfType(envelope, type) {
   return envelope.type === type;
 }
 
-export {
-  LIVE_TOOL_NAMES,
-  RECORD_UNIT_TOOL,
-  UPDATE_UNIT_TOOL,
-  WITHDRAW_UNIT_TOOL,
-  RELAY_ANSWER_TOOL,
-  LIVE_TOOLS,
-  isLiveToolName,
-  getLiveTool,
-  LIVE_SCHEMA_VERSION,
-  LIVE_SESSION_HEADER,
-  LIVE_EVENTS_BODY_MAX_BYTES,
-  LIVE_FRAME_BODY_MAX_BYTES,
-  LIVE_EVENT_TYPES,
-  EXECUTION_MODES,
-  DEFAULT_EXECUTION_MODE,
-  UNIT_STATUSES,
-  CHECKPOINT_TRIGGERS,
-  FRAME_DROP_REASONS,
-  isLiveEventType,
-  inspectEnvelope,
-  validateEnvelope,
-  isLiveEnvelopeOfType
-};
-//# sourceMappingURL=chunk-J2APQL3M.js.map
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.LIVE_TOOL_NAMES = LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = RECORD_UNIT_TOOL; exports.UPDATE_UNIT_TOOL = UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = WITHDRAW_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = RELAY_ANSWER_TOOL; exports.LIVE_TOOLS = LIVE_TOOLS; exports.isLiveToolName = isLiveToolName; exports.getLiveTool = getLiveTool; exports.LIVE_SCHEMA_VERSION = LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = LIVE_SESSION_HEADER; exports.LIVE_EVENTS_BODY_MAX_BYTES = LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_FRAME_BODY_MAX_BYTES = LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = LIVE_EVENT_TYPES; exports.EXECUTION_MODES = EXECUTION_MODES; exports.DEFAULT_EXECUTION_MODE = DEFAULT_EXECUTION_MODE; exports.UNIT_STATUSES = UNIT_STATUSES; exports.CHECKPOINT_TRIGGERS = CHECKPOINT_TRIGGERS; exports.ALWAYS_WAKE_TRIGGERS = ALWAYS_WAKE_TRIGGERS; exports.FRAME_DROP_REASONS = FRAME_DROP_REASONS; exports.isLiveEventType = isLiveEventType; exports.inspectEnvelope = inspectEnvelope; exports.validateEnvelope = validateEnvelope; exports.isLiveEnvelopeOfType = isLiveEnvelopeOfType;
+//# sourceMappingURL=chunk-WMHGUF6U.cjs.map

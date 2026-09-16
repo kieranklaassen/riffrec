@@ -1243,6 +1243,87 @@ var VoiceCapture = class {
   }
 };
 
+// src/live/tokenBootstrap.ts
+var LIVE_FRAGMENT_TOKEN_KEY = "riffrec_live";
+var LIVE_FRAGMENT_ENDPOINT_KEY = "endpoint";
+var LIVE_BOOTSTRAP_STORAGE_KEY = "riffrec:live:bootstrap";
+var nativeReplaceState = typeof History !== "undefined" && typeof History.prototype.replaceState === "function" ? History.prototype.replaceState : null;
+function defaultStorage() {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+  } catch {
+    return null;
+  }
+}
+function normalizeOrigin(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+function parseLiveFragment(hash) {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!raw) return { bootstrap: null, rest: "" };
+  const params = new URLSearchParams(raw);
+  const token = params.get(LIVE_FRAGMENT_TOKEN_KEY);
+  const endpoint = params.get(LIVE_FRAGMENT_ENDPOINT_KEY);
+  if (token === null && endpoint === null) return { bootstrap: null, rest: raw };
+  params.delete(LIVE_FRAGMENT_TOKEN_KEY);
+  params.delete(LIVE_FRAGMENT_ENDPOINT_KEY);
+  const rest = params.toString();
+  if (!token || !endpoint) return { bootstrap: null, rest };
+  const origin = normalizeOrigin(endpoint);
+  if (!origin) return { bootstrap: null, rest };
+  return { bootstrap: { token, endpoint: origin }, rest };
+}
+function readStoredBootstrap(storage = defaultStorage()) {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(LIVE_BOOTSTRAP_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.token !== "string" || typeof parsed.endpoint !== "string") return null;
+    return { token: parsed.token, endpoint: parsed.endpoint };
+  } catch {
+    return null;
+  }
+}
+function clearStoredBootstrap(storage = defaultStorage()) {
+  try {
+    storage?.removeItem(LIVE_BOOTSTRAP_STORAGE_KEY);
+  } catch {
+  }
+}
+function bootstrapLiveToken(options = {}) {
+  const location = options.location ?? (typeof window !== "undefined" ? window.location : null);
+  const history = options.history ?? (typeof window !== "undefined" ? window.history : null);
+  const storage = options.storage === void 0 ? defaultStorage() : options.storage;
+  const replaceState = options.replaceState === void 0 ? nativeReplaceState : options.replaceState;
+  if (!location) return readStoredBootstrap(storage);
+  const { bootstrap, rest } = parseLiveFragment(location.hash);
+  const hadLiveKeys = bootstrap !== null || rest !== (location.hash.startsWith("#") ? location.hash.slice(1) : location.hash);
+  if (hadLiveKeys && history) {
+    const cleaned = `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`;
+    try {
+      if (replaceState) {
+        replaceState.call(history, history.state, "", cleaned);
+      } else {
+        history.replaceState(history.state, "", cleaned);
+      }
+    } catch {
+    }
+  }
+  if (!bootstrap) return readStoredBootstrap(storage);
+  try {
+    storage?.setItem(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap));
+  } catch {
+  }
+  return bootstrap;
+}
+
 export {
   getComponentName,
   ConsoleCapture,
@@ -1255,6 +1336,10 @@ export {
   DEFAULT_DISPLAY_MEDIA_VIDEO,
   DEFAULT_DISPLAY_MEDIA_OPTIONS,
   ScreenCapture,
-  VoiceCapture
+  VoiceCapture,
+  parseLiveFragment,
+  readStoredBootstrap,
+  clearStoredBootstrap,
+  bootstrapLiveToken
 };
-//# sourceMappingURL=chunk-VSLQO3S3.js.map
+//# sourceMappingURL=chunk-UTXIYVX5.js.map

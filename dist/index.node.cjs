@@ -1,41 +1,53 @@
-"use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }require('./chunk-G4R6R3NJ.cjs');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+var _chunkWMHGUF6Ucjs = require('./chunk-WMHGUF6U.cjs');
 
 // src/noop.tsx
-var noop_exports = {};
-__export(noop_exports, {
-  RiffrecProvider: () => RiffrecProvider,
-  RiffrecRecorder: () => RiffrecRecorder,
-  downloadSessionArchive: () => downloadSessionArchive,
-  useRiffrec: () => useRiffrec
-});
-module.exports = __toCommonJS(noop_exports);
 function RiffrecProvider({ children }) {
-  return children ?? null;
+  return _nullishCoalesce(children, () => ( null));
 }
+var noopStop = async () => null;
 function useRiffrec() {
   return {
     start: async () => {
     },
-    stop: async () => null,
+    stop: noopStop,
     status: "disabled",
-    isEnabled: false
+    isEnabled: false,
+    live: {
+      status: "disabled",
+      mode: "smart",
+      setMode: () => {
+      },
+      muted: false,
+      setMuted: () => {
+      },
+      send: async () => false,
+      stop: noopStop
+    }
   };
 }
 function RiffrecRecorder() {
@@ -44,11 +56,33 @@ function RiffrecRecorder() {
 function downloadSessionArchive(_filename, _archive) {
   throw new Error("Browser download APIs are not available.");
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  RiffrecProvider,
-  RiffrecRecorder,
-  downloadSessionArchive,
-  useRiffrec
-});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.ALWAYS_WAKE_TRIGGERS = _chunkWMHGUF6Ucjs.ALWAYS_WAKE_TRIGGERS; exports.CHECKPOINT_TRIGGERS = _chunkWMHGUF6Ucjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_EXECUTION_MODE = _chunkWMHGUF6Ucjs.DEFAULT_EXECUTION_MODE; exports.EXECUTION_MODES = _chunkWMHGUF6Ucjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunkWMHGUF6Ucjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunkWMHGUF6Ucjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunkWMHGUF6Ucjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunkWMHGUF6Ucjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunkWMHGUF6Ucjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunkWMHGUF6Ucjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunkWMHGUF6Ucjs.LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = _chunkWMHGUF6Ucjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunkWMHGUF6Ucjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.UNIT_STATUSES = _chunkWMHGUF6Ucjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunkWMHGUF6Ucjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunkWMHGUF6Ucjs.WITHDRAW_UNIT_TOOL; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunkWMHGUF6Ucjs.getLiveTool; exports.inspectEnvelope = _chunkWMHGUF6Ucjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunkWMHGUF6Ucjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunkWMHGUF6Ucjs.isLiveEventType; exports.isLiveToolName = _chunkWMHGUF6Ucjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunkWMHGUF6Ucjs.validateEnvelope;
 //# sourceMappingURL=index.node.cjs.map

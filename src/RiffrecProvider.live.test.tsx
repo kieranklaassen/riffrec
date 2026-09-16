@@ -221,10 +221,13 @@ describe("RiffrecProvider live mode (U7)", () => {
     });
   }
 
-  /** Fragment bootstrap (KTD3), mount, start, and accept consent with the microphone. */
+  /**
+   * Fragment bootstrap (KTD3), mount, start, and accept consent with the microphone.
+   * The fragment would auto-start by default; these flows exercise the manual `start()` path.
+   */
   async function goLive(options: RiffrecSessionOptions = {}, live: RiffrecLiveConfig = {}) {
     window.history.replaceState(null, "", `/settings#riffrec_live=${endpoint.pageToken}&endpoint=${encodeURIComponent(endpoint.baseUrl)}`);
-    await render(live, options);
+    await render({ autoStart: false, ...live }, options);
     await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
     await click("Start test");
     await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
@@ -370,8 +373,7 @@ describe("RiffrecProvider live mode (U7)", () => {
     it("declining consent returns to idle without an archive", async () => {
       window.history.replaceState(null, "", `/settings#riffrec_live=${endpoint.pageToken}&endpoint=${encodeURIComponent(endpoint.baseUrl)}`);
       await render({});
-      await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
-      await click("Start test");
+      // The fragment auto-starts (I5): consent opens without a Start click.
       await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
       expect(text("status")).toBe("live");
 
@@ -401,6 +403,30 @@ describe("RiffrecProvider live mode (U7)", () => {
     it("autoStart opens consent as soon as the live chunk is ready", async () => {
       await render({ autoStart: true });
       await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
+    });
+
+    it("live={{}} auto-starts when the page carries #riffrec_live= credentials (I5, KTD3)", async () => {
+      window.history.replaceState(null, "", `/settings#riffrec_live=${endpoint.pageToken}&endpoint=${encodeURIComponent(endpoint.baseUrl)}`);
+      await render({});
+      await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
+      expect(window.location.hash).not.toContain("riffrec_live");
+    });
+
+    it("live={{}} stays idle without credentials, and autoStart: false overrides the fragment", async () => {
+      await render({});
+      await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(q("[data-riffrec-consent]")).toBeNull();
+
+      await act(async () => root.unmount());
+      container = document.createElement("div");
+      document.body.appendChild(container);
+      root = createRoot(container);
+      window.history.replaceState(null, "", `/settings#riffrec_live=${endpoint.pageToken}&endpoint=${encodeURIComponent(endpoint.baseUrl)}`);
+      await render({ autoStart: false });
+      await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(q("[data-riffrec-consent]")).toBeNull();
     });
   });
 

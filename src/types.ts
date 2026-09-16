@@ -136,7 +136,12 @@ export interface RiffrecLiveConfig {
   endpoint?: string;
   /** Evidence profile applied on the wire (R19); defaults to `"default"`. */
   profile?: EvidenceProfileName | Partial<EvidenceProfile>;
-  /** Begin the consent step as soon as the live subtree is ready. */
+  /**
+   * Begin the consent step as soon as the live subtree is ready. Defaults to
+   * `true` when the page was opened with live credentials (a `#riffrec_live=`
+   * fragment, or stored credentials after a reload) and `false` otherwise, so
+   * `live={{}}` auto-starts only for pages a consumer handed out (I5, KTD3).
+   */
   autoStart?: boolean;
   /** Keyboard shortcut for the drawing layer; `null` disables it. Defaults to `Alt+Shift+D`. */
   drawShortcut?: string | null;
