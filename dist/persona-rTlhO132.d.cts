@@ -436,6 +436,15 @@ interface RiffrecLiveConfig {
     drawShortcut?: string | null;
     /** Who runs the endpoint, named in the consent copy (R26). */
     endpointOwner?: string;
+    /**
+     * Default for the session's `download` option, which an auto-started session
+     * cannot pass to `start()`. A session the endpoint confirmed ended (Done
+     * acknowledged, or `session_ended`) never downloads the zip unless this is
+     * `true`: the stream delivered it. A session the page ended on its own — no
+     * endpoint, a lost endpoint, an explicit `stop()` — downloads unless this is
+     * `false` (R4). `start({ download })` overrides it per session.
+     */
+    download?: boolean;
 }
 /** `"disabled"` when the provider has no `live` config or is disabled in production. */
 type RiffrecLiveStatus = LiveSessionStatus | "disabled";
@@ -497,14 +506,19 @@ declare global {
 }
 
 /**
- * Interviewer tool set (KTD5): four flat function tools in the `breathwork-live`
- * shape. Exported as data so the endpoint helper can copy them verbatim.
+ * Interviewer tool set (KTD5): five flat function tools in the `breathwork-live`
+ * shape. Exported as data so the endpoint helper can copy them verbatim; the
+ * page also reconciles them onto the live Realtime session after connecting
+ * (`realtime/sessionConfig.ts`), so a mint that carries an older copy still
+ * gets every tool the page can answer.
  *
  * No tool emits checkpoints or reports state: the client owns all timing, and
- * page-side facts (a completed drawing, buffering, a mute) reach the interviewer
- * as text conversation items. No tool carries image content.
+ * page-side facts (a click, a completed drawing, buffering, a mute) reach the
+ * interviewer as text conversation items. No tool *parameter* carries image
+ * content: `look_at_screen` asks the page for a screenshot, and the page
+ * attaches it as an image conversation item before the tool result.
  */
-declare const LIVE_TOOL_NAMES: readonly ["record_unit", "update_unit", "withdraw_unit", "relay_answer"];
+declare const LIVE_TOOL_NAMES: readonly ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"];
 type LiveToolName = (typeof LIVE_TOOL_NAMES)[number];
 interface JsonSchemaProperty {
     type: "string" | "number" | "integer" | "boolean" | "array" | "object";
@@ -529,8 +543,8 @@ interface RecordUnitArgs {
     statement: string;
     /**
      * Anchor references, as the riffer named them or as the page announced them in
-     * a conversation item ("the riffer drew on the sidebar toggle"). The client
-     * resolves them to `LiveAnchor` objects; the interviewer never sees the page.
+     * a conversation item ("the riffer clicked Button \"Export\" (anchor id: anchor_0003)").
+     * The client resolves them to `LiveAnchor` objects.
      */
     anchors: string[];
     transcript_excerpt: string;
@@ -548,11 +562,16 @@ interface RelayAnswerArgs {
     unit_id: string;
     answer_text: string;
 }
+interface LookAtScreenArgs {
+    /** Why the interviewer needs to see the screen, in a few words. */
+    reason?: string;
+}
 interface LiveToolArgsMap {
     record_unit: RecordUnitArgs;
     update_unit: UpdateUnitArgs;
     withdraw_unit: WithdrawUnitArgs;
     relay_answer: RelayAnswerArgs;
+    look_at_screen: LookAtScreenArgs;
 }
 type LiveToolArgs<N extends LiveToolName = LiveToolName> = LiveToolArgsMap[N];
 /** A tool call as the client receives it from the Realtime data channel. */
@@ -570,8 +589,37 @@ declare const RECORD_UNIT_TOOL: LiveToolDefinition<"record_unit">;
 declare const UPDATE_UNIT_TOOL: LiveToolDefinition<"update_unit">;
 declare const WITHDRAW_UNIT_TOOL: LiveToolDefinition<"withdraw_unit">;
 declare const RELAY_ANSWER_TOOL: LiveToolDefinition<"relay_answer">;
+declare const LOOK_AT_SCREEN_TOOL: LiveToolDefinition<"look_at_screen">;
 declare const LIVE_TOOLS: readonly LiveToolDefinition[];
 declare function isLiveToolName(value: unknown): value is LiveToolName;
 declare function getLiveTool<N extends LiveToolName>(name: N): LiveToolDefinition<N>;
 
-export { type LivePayloadMap as $, ALWAYS_WAKE_TRIGGERS as A, type LiveAnnotation as B, CHECKPOINT_TRIGGERS as C, DEFAULT_EXECUTION_MODE as D, EXECUTION_MODES as E, FRAME_DROP_REASONS as F, type LiveAnswer as G, type LiveAppliedEvent as H, type LiveAskEvent as I, type JsonSchemaObject as J, type LiveCheckpoint as K, LIVE_EVENTS_BODY_MAX_BYTES as L, type LiveEnvelope as M, type LiveEnvelopeInspection as N, type LiveEnvelopeRejection as O, type LiveEventType as P, type LiveEventsResponse as Q, type RiffrecConfig as R, type SessionResult as S, type LiveFrame as T, type UseRiffrecResult as U, type LiveMic as V, type LiveMintError as W, type LiveMintRequest as X, type LiveMintResponse as Y, type LiveMode as Z, type LivePayload as _, type RiffrecDisplayMediaOptions as a, type LivePoint as a0, type LiveSchemaMismatchResponse as a1, type LiveSchemaVersion as a2, type LiveServerEvent as a3, type LiveServerEventName as a4, type LiveSessionEndedEvent as a5, type LiveSessionStatus as a6, type LiveStreamState as a7, type LiveTelemetryWindow as a8, type LiveToolArgs as a9, type RiffrecLiveControls as aA, type RiffrecLiveMode as aB, type RiffrecLiveStatus as aC, type RiffrecSchemaVersion as aD, type RiffrecSessionOptions as aE, type RiffrecStatus as aF, type RiffrecWriteMethod as aG, type SessionJson as aH, type StreamState as aI, type TranscriptRole as aJ, UNIT_STATUSES as aK, UPDATE_UNIT_TOOL as aL, type UnitStatus as aM, type UpdateUnitArgs as aN, WITHDRAW_UNIT_TOOL as aO, type WakeSessionStatus as aP, type WithdrawUnitArgs as aQ, getLiveTool as aR, inspectEnvelope as aS, isLiveEnvelopeOfType as aT, isLiveEventType as aU, isLiveToolName as aV, validateEnvelope as aW, type LiveToolArgsMap as aa, type LiveToolCall as ab, type LiveToolDefinition as ac, type LiveToolName as ad, type LiveToolResult as ae, type LiveTranscript as af, type LiveTranscriptSpan as ag, type LiveUnit as ah, type LiveUnitConfirmation as ai, type LiveUnitEvidence as aj, type LiveUnitStatusEvent as ak, type LiveUnitUpdate as al, type LiveUnitWithdraw as am, type LiveWakeBatch as an, type MicState as ao, type NavigationEvent as ap, type NetworkRequestEvent as aq, RECORD_UNIT_TOOL as ar, RELAY_ANSWER_TOOL as as, RIFFREC_SCHEMA_VERSION as at, type RecordUnitArgs as au, type RelayAnswerArgs as av, type RiffrecContextValue as aw, type RiffrecEvent as ax, type RiffrecEventSink as ay, type RiffrecLiveConfig as az, type RiffrecDisplayMediaVideo as b, type AnnotationKind as c, type CaptureOutputs as d, type CaptureStartOptions as e, type CheckpointTrigger as f, type ClickEvent as g, type ConsoleErrorEvent as h, type ElementBoundingBox as i, type ElementInfo as j, type EventsJson as k, type EvidenceFrames as l, type EvidenceProfile as m, type EvidenceProfileName as n, type ExecutionMode as o, type FrameDropReason as p, type FrameKind as q, type JsonSchemaProperty as r, LIVE_EVENT_TYPES as s, LIVE_FRAME_BODY_MAX_BYTES as t, LIVE_SCHEMA_VERSION as u, LIVE_SESSION_HEADER as v, LIVE_TOOLS as w, LIVE_TOOL_NAMES as x, type LiveAckEvent as y, type LiveAnchor as z };
+/**
+ * The interviewer's default instructions (KTD5, KTD6, KTD13). The endpoint
+ * helper holds a verbatim copy and appends the session brief after its secret
+ * scan (KTD4). The page keeps the persona the endpoint minted; what it adds
+ * after connecting is the `[SCREEN CONTEXT]` section below when the minted
+ * instructions lack it (`sessionConfig.ts`), so an endpoint-owned persona can
+ * never leave the interviewer believing it is blind to the page.
+ */
+/** Hard cap on the session brief the coding agent writes (KTD13). */
+declare const BRIEF_MAX_CHARS = 3000;
+/**
+ * Heading of the section that tells the interviewer how the page shows it the
+ * screen. An endpoint that copies the whole default persona carries it already;
+ * one that writes its own persona gets it appended by the page. Any persona
+ * containing this marker is left untouched.
+ */
+declare const SCREEN_CONTEXT_MARKER = "[SCREEN CONTEXT]";
+declare const SCREEN_CONTEXT_SECTION: string;
+declare const DEFAULT_INTERVIEWER_INSTRUCTIONS: string;
+/** True when instructions already carry the screen-context section. */
+declare function hasScreenContext(instructions: string | null | undefined): boolean;
+/** The given persona with the screen-context section appended once. */
+declare function withScreenContext(instructions: string): string;
+/** Instructions carrying an optional session brief, capped per KTD13. */
+declare function buildInterviewerInstructions(options?: {
+    brief?: string | null;
+}): string;
+
+export { type LiveMintResponse as $, ALWAYS_WAKE_TRIGGERS as A, BRIEF_MAX_CHARS as B, CHECKPOINT_TRIGGERS as C, DEFAULT_EXECUTION_MODE as D, EXECUTION_MODES as E, FRAME_DROP_REASONS as F, type LiveAckEvent as G, type LiveAnchor as H, type LiveAnnotation as I, type JsonSchemaObject as J, type LiveAnswer as K, LIVE_EVENTS_BODY_MAX_BYTES as L, type LiveAppliedEvent as M, type LiveAskEvent as N, type LiveCheckpoint as O, type LiveEnvelope as P, type LiveEnvelopeInspection as Q, type RiffrecConfig as R, type SessionResult as S, type LiveEnvelopeRejection as T, type UseRiffrecResult as U, type LiveEventType as V, type LiveEventsResponse as W, type LiveFrame as X, type LiveMic as Y, type LiveMintError as Z, type LiveMintRequest as _, type RiffrecDisplayMediaOptions as a, isLiveEnvelopeOfType as a$, type LiveMode as a0, type LivePayload as a1, type LivePayloadMap as a2, type LivePoint as a3, type LiveSchemaMismatchResponse as a4, type LiveSchemaVersion as a5, type LiveServerEvent as a6, type LiveServerEventName as a7, type LiveSessionEndedEvent as a8, type LiveSessionStatus as a9, type RiffrecContextValue as aA, type RiffrecEvent as aB, type RiffrecEventSink as aC, type RiffrecLiveConfig as aD, type RiffrecLiveControls as aE, type RiffrecLiveMode as aF, type RiffrecLiveStatus as aG, type RiffrecSchemaVersion as aH, type RiffrecSessionOptions as aI, type RiffrecStatus as aJ, type RiffrecWriteMethod as aK, SCREEN_CONTEXT_MARKER as aL, SCREEN_CONTEXT_SECTION as aM, type SessionJson as aN, type StreamState as aO, type TranscriptRole as aP, UNIT_STATUSES as aQ, UPDATE_UNIT_TOOL as aR, type UnitStatus as aS, type UpdateUnitArgs as aT, WITHDRAW_UNIT_TOOL as aU, type WakeSessionStatus as aV, type WithdrawUnitArgs as aW, buildInterviewerInstructions as aX, getLiveTool as aY, hasScreenContext as aZ, inspectEnvelope as a_, type LiveStreamState as aa, type LiveTelemetryWindow as ab, type LiveToolArgs as ac, type LiveToolArgsMap as ad, type LiveToolCall as ae, type LiveToolDefinition as af, type LiveToolName as ag, type LiveToolResult as ah, type LiveTranscript as ai, type LiveTranscriptSpan as aj, type LiveUnit as ak, type LiveUnitConfirmation as al, type LiveUnitEvidence as am, type LiveUnitStatusEvent as an, type LiveUnitUpdate as ao, type LiveUnitWithdraw as ap, type LiveWakeBatch as aq, type LookAtScreenArgs as ar, type MicState as as, type NavigationEvent as at, type NetworkRequestEvent as au, RECORD_UNIT_TOOL as av, RELAY_ANSWER_TOOL as aw, RIFFREC_SCHEMA_VERSION as ax, type RecordUnitArgs as ay, type RelayAnswerArgs as az, type RiffrecDisplayMediaVideo as b, isLiveEventType as b0, isLiveToolName as b1, validateEnvelope as b2, withScreenContext as b3, type AnnotationKind as c, type CaptureOutputs as d, type CaptureStartOptions as e, type CheckpointTrigger as f, type ClickEvent as g, type ConsoleErrorEvent as h, DEFAULT_INTERVIEWER_INSTRUCTIONS as i, type ElementBoundingBox as j, type ElementInfo as k, type EventsJson as l, type EvidenceFrames as m, type EvidenceProfile as n, type EvidenceProfileName as o, type ExecutionMode as p, type FrameDropReason as q, type FrameKind as r, type JsonSchemaProperty as s, LIVE_EVENT_TYPES as t, LIVE_FRAME_BODY_MAX_BYTES as u, LIVE_SCHEMA_VERSION as v, LIVE_SESSION_HEADER as w, LIVE_TOOLS as x, LIVE_TOOL_NAMES as y, LOOK_AT_SCREEN_TOOL as z };

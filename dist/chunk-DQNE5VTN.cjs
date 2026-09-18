@@ -877,18 +877,20 @@ var EventCapture = class {
   constructor() {
     this.onEvent = null;
     this.sessionStart = 0;
+    this.ignore = null;
     this.clickHandler = null;
     this.popstateHandler = null;
     this.originalPushState = null;
     this.originalReplaceState = null;
     this.previousUrl = null;
   }
-  start(sessionStart, onEvent) {
+  start(sessionStart, onEvent, options = {}) {
     if (typeof window === "undefined" || typeof document === "undefined" || this.onEvent) {
       return;
     }
     this.sessionStart = sessionStart;
     this.onEvent = onEvent;
+    this.ignore = _nullishCoalesce(options.ignore, () => ( null));
     this.previousUrl = window.location.href;
     this.clickHandler = (event) => this.handleClick(event);
     this.popstateHandler = () => this.emitNavigation(window.location.href);
@@ -913,6 +915,7 @@ var EventCapture = class {
       window.history.replaceState = this.originalReplaceState;
     }
     this.onEvent = null;
+    this.ignore = null;
     this.clickHandler = null;
     this.popstateHandler = null;
     this.originalPushState = null;
@@ -924,6 +927,9 @@ var EventCapture = class {
       return;
     }
     const element = event.target;
+    if (_optionalChain([this, 'access', _67 => _67.ignore, 'optionalCall', _68 => _68(element)])) {
+      return;
+    }
     const clickEvent = {
       t: timestamp2(this.sessionStart),
       type: "click",
@@ -995,7 +1001,7 @@ function extractRequestUrl(input) {
   return input.url;
 }
 function extractRequestMethod(input, init) {
-  if (_optionalChain([init, 'optionalAccess', _67 => _67.method])) {
+  if (_optionalChain([init, 'optionalAccess', _69 => _69.method])) {
     return init.method.toUpperCase();
   }
   if (typeof input === "object" && "method" in input && input.method) {
@@ -1148,7 +1154,7 @@ function browserSupportsMediaRecorder() {
   return typeof window !== "undefined" && typeof MediaRecorder !== "undefined";
 }
 function browserSupportsVoiceCapture() {
-  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _68 => _68.mediaDevices, 'optionalAccess', _69 => _69.getUserMedia]));
+  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _70 => _70.mediaDevices, 'optionalAccess', _71 => _71.getUserMedia]));
 }
 function chooseAudioMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
@@ -1219,14 +1225,14 @@ var VoiceCapture = class {
         resolve(null);
       };
       if (recorder.state === "inactive") {
-        _optionalChain([recorder, 'access', _70 => _70.onstop, 'optionalCall', _71 => _71(new Event("stop"))]);
+        _optionalChain([recorder, 'access', _72 => _72.onstop, 'optionalCall', _73 => _73(new Event("stop"))]);
       } else {
         recorder.stop();
       }
     });
   }
   isRecording() {
-    return _optionalChain([this, 'access', _72 => _72.recorder, 'optionalAccess', _73 => _73.state]) === "recording";
+    return _optionalChain([this, 'access', _74 => _74.recorder, 'optionalAccess', _75 => _75.state]) === "recording";
   }
   /** The stream being recorded, so a mute can be asserted against its tracks. */
   get activeStream() {
@@ -1237,7 +1243,7 @@ var VoiceCapture = class {
     this.cleanupStream();
   }
   cleanupStream() {
-    if (this.ownsStream) _optionalChain([this, 'access', _74 => _74.stream, 'optionalAccess', _75 => _75.getTracks, 'call', _76 => _76(), 'access', _77 => _77.forEach, 'call', _78 => _78((track) => track.stop())]);
+    if (this.ownsStream) _optionalChain([this, 'access', _76 => _76.stream, 'optionalAccess', _77 => _77.getTracks, 'call', _78 => _78(), 'access', _79 => _79.forEach, 'call', _80 => _80((track) => track.stop())]);
     this.stream = null;
     this.ownsStream = false;
   }
@@ -1293,7 +1299,7 @@ function readStoredBootstrap(storage = defaultStorage()) {
 }
 function clearStoredBootstrap(storage = defaultStorage()) {
   try {
-    _optionalChain([storage, 'optionalAccess', _79 => _79.removeItem, 'call', _80 => _80(LIVE_BOOTSTRAP_STORAGE_KEY)]);
+    _optionalChain([storage, 'optionalAccess', _81 => _81.removeItem, 'call', _82 => _82(LIVE_BOOTSTRAP_STORAGE_KEY)]);
   } catch (e8) {
   }
 }
@@ -1318,7 +1324,7 @@ function bootstrapLiveToken(options = {}) {
   }
   if (!bootstrap) return readStoredBootstrap(storage);
   try {
-    _optionalChain([storage, 'optionalAccess', _81 => _81.setItem, 'call', _82 => _82(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap))]);
+    _optionalChain([storage, 'optionalAccess', _83 => _83.setItem, 'call', _84 => _84(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap))]);
   } catch (e10) {
   }
   return bootstrap;
@@ -1342,4 +1348,4 @@ function bootstrapLiveToken(options = {}) {
 
 
 exports.getComponentName = getComponentName; exports.ConsoleCapture = ConsoleCapture; exports.buildSelector = buildSelector; exports.EventCapture = EventCapture; exports.NetworkCapture = NetworkCapture; exports.RECORDING_FILE_NAME = RECORDING_FILE_NAME; exports.isRecordingFileName = isRecordingFileName; exports.segmentFileName = segmentFileName; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.ScreenCapture = ScreenCapture; exports.VoiceCapture = VoiceCapture; exports.parseLiveFragment = parseLiveFragment; exports.readStoredBootstrap = readStoredBootstrap; exports.clearStoredBootstrap = clearStoredBootstrap; exports.bootstrapLiveToken = bootstrapLiveToken;
-//# sourceMappingURL=chunk-HYYGBWIF.cjs.map
+//# sourceMappingURL=chunk-DQNE5VTN.cjs.map

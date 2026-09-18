@@ -1,28 +1,32 @@
-"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
-
-
-
-
-
-
-
-
-
-
-var _chunkHYYGBWIFcjs = require('./chunk-HYYGBWIF.cjs');
-
-
-
-
-
-
-
-
-
-var _chunkWMHGUF6Ucjs = require('./chunk-WMHGUF6U.cjs');
+import {
+  ConsoleCapture,
+  EventCapture,
+  NetworkCapture,
+  ScreenCapture,
+  VoiceCapture,
+  bootstrapLiveToken,
+  buildSelector,
+  clearStoredBootstrap,
+  getComponentName,
+  readStoredBootstrap
+} from "./chunk-ES6IDTXY.js";
+import {
+  DEFAULT_EXECUTION_MODE,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
+  EXECUTION_MODES,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_SCHEMA_VERSION,
+  LIVE_SESSION_HEADER,
+  LIVE_TOOLS,
+  UNIT_STATUSES,
+  hasScreenContext,
+  isLiveEnvelopeOfType,
+  isLiveToolName,
+  withScreenContext
+} from "./chunk-Z57RQNC3.js";
 
 // src/live/LiveOverlay.tsx
-var _react = require('react');
+import { useCallback as useCallback3, useEffect as useEffect4, useRef as useRef6, useState as useState7 } from "react";
 
 // src/output/segmentStores.ts
 var DB_NAME = "riffrec-recording-segments";
@@ -38,14 +42,14 @@ function chunkKey(sessionId, segment, index) {
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("IndexedDB request failed."))));
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
   });
 }
 function transactionDone(transaction) {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(_nullishCoalesce(transaction.error, () => ( new Error("IndexedDB transaction failed."))));
-    transaction.onabort = () => reject(_nullishCoalesce(transaction.error, () => ( new Error("IndexedDB transaction aborted."))));
+    transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB transaction failed."));
+    transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted."));
   });
 }
 function openDb() {
@@ -57,7 +61,7 @@ function openDb() {
       if (!db.objectStoreNames.contains(CHUNKS_STORE)) db.createObjectStore(CHUNKS_STORE);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("Failed to open riffrec recording segment store."))));
+    request.onerror = () => reject(request.error ?? new Error("Failed to open riffrec recording segment store."));
   });
 }
 function isSegmentMeta(value) {
@@ -116,7 +120,7 @@ var IndexedDbSegmentStore = class {
     const blobs = values.filter((value) => value instanceof Blob && value.size > 0);
     if (blobs.length === 0) return null;
     const metas = await this.listSegments(sessionId);
-    const mimeType = _nullishCoalesce(_optionalChain([metas, 'access', _ => _.find, 'call', _2 => _2((meta) => meta.segment === segment), 'optionalAccess', _3 => _3.mimeType]), () => ( blobs[0].type));
+    const mimeType = metas.find((meta) => meta.segment === segment)?.mimeType ?? blobs[0].type;
     return new Blob(blobs, { type: mimeType });
   }
   async clear(sessionId) {
@@ -159,7 +163,7 @@ var MemorySegmentStore = class {
     const prefix = `${segmentKey(sessionId, segment)}/`;
     const blobs = [...this.chunks.entries()].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, blob]) => blob).filter((blob) => blob.size > 0);
     if (blobs.length === 0) return null;
-    const mimeType = _nullishCoalesce(_optionalChain([this, 'access', _4 => _4.segments, 'access', _5 => _5.get, 'call', _6 => _6(segmentKey(sessionId, segment)), 'optionalAccess', _7 => _7.mimeType]), () => ( blobs[0].type));
+    const mimeType = this.segments.get(segmentKey(sessionId, segment))?.mimeType ?? blobs[0].type;
     return new Blob(blobs, { type: mimeType });
   }
   async clear(sessionId) {
@@ -188,10 +192,10 @@ var AnnotationAttacher = class {
     this.disposed = false;
     this.now = options.now;
     this.onHeldExpired = options.onHeldExpired;
-    this.lookbackMs = _nullishCoalesce(options.lookbackMs, () => ( ATTACH_LOOKBACK_MS));
-    this.drawingOnlyMs = _nullishCoalesce(options.drawingOnlyMs, () => ( DRAWING_ONLY_AFTER_SPEECH_MS));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
+    this.lookbackMs = options.lookbackMs ?? ATTACH_LOOKBACK_MS;
+    this.drawingOnlyMs = options.drawingOnlyMs ?? DRAWING_ONLY_AFTER_SPEECH_MS;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
   }
   get isSpeaking() {
     return this.speaking;
@@ -200,7 +204,7 @@ var AnnotationAttacher = class {
     return this.utteranceOpen;
   }
   get lastUnitId() {
-    return _nullishCoalesce(_optionalChain([this, 'access', _8 => _8.lastUnit, 'optionalAccess', _9 => _9.id]), () => ( null));
+    return this.lastUnit?.id ?? null;
   }
   heldAnnotations() {
     return this.held.map((entry) => entry.annotation);
@@ -290,7 +294,7 @@ function chooseClipMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
     return "audio/webm";
   }
-  return _nullishCoalesce(CLIP_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)), () => ( "audio/webm"));
+  return CLIP_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "audio/webm";
 }
 function defaultRecorderFactory(stream, mimeType) {
   return new MediaRecorder(stream, { mimeType });
@@ -307,13 +311,13 @@ var AudioClipRecorder = class {
     this.unclaimed = [];
     this.now = options.now;
     this.createId = options.createId;
-    this.createRecorder = _nullishCoalesce(options.createRecorder, () => ( defaultRecorderFactory));
-    this.mimeType = _nullishCoalesce(options.mimeType, () => ( chooseClipMimeType()));
-    this.onClip = _nullishCoalesce(options.onClip, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
-    this.stream = _nullishCoalesce(options.stream, () => ( null));
+    this.createRecorder = options.createRecorder ?? defaultRecorderFactory;
+    this.mimeType = options.mimeType ?? chooseClipMimeType();
+    this.onClip = options.onClip ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
+    this.stream = options.stream ?? null;
   }
   get hasSource() {
     return this.stream !== null;
@@ -365,11 +369,11 @@ var AudioClipRecorder = class {
   }
   /** The id of the clip a `record_unit` arriving now would take; null when none is pending. */
   pendingClipId() {
-    return _nullishCoalesce(_optionalChain([(_nullishCoalesce(_nullishCoalesce(this.unclaimed[0], () => ( _optionalChain([this, 'access', _10 => _10.active, 'optionalAccess', _11 => _11.clip]))), () => ( null))), 'optionalAccess', _12 => _12.id]), () => ( null));
+    return (this.unclaimed[0] ?? this.active?.clip ?? null)?.id ?? null;
   }
   /** The clip for the utterance `record_unit` came from; null when none is pending. */
   claim(unitId) {
-    const clip = _nullishCoalesce(_nullishCoalesce(this.unclaimed.shift(), () => ( _optionalChain([this, 'access', _13 => _13.active, 'optionalAccess', _14 => _14.clip]))), () => ( null));
+    const clip = this.unclaimed.shift() ?? this.active?.clip ?? null;
     if (!clip) return null;
     clip.unit_id = unitId;
     return clip.id;
@@ -396,7 +400,7 @@ var AudioClipRecorder = class {
     clip.t_end = this.now();
     if (!clip.unit_id) this.unclaimed.push(clip);
     try {
-      if (recorder.state === "inactive") _optionalChain([recorder, 'access', _15 => _15.onstop, 'optionalCall', _16 => _16(void 0)]);
+      if (recorder.state === "inactive") recorder.onstop?.(void 0);
       else recorder.stop();
     } catch (error) {
       this.onError(error);
@@ -412,11 +416,11 @@ var AudioClipRecorder = class {
 };
 
 // src/live/overlay/DrawingLayer.tsx
-
-var _perfectfreehand = require('perfect-freehand');
+import { useCallback, useEffect as useEffect2, useRef as useRef2, useState as useState2 } from "react";
+import { getStroke } from "perfect-freehand";
 
 // src/live/overlay/Pin.tsx
-
+import { useEffect, useRef, useState } from "react";
 
 // src/live/overlay/strokeAnchor.ts
 var OVERLAY_ATTRIBUTE = "data-riffrec-overlay";
@@ -502,7 +506,7 @@ function depthOf(element) {
 function largestOverlapTarget(bbox, doc, options) {
   let bestPartial = null;
   let bestContainer = null;
-  for (const element of Array.from(_nullishCoalesce(_optionalChain([doc, 'access', _17 => _17.body, 'optionalAccess', _18 => _18.querySelectorAll, 'call', _19 => _19("*")]), () => ( [])))) {
+  for (const element of Array.from(doc.body?.querySelectorAll("*") ?? [])) {
     if (!isEligible(element, options)) continue;
     const rect = elementRect(element);
     if (rectArea(rect) <= 0) continue;
@@ -519,10 +523,10 @@ function largestOverlapTarget(bbox, doc, options) {
       bestPartial = { element, area: overlap, depth };
     }
   }
-  return _nullishCoalesce(_nullishCoalesce(_optionalChain([bestPartial, 'optionalAccess', _20 => _20.element]), () => ( _optionalChain([bestContainer, 'optionalAccess', _21 => _21.element]))), () => ( null));
+  return bestPartial?.element ?? bestContainer?.element ?? null;
 }
 function resolveStrokeTarget(points, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc || points.length === 0) return null;
   const bbox = computeBbox(points);
   const [underCentroid] = elementsUnderPoint(rectCenter(bbox), doc, options);
@@ -532,15 +536,15 @@ function resolveStrokeTarget(points, options = {}) {
   return largestOverlapTarget(bbox, doc, options);
 }
 function resolvePointTarget(point, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc) return null;
-  return _nullishCoalesce(elementsUnderPoint(point, doc, options)[0], () => ( null));
+  return elementsUnderPoint(point, doc, options)[0] ?? null;
 }
 function buildAnchor(element, options) {
   return {
     route: options.route,
-    selector: _chunkHYYGBWIFcjs.buildSelector.call(void 0, element),
-    component: _chunkHYYGBWIFcjs.getComponentName.call(void 0, element),
+    selector: buildSelector(element),
+    component: getComponentName(element),
     rect: elementRect(element),
     t: options.t
   };
@@ -560,14 +564,14 @@ function anchorStroke(points, options) {
 }
 
 // src/live/overlay/Pin.tsx
-var _jsxruntime = require('react/jsx-runtime');
+import { jsx, jsxs } from "react/jsx-runtime";
 var SNIPPET_LIMIT = 80;
 var PIN_RADIUS = 11;
 function truncate(value, limit) {
   return value.length > limit ? `${value.slice(0, limit - 1)}\u2026` : value;
 }
 function normalizeText(value) {
-  const text = _optionalChain([value, 'optionalAccess', _22 => _22.replace, 'call', _23 => _23(/\s+/g, " "), 'access', _24 => _24.trim, 'call', _25 => _25()]);
+  const text = value?.replace(/\s+/g, " ").trim();
   return text ? text : null;
 }
 function isFormControl(element) {
@@ -590,7 +594,7 @@ function labelledByText(element) {
 }
 function labelText(element) {
   if (!isFormControl(element)) return null;
-  const labels = Array.from(_nullishCoalesce(element.labels, () => ( [])));
+  const labels = Array.from(element.labels ?? []);
   const wrapping = element.closest("label");
   if (wrapping && !labels.includes(wrapping)) labels.push(wrapping);
   for (const label of labels) {
@@ -605,12 +609,12 @@ function getAccessibleName(element) {
   const labelledBy = labelledByText(element);
   if (labelledBy) return labelledBy;
   if (isFormControl(element)) {
-    return _nullishCoalesce(_nullishCoalesce(_nullishCoalesce(_nullishCoalesce(labelText(element), () => ( normalizeText(element.getAttribute("placeholder")))), () => ( normalizeText(element.getAttribute("title")))), () => ( normalizeText(element.getAttribute("name")))), () => ( null));
+    return labelText(element) ?? normalizeText(element.getAttribute("placeholder")) ?? normalizeText(element.getAttribute("title")) ?? normalizeText(element.getAttribute("name")) ?? null;
   }
   if (element instanceof HTMLImageElement) {
-    return _nullishCoalesce(normalizeText(element.getAttribute("alt")), () => ( normalizeText(element.getAttribute("title"))));
+    return normalizeText(element.getAttribute("alt")) ?? normalizeText(element.getAttribute("title"));
   }
-  return _nullishCoalesce(textWithoutControls(element), () => ( normalizeText(element.getAttribute("title"))));
+  return textWithoutControls(element) ?? normalizeText(element.getAttribute("title"));
 }
 var markerStyle = {
   fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -619,8 +623,8 @@ var markerStyle = {
   userSelect: "none"
 };
 function Pin({ annotation, index }) {
-  const point = _nullishCoalesce(annotation.points[0], () => ( { x: annotation.bbox.x, y: annotation.bbox.y }));
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  const point = annotation.points[0] ?? { x: annotation.bbox.x, y: annotation.bbox.y };
+  return /* @__PURE__ */ jsxs(
     "g",
     {
       "data-riffrec-pin": annotation.id,
@@ -628,9 +632,9 @@ function Pin({ annotation, index }) {
       style: markerStyle,
       "aria-label": annotation.text ? `Pin ${index}: ${annotation.text}` : `Pin ${index}`,
       children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "title", { children: _nullishCoalesce(annotation.text, () => ( `Pin ${index}`)) }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "circle", { r: PIN_RADIUS, fill: "#d92d20", stroke: "#ffffff", strokeWidth: 2 }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "text", { textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
+        /* @__PURE__ */ jsx("title", { children: annotation.text ?? `Pin ${index}` }),
+        /* @__PURE__ */ jsx("circle", { r: PIN_RADIUS, fill: "#d92d20", stroke: "#ffffff", strokeWidth: 2 }),
+        /* @__PURE__ */ jsx("text", { textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
       ]
     }
   );
@@ -696,15 +700,15 @@ function composerPosition(point) {
   return { left, top };
 }
 function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
-  const [value, setValue] = _react.useState.call(void 0, initialValue);
-  const textareaRef = _react.useRef.call(void 0, null);
+  const [value, setValue] = useState(initialValue);
+  const textareaRef = useRef(null);
   const snippet = target ? getAccessibleName(target) : null;
-  const selector = target ? _chunkHYYGBWIFcjs.buildSelector.call(void 0, target) : null;
-  _react.useEffect.call(void 0, () => {
-    _optionalChain([textareaRef, 'access', _26 => _26.current, 'optionalAccess', _27 => _27.focus, 'call', _28 => _28()]);
+  const selector = target ? buildSelector(target) : null;
+  useEffect(() => {
+    textareaRef.current?.focus();
   }, []);
   const submit = (event) => {
-    _optionalChain([event, 'optionalAccess', _29 => _29.preventDefault, 'call', _30 => _30()]);
+    event?.preventDefault();
     const comment = value.trim();
     if (comment.length === 0) return;
     onSubmit(comment);
@@ -718,7 +722,7 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
       submit();
     }
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  return /* @__PURE__ */ jsxs(
     "form",
     {
       "data-riffrec-pin-composer": "",
@@ -728,8 +732,8 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
       onSubmit: submit,
       onPointerDown: (event) => event.stopPropagation(),
       children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: snippetStyle, title: _nullishCoalesce(selector, () => ( void 0)), children: snippet ? truncate(snippet, SNIPPET_LIMIT) : _nullishCoalesce(selector, () => ( "This spot")) }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        /* @__PURE__ */ jsx("div", { style: snippetStyle, title: selector ?? void 0, children: snippet ? truncate(snippet, SNIPPET_LIMIT) : selector ?? "This spot" }),
+        /* @__PURE__ */ jsx(
           "textarea",
           {
             ref: textareaRef,
@@ -741,9 +745,9 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
             onKeyDown
           }
         ),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: buttonRowStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: secondaryButtonStyle, onClick: onCancel, children: "Cancel" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "submit", style: buttonStyle, disabled: value.trim().length === 0, children: "Save pin" })
+        /* @__PURE__ */ jsxs("div", { style: buttonRowStyle, children: [
+          /* @__PURE__ */ jsx("button", { type: "button", style: secondaryButtonStyle, onClick: onCancel, children: "Cancel" }),
+          /* @__PURE__ */ jsx("button", { type: "submit", style: buttonStyle, disabled: value.trim().length === 0, children: "Save pin" })
         ] })
       ]
     }
@@ -774,7 +778,7 @@ function parseShortcut(shortcut) {
 }
 function isApplePlatform() {
   if (typeof navigator === "undefined") return false;
-  return /Mac|iPhone|iPad|iPod/i.test(_nullishCoalesce(navigator.platform, () => ( ""))) || /Mac OS/i.test(_nullishCoalesce(navigator.userAgent, () => ( "")));
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform ?? "") || /Mac OS/i.test(navigator.userAgent ?? "");
 }
 function keyMatches(event, key) {
   if (typeof event.key === "string" && event.key.toLowerCase() === key) return true;
@@ -798,7 +802,7 @@ function isEditableTarget(target) {
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
 }
 function createDrawToggle(options) {
-  let active = _nullishCoalesce(options.initialActive, () => ( false));
+  let active = options.initialActive ?? false;
   const shortcutString = options.shortcut === void 0 ? DEFAULT_DRAW_SHORTCUT : options.shortcut;
   const parsed = shortcutString ? parseShortcut(shortcutString) : null;
   const target = options.target === void 0 ? typeof window !== "undefined" ? window : null : options.target;
@@ -834,7 +838,7 @@ function createDrawToggle(options) {
 }
 
 // src/live/overlay/DrawingLayer.tsx
-
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var STROKE_OPTIONS = {
   size: 6,
   thinning: 0.55,
@@ -861,7 +865,7 @@ function defaultCreateId() {
   return `ann_${Date.now().toString(36)}_${idCounter.toString(36)}`;
 }
 function toStrokeInput(points) {
-  return points.map((point) => [point.x, point.y, _nullishCoalesce(point.pressure, () => ( 0.5))]);
+  return points.map((point) => [point.x, point.y, point.pressure ?? 0.5]);
 }
 function average(a, b) {
   return (a + b) / 2;
@@ -882,7 +886,7 @@ function getSvgPathFromStroke(outline) {
 }
 function strokePath(points, last) {
   if (points.length === 0) return "";
-  return getSvgPathFromStroke(_perfectfreehand.getStroke.call(void 0, toStrokeInput(points), { ...STROKE_OPTIONS, last }));
+  return getSvgPathFromStroke(getStroke(toStrokeInput(points), { ...STROKE_OPTIONS, last }));
 }
 function pointFromEvent(event) {
   const point = { x: event.clientX, y: event.clientY };
@@ -955,24 +959,24 @@ function DrawingLayer({
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }) {
-  const [uncontrolledActive, setUncontrolledActive] = _react.useState.call(void 0, defaultActive);
-  const active = _nullishCoalesce(controlledActive, () => ( uncontrolledActive));
-  const [draft, setDraft] = _react.useState.call(void 0, []);
-  const [pendingPin, setPendingPin] = _react.useState.call(void 0, null);
-  const pointerIdRef = _react.useRef.call(void 0, null);
-  const draftRef = _react.useRef.call(void 0, []);
-  const isControlledRef = _react.useRef.call(void 0, controlledActive !== void 0);
+  const [uncontrolledActive, setUncontrolledActive] = useState2(defaultActive);
+  const active = controlledActive ?? uncontrolledActive;
+  const [draft, setDraft] = useState2([]);
+  const [pendingPin, setPendingPin] = useState2(null);
+  const pointerIdRef = useRef2(null);
+  const draftRef = useRef2([]);
+  const isControlledRef = useRef2(controlledActive !== void 0);
   isControlledRef.current = controlledActive !== void 0;
-  const onActiveChangeRef = _react.useRef.call(void 0, onActiveChange);
+  const onActiveChangeRef = useRef2(onActiveChange);
   onActiveChangeRef.current = onActiveChange;
-  const setActive = _react.useCallback.call(void 0, (next) => {
+  const setActive = useCallback((next) => {
     if (!isControlledRef.current) setUncontrolledActive(next);
-    _optionalChain([onActiveChangeRef, 'access', _31 => _31.current, 'optionalCall', _32 => _32(next)]);
+    onActiveChangeRef.current?.(next);
   }, []);
-  const activeRef = _react.useRef.call(void 0, active);
+  const activeRef = useRef2(active);
   activeRef.current = active;
-  const toggleRef = _react.useRef.call(void 0, null);
-  _react.useEffect.call(void 0, () => {
+  const toggleRef = useRef2(null);
+  useEffect2(() => {
     const toggle = createDrawToggle({ shortcut, initialActive: activeRef.current, onChange: setActive });
     toggleRef.current = toggle;
     return () => {
@@ -980,20 +984,20 @@ function DrawingLayer({
       if (toggleRef.current === toggle) toggleRef.current = null;
     };
   }, [shortcut, setActive]);
-  _react.useEffect.call(void 0, () => {
-    _optionalChain([toggleRef, 'access', _33 => _33.current, 'optionalAccess', _34 => _34.sync, 'call', _35 => _35(active)]);
+  useEffect2(() => {
+    toggleRef.current?.sync(active);
   }, [active]);
-  const resetDraft = _react.useCallback.call(void 0, () => {
+  const resetDraft = useCallback(() => {
     draftRef.current = [];
     pointerIdRef.current = null;
     setDraft([]);
   }, []);
-  _react.useEffect.call(void 0, () => {
+  useEffect2(() => {
     if (active) return;
     resetDraft();
     setPendingPin(null);
   }, [active, resetDraft]);
-  _react.useEffect.call(void 0, () => {
+  useEffect2(() => {
     if (!active || typeof window === "undefined") return;
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -1006,8 +1010,8 @@ function DrawingLayer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, pendingPin, setActive]);
-  const anchorOptions = _react.useCallback.call(void 0, () => ({ route: _nullishCoalesce(route, () => ( defaultRoute())), t: now() }), [route, now]);
-  const completeStroke = _react.useCallback.call(void 0, 
+  const anchorOptions = useCallback(() => ({ route: route ?? defaultRoute(), t: now() }), [route, now]);
+  const completeStroke = useCallback(
     (points) => {
       const options = anchorOptions();
       onAnnotation({
@@ -1020,7 +1024,7 @@ function DrawingLayer({
     },
     [anchorOptions, createId, onAnnotation]
   );
-  const completePin = _react.useCallback.call(void 0, 
+  const completePin = useCallback(
     (comment) => {
       if (!pendingPin) return;
       const options = anchorOptions();
@@ -1048,7 +1052,7 @@ function DrawingLayer({
     if (typeof event.currentTarget.setPointerCapture === "function") {
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch (e) {
+      } catch {
       }
     }
     const point = pointFromEvent(event);
@@ -1083,15 +1087,15 @@ function DrawingLayer({
   };
   const pins = annotations.filter((annotation) => annotation.kind === "pin");
   const draftPath = draft.length > 0 ? strokePath(draft, false) : "";
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  return /* @__PURE__ */ jsxs2(
     "div",
     {
       ...{ [OVERLAY_ATTRIBUTE]: "" },
       "data-riffrec-draw-active": active ? "" : void 0,
       style: { ...rootStyle, zIndex },
       children: [
-        active ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { "data-riffrec-draw-tint": "", "aria-hidden": "true", style: tintStyle }) : null,
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+        active ? /* @__PURE__ */ jsx2("div", { "data-riffrec-draw-tint": "", "aria-hidden": "true", style: tintStyle }) : null,
+        /* @__PURE__ */ jsxs2(
           "svg",
           {
             "data-riffrec-draw-surface": "",
@@ -1109,7 +1113,7 @@ function DrawingLayer({
             onPointerCancel,
             children: [
               annotations.map(
-                (annotation) => annotation.kind === "stroke" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+                (annotation) => annotation.kind === "stroke" ? /* @__PURE__ */ jsx2(
                   "path",
                   {
                     "data-riffrec-stroke": annotation.id,
@@ -1118,13 +1122,13 @@ function DrawingLayer({
                     fillOpacity: 0.9
                   },
                   annotation.id
-                ) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, Pin, { annotation, index: pins.indexOf(annotation) + 1 }, annotation.id)
+                ) : /* @__PURE__ */ jsx2(Pin, { annotation, index: pins.indexOf(annotation) + 1 }, annotation.id)
               ),
-              draftPath ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "path", { "data-riffrec-stroke-draft": "", d: draftPath, fill: strokeColor, fillOpacity: 0.9 }) : null
+              draftPath ? /* @__PURE__ */ jsx2("path", { "data-riffrec-stroke-draft": "", d: draftPath, fill: strokeColor, fillOpacity: 0.9 }) : null
             ]
           }
         ),
-        pendingPin ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        pendingPin ? /* @__PURE__ */ jsx2(
           PinComposer,
           {
             point: pendingPin.point,
@@ -1133,7 +1137,7 @@ function DrawingLayer({
             onCancel: () => setPendingPin(null)
           }
         ) : null,
-        showToggle ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        showToggle ? /* @__PURE__ */ jsx2(
           "button",
           {
             type: "button",
@@ -1160,11 +1164,11 @@ var CompositeRenderer = class {
     this.now = options.now;
     this.route = options.route;
     this.createId = options.createId;
-    this.draw = _nullishCoalesce(options.draw, () => ( createCanvasCompositeDrawer()));
-    this.onFrame = _nullishCoalesce(options.onFrame, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    this.draw = options.draw ?? createCanvasCompositeDrawer();
+    this.onFrame = options.onFrame ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
   }
   get pending() {
     return this.pendingCount;
@@ -1178,7 +1182,7 @@ var CompositeRenderer = class {
   render(annotation, base, frameId) {
     if (!base || this.disposed) return Promise.resolve(null);
     this.pendingCount += 1;
-    const id = _nullishCoalesce(frameId, () => ( this.createId()));
+    const id = frameId ?? this.createId();
     const t = this.now();
     const route = this.route();
     const run = this.queue.then(async () => {
@@ -1218,12 +1222,12 @@ function decodeJpeg(base64, doc) {
   });
 }
 function createCanvasCompositeDrawer(options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
-  const quality = _nullishCoalesce(options.quality, () => ( 0.7));
-  const viewport = _nullishCoalesce(options.viewport, () => ( (() => ({
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
+  const quality = options.quality ?? 0.7;
+  const viewport = options.viewport ?? (() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 0,
     height: typeof window !== "undefined" ? window.innerHeight : 0
-  }))));
+  }));
   return async ({ base, annotations }) => {
     if (!doc || typeof Path2D === "undefined") return null;
     const image = await decodeJpeg(base.jpeg_base64, doc);
@@ -1281,6 +1285,7 @@ function createCanvasCompositeDrawer(options = {}) {
 var FRAME_BUFFER_CAPACITY = 12;
 var PERIODIC_FRAME_MS = 1e4;
 var DEFAULT_FRAME_JPEG_QUALITY = 0.7;
+var DEFAULT_FRAME_MAX_WIDTH = 1280;
 var FrameBuffer = class {
   constructor(options) {
     this.frames = [];
@@ -1291,15 +1296,15 @@ var FrameBuffer = class {
     this.now = options.now;
     this.route = options.route;
     this.createId = options.createId;
-    this.capacity = _nullishCoalesce(options.capacity, () => ( FRAME_BUFFER_CAPACITY));
-    this.periodicMs = _nullishCoalesce(options.periodicMs, () => ( PERIODIC_FRAME_MS));
-    this.grabber = _nullishCoalesce(options.grabber, () => ( null));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.onFrame = _nullishCoalesce(options.onFrame, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    this.capacity = options.capacity ?? FRAME_BUFFER_CAPACITY;
+    this.periodicMs = options.periodicMs ?? PERIODIC_FRAME_MS;
+    this.grabber = options.grabber ?? null;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.onFrame = options.onFrame ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
   }
   /** True while a display source exists; false yields nothing from `capture`. */
   get hasSource() {
@@ -1375,13 +1380,13 @@ var FrameBuffer = class {
     return best;
   }
   latest() {
-    return _nullishCoalesce(this.frames[this.frames.length - 1], () => ( null));
+    return this.frames[this.frames.length - 1] ?? null;
   }
   all() {
     return [...this.frames];
   }
   get(id) {
-    return _nullishCoalesce(this.frames.find((frame) => frame.id === id), () => ( null));
+    return this.frames.find((frame) => frame.id === id) ?? null;
   }
   dispose() {
     this.disposed = true;
@@ -1400,9 +1405,10 @@ function dataUrlToBase64(dataUrl) {
   return base64.length > 0 ? base64 : null;
 }
 function createDisplayFrameGrabber(stream, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc) return async () => null;
-  const quality = _nullishCoalesce(options.quality, () => ( DEFAULT_FRAME_JPEG_QUALITY));
+  const quality = options.quality ?? DEFAULT_FRAME_JPEG_QUALITY;
+  const maxWidth = options.maxWidth ?? DEFAULT_FRAME_MAX_WIDTH;
   const video = doc.createElement("video");
   video.muted = true;
   video.playsInline = true;
@@ -1417,7 +1423,7 @@ function createDisplayFrameGrabber(stream, options = {}) {
     const width = video.videoWidth;
     const height = video.videoHeight;
     if (!width || !height) return null;
-    const scale = options.maxWidth && width > options.maxWidth ? options.maxWidth / width : 1;
+    const scale = maxWidth > 0 && width > maxWidth ? maxWidth / width : 1;
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
     const context = canvas.getContext("2d");
@@ -1429,6 +1435,7 @@ function createDisplayFrameGrabber(stream, options = {}) {
 
 // src/live/evidence/liveEvidence.ts
 var TELEMETRY_WINDOW_MS = 1e4;
+var RECENT_FRAME_MS = 500;
 function currentRoute() {
   if (typeof window === "undefined") return "/";
   return window.location.pathname;
@@ -1459,18 +1466,18 @@ var LiveEvidence = class {
     this.disposed = false;
     this.session = options.session;
     this.now = options.now;
-    const route = _nullishCoalesce(options.route, () => ( currentRoute));
-    this.recentEvents = _nullishCoalesce(options.recentEvents, () => ( (() => [])));
-    this.displayGrabber = _nullishCoalesce(options.displayGrabber, () => ( {}));
+    const route = options.route ?? currentRoute;
+    this.recentEvents = options.recentEvents ?? (() => []);
+    this.displayGrabber = options.displayGrabber ?? {};
     const timers = { setTimeout: options.setTimeout, clearTimeout: options.clearTimeout };
-    const onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    const onError = options.onError ?? (() => {
+    });
     this.frames = new FrameBuffer({
       now: this.now,
       route,
       createId: () => this.session.mintId("frame"),
       periodicMs: options.periodicMs,
-      grabber: _nullishCoalesce(options.grabber, () => ( null)),
+      grabber: options.grabber ?? null,
       onFrame: (frame) => this.session.addFrame(frame),
       onError,
       ...timers
@@ -1485,7 +1492,7 @@ var LiveEvidence = class {
     this.clips = new AudioClipRecorder({
       now: this.now,
       createId: () => this.session.mintId("clip"),
-      stream: _nullishCoalesce(options.micStream, () => ( null)),
+      stream: options.micStream ?? null,
       createRecorder: options.createRecorder,
       onClip: (clip) => {
         if (clip.blob) this.session.addClip(clip.id, clip.blob);
@@ -1500,7 +1507,7 @@ var LiveEvidence = class {
       ...timers
     });
     this.gestureTarget = options.gestureTarget === void 0 ? typeof document !== "undefined" ? document : null : options.gestureTarget;
-    _optionalChain([this, 'access', _36 => _36.gestureTarget, 'optionalAccess', _37 => _37.addEventListener, 'call', _38 => _38("pointerdown", this.onPointerDown, true)]);
+    this.gestureTarget?.addEventListener("pointerdown", this.onPointerDown, true);
     if (options.displayStream) this.setDisplayStream(options.displayStream);
   }
   get isPaused() {
@@ -1536,6 +1543,23 @@ var LiveEvidence = class {
   gesture(t = this.now()) {
     if (this.paused) return Promise.resolve(null);
     return this.frames.capture("gesture", t);
+  }
+  /**
+   * `look_at_screen` and proactive frames: the view right now. A gesture frame
+   * grabbed within `RECENT_FRAME_MS` (the pointerdown that preceded a click)
+   * already is the current view and is reused; otherwise a fresh grab, buffered
+   * like a gesture frame so the unit that follows attaches to it; otherwise the
+   * most recent buffered frame, marked stale. Null while paused (R25: nothing
+   * leaves the page) or when no display source exists.
+   */
+  async lookAtScreen() {
+    if (this.paused || this.disposed) return null;
+    const recent = this.frames.latest();
+    if (recent && this.now() - recent.t <= RECENT_FRAME_MS) return { frame: recent, fresh: true };
+    const fresh = await this.frames.capture("gesture");
+    if (fresh) return { frame: fresh, fresh: true };
+    const latest = this.frames.latest();
+    return latest ? { frame: latest, fresh: false } : null;
   }
   /** R25: stop frames and composites; the screen recording and the clip recorder keep running. */
   pause() {
@@ -1585,7 +1609,7 @@ var LiveEvidence = class {
       this.session.addFrame({ ...base, id: compositeId, kind: "composite" });
     }
     if (resolution.kind === "held") {
-      unitId = _nullishCoalesce(this.claimedBy.get(annotation.id), () => ( null));
+      unitId = this.claimedBy.get(annotation.id) ?? null;
       this.claimedBy.delete(annotation.id);
     }
     this.session.addAnnotation(unitId ? { ...referenced, unit_id: unitId } : referenced);
@@ -1601,9 +1625,9 @@ var LiveEvidence = class {
     this.attacher.unitExtracted((claimed) => {
       const claimedIds = claimed.map((annotation) => annotation.id);
       const compositeIds = claimed.map((annotation) => this.compositeIds.get(annotation.id)).filter((id) => typeof id === "string");
-      const firstAnchorT = _optionalChain([input, 'access', _39 => _39.anchors, 'access', _40 => _40[0], 'optionalAccess', _41 => _41.t]);
+      const firstAnchorT = input.anchors[0]?.t;
       const gestureFrame = firstAnchorT === void 0 ? this.frames.latest() : this.frames.nearest(firstAnchorT);
-      const span = _nullishCoalesce(_optionalChain([input, 'access', _42 => _42.evidence, 'optionalAccess', _43 => _43.transcript_span]), () => ( { t_start: _nullishCoalesce(firstAnchorT, () => ( this.now())), t_end: this.now() }));
+      const span = input.evidence?.transcript_span ?? { t_start: firstAnchorT ?? this.now(), t_end: this.now() };
       const clipId = this.clips.pendingClipId();
       const telemetry = this.telemetryWindow(span.t_start, span.t_end);
       unit = this.session.recordUnit({
@@ -1611,8 +1635,8 @@ var LiveEvidence = class {
         evidence: {
           ...input.evidence,
           transcript_span: span,
-          frame_ids: dedupe([..._nullishCoalesce(_optionalChain([input, 'access', _44 => _44.evidence, 'optionalAccess', _45 => _45.frame_ids]), () => ( [])), ...compositeIds, ...gestureFrame ? [gestureFrame.id] : []]),
-          annotation_ids: dedupe([..._nullishCoalesce(_optionalChain([input, 'access', _46 => _46.evidence, 'optionalAccess', _47 => _47.annotation_ids]), () => ( [])), ...claimedIds]),
+          frame_ids: dedupe([...input.evidence?.frame_ids ?? [], ...compositeIds, ...gestureFrame ? [gestureFrame.id] : []]),
+          annotation_ids: dedupe([...input.evidence?.annotation_ids ?? [], ...claimedIds]),
           ...telemetry ? { telemetry_window: telemetry } : {},
           ...clipId ? { audio_clip_id: clipId } : {}
         }
@@ -1627,7 +1651,7 @@ var LiveEvidence = class {
   }
   dispose() {
     this.disposed = true;
-    _optionalChain([this, 'access', _48 => _48.gestureTarget, 'optionalAccess', _49 => _49.removeEventListener, 'call', _50 => _50("pointerdown", this.onPointerDown, true)]);
+    this.gestureTarget?.removeEventListener("pointerdown", this.onPointerDown, true);
     this.frames.dispose();
     this.composites.dispose();
     this.clips.dispose();
@@ -1636,7 +1660,7 @@ var LiveEvidence = class {
   /** A held annotation whose utterance produced no unit: it becomes its own unit (R16). */
   openDrawingOnlyUnit(annotation) {
     if (this.disposed) return null;
-    const unitId = this.createDrawingOnlyUnit(annotation, _nullishCoalesce(this.compositeIds.get(annotation.id), () => ( null)));
+    const unitId = this.createDrawingOnlyUnit(annotation, this.compositeIds.get(annotation.id) ?? null);
     if (!this.session.attachAnnotation(annotation.id, unitId)) this.claimedBy.set(annotation.id, unitId);
     return unitId;
   }
@@ -1721,7 +1745,7 @@ function selectUnitFrames(frameIds, profile, frameKind) {
       return [...frameIds];
     case "one": {
       const composite = frameIds.find((id) => frameKind(id) === "composite");
-      const chosen = _nullishCoalesce(composite, () => ( frameIds[0]));
+      const chosen = composite ?? frameIds[0];
       return chosen ? [chosen] : [];
     }
     default: {
@@ -1752,7 +1776,7 @@ function routeRemoteAudio(context, stream) {
   const edges = /* @__PURE__ */ new Map();
   const link = (from, to) => {
     from.connect(to);
-    const set = _nullishCoalesce(edges.get(from), () => ( /* @__PURE__ */ new Set()));
+    const set = edges.get(from) ?? /* @__PURE__ */ new Set();
     set.add(to);
     edges.set(from, set);
   };
@@ -1776,11 +1800,11 @@ function routeRemoteAudio(context, stream) {
       edges.clear();
       try {
         source.disconnect();
-      } catch (e2) {
+      } catch {
       }
       try {
         gain.disconnect();
-      } catch (e3) {
+      } catch {
       }
     }
   };
@@ -1793,18 +1817,18 @@ function reaches(edges, from, to) {
     if (node === to) return true;
     if (seen.has(node)) continue;
     seen.add(node);
-    for (const next of _nullishCoalesce(edges.get(node), () => ( []))) stack.push(next);
+    for (const next of edges.get(node) ?? []) stack.push(next);
   }
   return false;
 }
 function createDefaultAudioContext() {
   if (typeof window === "undefined") return null;
   const scope = window;
-  const Ctor = _nullishCoalesce(scope.AudioContext, () => ( scope.webkitAudioContext));
+  const Ctor = scope.AudioContext ?? scope.webkitAudioContext;
   if (!Ctor) return null;
   try {
     return new Ctor();
-  } catch (e4) {
+  } catch {
     return null;
   }
 }
@@ -1817,7 +1841,7 @@ var SharedMicrophone = class {
     this.clones = /* @__PURE__ */ new Map();
     this.mutedState = false;
     this.stopped = false;
-    this.createStream = _nullishCoalesce(options.createStream, () => ( defaultCreateStream));
+    this.createStream = options.createStream ?? defaultCreateStream;
   }
   get muted() {
     return this.mutedState;
@@ -1838,7 +1862,7 @@ var SharedMicrophone = class {
     return this.createStream(tracks);
   }
   tracksFor(consumer) {
-    return [..._nullishCoalesce(this.clones.get(consumer), () => ( []))];
+    return [...this.clones.get(consumer) ?? []];
   }
   release(consumer) {
     const tracks = this.clones.get(consumer);
@@ -1861,6 +1885,30 @@ var SharedMicrophone = class {
   }
 };
 
+// src/live/realtime/sessionConfig.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function readSessionConfig(session) {
+  const record = isRecord(session) ? session : {};
+  const instructions = typeof record.instructions === "string" ? record.instructions : null;
+  const tools = Array.isArray(record.tools) ? record.tools.filter(isRecord).map((tool) => ({ ...tool })) : [];
+  return { instructions, tools };
+}
+function reconcileSessionConfig(current) {
+  const patch = {};
+  const names = new Set(current.tools.map((tool) => tool.name).filter((name) => typeof name === "string"));
+  const endpointConfigured = [...names].some((name) => isLiveToolName(name));
+  const missing = LIVE_TOOLS.filter((tool) => !names.has(tool.name));
+  if (missing.length > 0) patch.tools = [...current.tools, ...missing.map((tool) => ({ ...tool }))];
+  if (!endpointConfigured) {
+    patch.instructions = DEFAULT_INTERVIEWER_INSTRUCTIONS;
+  } else if (!hasScreenContext(current.instructions)) {
+    patch.instructions = withScreenContext(current.instructions ?? "");
+  }
+  return patch.tools || patch.instructions !== void 0 ? patch : null;
+}
+
 // src/live/realtime/client.ts
 var REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 var DATA_CHANNEL_READY_TIMEOUT_MS = 1e4;
@@ -1875,7 +1923,7 @@ function parseToolArgs(value) {
   if (typeof value !== "string") return asRecord(value);
   try {
     return asRecord(JSON.parse(value));
-  } catch (e5) {
+  } catch {
     return {};
   }
 }
@@ -1884,6 +1932,8 @@ function parseRealtimeEvent(raw, context) {
   const message = asRecord(raw);
   const type = asString(message.type);
   switch (type) {
+    case "session.created":
+      return { type: "session_created", session: readSessionConfig(message.session) };
     case "input_audio_buffer.speech_started":
       return { type: "speech_started", t: context.t };
     case "input_audio_buffer.speech_stopped":
@@ -1891,9 +1941,9 @@ function parseRealtimeEvent(raw, context) {
     case "conversation.item.input_audio_transcription.completed": {
       const text = asString(message.transcript).trim();
       const itemId = asString(message.item_id);
-      const span = itemId ? _optionalChain([context, 'access', _51 => _51.spans, 'optionalAccess', _52 => _52.get, 'call', _53 => _53(itemId)]) : void 0;
-      const tStart = _nullishCoalesce(_nullishCoalesce(_optionalChain([span, 'optionalAccess', _54 => _54.start]), () => ( context.utteranceStart)), () => ( context.t));
-      const tEnd = span ? _nullishCoalesce(span.end, () => ( Math.max(tStart, context.t))) : _nullishCoalesce(context.utteranceEnd, () => ( context.t));
+      const span = itemId ? context.spans?.get(itemId) : void 0;
+      const tStart = span?.start ?? context.utteranceStart ?? context.t;
+      const tEnd = span ? span.end ?? Math.max(tStart, context.t) : context.utteranceEnd ?? context.t;
       return {
         type: "transcript",
         transcript: {
@@ -1922,7 +1972,7 @@ function parseRealtimeEvent(raw, context) {
     case "response.function_call_arguments.done": {
       const name = asString(message.name);
       const callId = asString(message.call_id);
-      if (!_chunkWMHGUF6Ucjs.isLiveToolName.call(void 0, name)) return { type: "error", message: `Unknown tool call: ${name || "(unnamed)"}` };
+      if (!isLiveToolName(name)) return { type: "error", message: `Unknown tool call: ${name || "(unnamed)"}` };
       return {
         type: "tool_call",
         call: { call_id: callId, name, arguments: parseToolArgs(message.arguments) }
@@ -1951,25 +2001,25 @@ var RealtimeClient = class {
     this.utteranceStart = null;
     this.utteranceEnd = null;
     this.spans = /* @__PURE__ */ new Map();
-    const deps = _nullishCoalesce(options.deps, () => ( {}));
-    this.fetchImpl = _nullishCoalesce(deps.fetchImpl, () => ( ((input, init) => fetch(input, init))));
-    this.createPeerConnection = _nullishCoalesce(deps.createPeerConnection, () => ( (() => new RTCPeerConnection())));
-    this.createAudioElement = _nullishCoalesce(deps.createAudioElement, () => ( (() => {
+    const deps = options.deps ?? {};
+    this.fetchImpl = deps.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.createPeerConnection = deps.createPeerConnection ?? (() => new RTCPeerConnection());
+    this.createAudioElement = deps.createAudioElement ?? (() => {
       const element = document.createElement("audio");
       element.autoplay = true;
       return element;
-    })));
-    this.baseUrl = _nullishCoalesce(deps.baseUrl, () => ( REALTIME_CALLS_URL));
+    });
+    this.baseUrl = deps.baseUrl ?? REALTIME_CALLS_URL;
     const builtAt = Date.now();
-    this.elapsed = _nullishCoalesce(deps.elapsed, () => ( (() => Date.now() - builtAt)));
-    this.schedule = _nullishCoalesce(deps.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(deps.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.textRole = _nullishCoalesce(deps.textRole, () => ( "system"));
-    this.onParseError = _nullishCoalesce(deps.onParseError, () => ( null));
+    this.elapsed = deps.elapsed ?? (() => Date.now() - builtAt);
+    this.schedule = deps.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = deps.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.textRole = deps.textRole ?? "system";
+    this.onParseError = deps.onParseError ?? null;
     this.muted = options.micStream.getAudioTracks().some((track) => !track.enabled);
   }
   get connected() {
-    return _optionalChain([this, 'access', _55 => _55.dataChannel, 'optionalAccess', _56 => _56.readyState]) === "open";
+    return this.dataChannel?.readyState === "open";
   }
   get isMuted() {
     return this.muted;
@@ -1987,14 +2037,14 @@ var RealtimeClient = class {
       pc.addTrack(track, micStream);
     }
     pc.ontrack = (event) => {
-      const stream = _nullishCoalesce(event.streams[0], () => ( new MediaStream([event.track])));
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
       const element = this.createAudioElement();
       this.audioElement = element;
       element.muted = true;
       element.srcObject = stream;
       void Promise.resolve(element.play()).catch(() => {
       });
-      _optionalChain([this, 'access', _57 => _57.options, 'access', _58 => _58.onRemoteTrack, 'optionalCall', _59 => _59(stream)]);
+      this.options.onRemoteTrack?.(stream);
     };
     const channel = pc.createDataChannel("oai-events");
     this.dataChannel = channel;
@@ -2059,7 +2109,7 @@ var RealtimeClient = class {
       const response = await this.fetchImpl(`${this.baseUrl}?model=${encodeURIComponent(this.options.model)}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.options.secret}`, "Content-Type": "application/sdp" },
-        body: _nullishCoalesce(offer.sdp, () => ( ""))
+        body: offer.sdp ?? ""
       });
       if (!response.ok) throw new Error(`Realtime SDP exchange failed: ${response.status}`);
       const answerSdp = await response.text();
@@ -2088,6 +2138,25 @@ var RealtimeClient = class {
       item: { type: "message", role: this.textRole, content: [{ type: "input_text", text }] }
     });
   }
+  /**
+   * A screenshot the interviewer asked for (`look_at_screen`). Image content is
+   * only valid on a `user` message, so the role is fixed here regardless of
+   * `textRole`; the caption travels in the same item so the model reads them
+   * together.
+   */
+  sendImage(text, jpegBase64) {
+    this.send({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_image", image_url: `data:image/jpeg;base64,${jpegBase64}` },
+          { type: "input_text", text }
+        ]
+      }
+    });
+  }
   /** The `function_call_output` item alone; the interviewer decides whether a response follows (KTD6). */
   sendToolResult(result) {
     this.send({
@@ -2109,7 +2178,7 @@ var RealtimeClient = class {
     for (const track of this.options.micStream.getAudioTracks()) track.enabled = !muted;
     if (!this.pc) return;
     for (const sender of this.pc.getSenders()) {
-      if (_optionalChain([sender, 'access', _60 => _60.track, 'optionalAccess', _61 => _61.kind]) === "audio") sender.track.enabled = !muted;
+      if (sender.track?.kind === "audio") sender.track.enabled = !muted;
     }
   }
   close() {
@@ -2121,7 +2190,7 @@ var RealtimeClient = class {
     try {
       raw = JSON.parse(String(data));
     } catch (error) {
-      _optionalChain([this, 'access', _62 => _62.onParseError, 'optionalCall', _63 => _63(error, data)]);
+      this.onParseError?.(error, data);
       return;
     }
     const t = this.elapsed();
@@ -2153,10 +2222,10 @@ var RealtimeClient = class {
     try {
       const result = handlers.onEvent(event);
       if (result && typeof result.catch === "function") {
-        result.catch((error) => _optionalChain([this, 'access', _64 => _64.onParseError, 'optionalCall', _65 => _65(error, event)]));
+        result.catch((error) => this.onParseError?.(error, event));
       }
     } catch (error) {
-      _optionalChain([this, 'access', _66 => _66.onParseError, 'optionalCall', _67 => _67(error, event)]);
+      this.onParseError?.(error, event);
     }
   }
   rememberSpan(itemId, span) {
@@ -2190,7 +2259,7 @@ var RealtimeClient = class {
       channel.onclose = null;
       try {
         channel.close();
-      } catch (e6) {
+      } catch {
       }
     }
     const pc = this.pc;
@@ -2200,7 +2269,7 @@ var RealtimeClient = class {
       pc.onconnectionstatechange = null;
       try {
         pc.close();
-      } catch (e7) {
+      } catch {
       }
     }
     if (this.audioElement) {
@@ -2220,12 +2289,12 @@ function createRealtimeConnector(options) {
   let route = null;
   let client = null;
   const disposeRoute = () => {
-    _optionalChain([route, 'optionalAccess', _68 => _68.dispose, 'call', _69 => _69()]);
+    route?.dispose();
     route = null;
   };
   return {
     connect: (secret) => {
-      _optionalChain([client, 'optionalAccess', _70 => _70.close, 'call', _71 => _71()]);
+      client?.close();
       disposeRoute();
       const micStream = options.microphone.clone("realtime");
       client = new RealtimeClient({
@@ -2247,7 +2316,7 @@ function createRealtimeConnector(options) {
       return client;
     },
     dispose: () => {
-      _optionalChain([client, 'optionalAccess', _72 => _72.close, 'call', _73 => _73()]);
+      client?.close();
       client = null;
       disposeRoute();
       options.microphone.release("realtime");
@@ -2259,27 +2328,27 @@ function createRealtimeConnector(options) {
 var MINT_MAX_CONSECUTIVE_THROTTLES = 3;
 var MINT_DEFAULT_RETRY_AFTER_S = 2;
 var MINT_NETWORK_RETRY_MS = 2e3;
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function readJson(response) {
   try {
     const body = await response.json();
-    return isRecord(body) ? body : null;
-  } catch (e8) {
+    return isRecord2(body) ? body : null;
+  } catch {
     return null;
   }
 }
 function retryAfterMs(body, response) {
-  const fromBody = _optionalChain([body, 'optionalAccess', _74 => _74.retry_after]);
+  const fromBody = body?.retry_after;
   if (typeof fromBody === "number" && Number.isFinite(fromBody) && fromBody >= 0) return fromBody * 1e3;
-  const header = _optionalChain([response, 'access', _75 => _75.headers, 'optionalAccess', _76 => _76.get, 'optionalCall', _77 => _77("Retry-After")]);
+  const header = response.headers?.get?.("Retry-After");
   const fromHeader = header ? Number(header) : NaN;
   if (Number.isFinite(fromHeader) && fromHeader >= 0) return fromHeader * 1e3;
   return MINT_DEFAULT_RETRY_AFTER_S * 1e3;
 }
 function refusalReason(status, body) {
-  const reason = _optionalChain([body, 'optionalAccess', _78 => _78.reason]);
+  const reason = body?.reason;
   switch (reason) {
     case "tls_required":
     case "openai_error":
@@ -2301,7 +2370,7 @@ function parseSecret(body) {
   return { client_secret, expires_at, model };
 }
 async function mint(options) {
-  const fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
+  const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   const request = { session_id: options.sessionId };
   let response;
   try {
@@ -2309,7 +2378,7 @@ async function mint(options) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${options.token}`,
-        [_chunkWMHGUF6Ucjs.LIVE_SESSION_HEADER]: options.sessionId,
+        [LIVE_SESSION_HEADER]: options.sessionId,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(request)
@@ -2326,7 +2395,7 @@ async function mint(options) {
   if (response.status === 429) {
     return { ok: false, retryable: true, kind: "throttled", status: 429, retryAfterMs: retryAfterMs(body, response) };
   }
-  const upstream = _optionalChain([body, 'optionalAccess', _79 => _79.upstream_status]);
+  const upstream = body?.upstream_status;
   return {
     ok: false,
     retryable: false,
@@ -2337,9 +2406,9 @@ async function mint(options) {
   };
 }
 async function mintWithRetry(options) {
-  const max = _nullishCoalesce(options.maxConsecutiveRetryable, () => ( MINT_MAX_CONSECUTIVE_THROTTLES));
-  const schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-  const shouldContinue = _nullishCoalesce(options.shouldContinue, () => ( (() => true)));
+  const max = options.maxConsecutiveRetryable ?? MINT_MAX_CONSECUTIVE_THROTTLES;
+  const schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+  const shouldContinue = options.shouldContinue ?? (() => true);
   let attempts = 0;
   let consecutive = 0;
   for (; ; ) {
@@ -2359,7 +2428,7 @@ async function mintWithRetry(options) {
     }
     consecutive += 1;
     if (consecutive >= max) return { ok: false, kind: "exhausted", reason: outcome.kind, attempts };
-    _optionalChain([options, 'access', _80 => _80.onRetry, 'optionalCall', _81 => _81(outcome, attempts)]);
+    options.onRetry?.(outcome, attempts);
     await new Promise((resolve) => {
       schedule(resolve, outcome.retryAfterMs);
     });
@@ -2371,11 +2440,116 @@ var QUESTION_SILENCE_MS = 1500;
 var RESEED_MAX_CHARS = 6e3;
 var RESEED_WINDOW_MS = 12e4;
 var ANCHOR_RECENCY_MS = 8e3;
+var CLICK_ANNOUNCE_DEDUPE_MS = 1e3;
+var PROACTIVE_FRAME_MIN_INTERVAL_MS = 5e3;
 var MIN_UNIT_WORDS = 3;
 var CONNECT_MAX_ATTEMPTS = 3;
 var RESPONSE_CONFIRM_TIMEOUT_MS = 1e4;
 var RESPONSE_GATE_RESET_MS = 45e3;
 var PENDING_TEXT_LIMIT = 50;
+var NO_FRAME_DETAIL = "The screen is not being shared, or frame capture is paused, so no screenshot is available; ask the riffer to describe what they see.";
+var FRAMES_DISABLED_DETAIL = "This session's evidence profile does not let screenshots leave the page; ask the riffer to describe what they see.";
+var VISUAL_REFERENCE_WORDS = /* @__PURE__ */ new Set([
+  // English
+  "this",
+  "that",
+  "these",
+  "those",
+  "here",
+  "there",
+  "look",
+  "see",
+  "watch",
+  "screen",
+  "color",
+  "colour",
+  "colors",
+  "colours",
+  "layout",
+  "spacing",
+  "align",
+  "aligned",
+  "font",
+  "icon",
+  "image",
+  "picture",
+  "red",
+  "blue",
+  "green",
+  "yellow",
+  "orange",
+  "purple",
+  "pink",
+  "black",
+  "white",
+  "gray",
+  "grey",
+  "bigger",
+  "smaller",
+  "larger",
+  "wider",
+  "narrower",
+  "taller",
+  "shorter",
+  "ugly",
+  "pretty",
+  "nicer",
+  // Dutch
+  "dit",
+  "deze",
+  "dat",
+  "die",
+  "hier",
+  "daar",
+  "kijk",
+  "zie",
+  "kleur",
+  "kleuren",
+  "scherm",
+  "mooier",
+  "lelijk",
+  "groter",
+  "kleiner",
+  "plaatje",
+  // German
+  "dies",
+  "dieses",
+  "diese",
+  "dieser",
+  "das",
+  "dort",
+  "schau",
+  "siehst",
+  "farbe",
+  "gr\xF6\xDFer",
+  "bildschirm",
+  // French
+  "ceci",
+  "cela",
+  "\xE7a",
+  "ici",
+  "l\xE0",
+  "regarde",
+  "vois",
+  "couleur",
+  "\xE9cran",
+  // Spanish
+  "esto",
+  "esta",
+  "este",
+  "eso",
+  "esa",
+  "ese",
+  "aqu\xED",
+  "ah\xED",
+  "all\xED",
+  "mira",
+  "ves",
+  "pantalla"
+]);
+function isVisualReference(text) {
+  return words(text).some((token) => VISUAL_REFERENCE_WORDS.has(token));
+}
 var CHANGE_VERBS = /* @__PURE__ */ new Set([
   "add",
   "align",
@@ -2452,7 +2626,7 @@ var CHANGE_VERBS = /* @__PURE__ */ new Set([
   "wrap"
 ]);
 function words(text) {
-  return (_nullishCoalesce(text.toLowerCase().match(/[\p{L}\p{N}']+/gu), () => ( []))).filter((word) => word.length > 0);
+  return (text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).filter((word) => word.length > 0);
 }
 function isNoiseTranscript(text) {
   const tokens = words(text);
@@ -2461,8 +2635,8 @@ function isNoiseTranscript(text) {
   return !tokens.some((token) => CHANGE_VERBS.has(token));
 }
 function buildReseedText(input) {
-  const windowMs = _nullishCoalesce(input.windowMs, () => ( RESEED_WINDOW_MS));
-  const maxChars = _nullishCoalesce(input.maxChars, () => ( RESEED_MAX_CHARS));
+  const windowMs = input.windowMs ?? RESEED_WINDOW_MS;
+  const maxChars = input.maxChars ?? RESEED_MAX_CHARS;
   const header = "[RECONNECT] Your connection was replaced mid-session. Do not greet or recap aloud. Continue listening. Context so far:";
   const unitLines = input.units.filter((unit) => unit.status !== "withdrawn").map((unit) => `- ${unit.id} (${unit.status}): ${unit.statement}`);
   const transcriptLines = input.transcript.filter((entry) => entry.final && entry.text.trim().length > 0 && entry.t_end >= input.t - windowMs).map((entry) => `${entry.role}: ${entry.text.trim()}`);
@@ -2487,10 +2661,25 @@ ${lines2.join("\n")}`);
   }
   return text.length > maxChars ? text.slice(0, maxChars) : text;
 }
+var PANEL_NOTE = "The riffrec panel docked at the top right is not part of the app.";
+function describeTrigger(trigger) {
+  switch (trigger) {
+    case "click":
+      return "attached because they just clicked there";
+    case "drawing":
+      return "attached because they just drew there";
+    case "speech":
+      return "attached because they referred to something on screen";
+    default: {
+      const exhaustive = trigger;
+      return exhaustive;
+    }
+  }
+}
 function formatQuestion(question) {
   return `[ENDPOINT QUESTION] The coding agent asks about unit ${question.unit_id}: "${question.question}" Read it to the riffer in your own words, then relay their answer with relay_answer for that unit.`;
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringList(value) {
@@ -2510,30 +2699,39 @@ var Interviewer = class {
     this.silenceAnchor = 0;
     this.flushTimer = null;
     this.gateTimer = null;
+    /** A `look_at_screen` answered while a response was active: the model continues once that response settles. */
+    this.responseOwedAfterTool = false;
     this.queue = [];
     this.voicing = null;
     this.voicingInterrupted = false;
-    this.pendingTexts = [];
+    this.pendingItems = [];
     this.announced = [];
+    this.lastAnnouncedClick = null;
     this.lastRifferTranscript = null;
     this.nextAnchorId = 1;
+    /** Epoch ms of the last frame that reached the interviewer; 0 before the first. */
+    this.lastFrameAt = 0;
+    this.frameInFlight = false;
+    this.framesShown = 0;
     this.unsubscribe = [];
     this.session = options.session;
     this.connectTransport = options.connect;
-    this.microphone = _nullishCoalesce(options.microphone, () => ( null));
-    this.evidence = _nullishCoalesce(options.evidence, () => ( null));
+    this.microphone = options.microphone ?? null;
+    this.evidence = options.evidence ?? null;
     this.fetchImpl = options.fetch;
-    this.now = _nullishCoalesce(options.now, () => ( (() => Date.now())));
-    this.schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.questionSilenceMs = _nullishCoalesce(options.questionSilenceMs, () => ( QUESTION_SILENCE_MS));
-    this.reseedMaxChars = _nullishCoalesce(options.reseedMaxChars, () => ( RESEED_MAX_CHARS));
-    this.reseedWindowMs = _nullishCoalesce(options.reseedWindowMs, () => ( RESEED_WINDOW_MS));
-    this.anchorRecencyMs = _nullishCoalesce(options.anchorRecencyMs, () => ( ANCHOR_RECENCY_MS));
+    this.now = options.now ?? (() => Date.now());
+    this.schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.questionSilenceMs = options.questionSilenceMs ?? QUESTION_SILENCE_MS;
+    this.reseedMaxChars = options.reseedMaxChars ?? RESEED_MAX_CHARS;
+    this.reseedWindowMs = options.reseedWindowMs ?? RESEED_WINDOW_MS;
+    this.anchorRecencyMs = options.anchorRecencyMs ?? ANCHOR_RECENCY_MS;
+    this.screenFrames = options.screenFrames ?? true;
+    this.proactiveFrameMinIntervalMs = options.proactiveFrameMinIntervalMs ?? PROACTIVE_FRAME_MIN_INTERVAL_MS;
     this.resolveAnchorOverride = options.resolveAnchor;
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
-    this.onStatus = _nullishCoalesce(options.onStatus, () => ( null));
+    this.onError = options.onError ?? (() => {
+    });
+    this.onStatus = options.onStatus ?? null;
     this.silenceAnchor = this.now();
     this.unsubscribe.push(
       this.session.on("ask", ({ question }) => this.enqueueQuestion(question)),
@@ -2560,6 +2758,7 @@ var Interviewer = class {
     this.generation += 1;
     this.clearFlushTimer();
     this.clearGateTimer();
+    this.responseOwedAfterTool = false;
     for (const off of this.unsubscribe.splice(0)) off();
     const transport = this.transport;
     this.transport = null;
@@ -2570,7 +2769,7 @@ var Interviewer = class {
         this.onError(error);
       }
     }
-    _optionalChain([this, 'access', _82 => _82.microphone, 'optionalAccess', _83 => _83.release, 'call', _84 => _84("realtime")]);
+    this.microphone?.release("realtime");
     this.emitStatus();
   }
   get status() {
@@ -2579,11 +2778,12 @@ var Interviewer = class {
       connecting: this.connecting,
       responseActive: this.responseActive,
       rifferSpeaking: this.rifferSpeaking,
-      queuedQuestions: this.queue.map((entry) => _nullishCoalesce(this.session.questionFor(entry.unit_id), () => ( toUnitQuestion(entry)))),
-      voicing: this.voicing ? _nullishCoalesce(this.session.questionFor(this.voicing.unit_id), () => ( toUnitQuestion(this.voicing))) : null,
+      queuedQuestions: this.queue.map((entry) => this.session.questionFor(entry.unit_id) ?? toUnitQuestion(entry)),
+      voicing: this.voicing ? this.session.questionFor(this.voicing.unit_id) ?? toUnitQuestion(this.voicing) : null,
       unavailable: this.unavailable,
       mintAttempts: this.mintAttempts,
-      connections: this.connections
+      connections: this.connections,
+      framesShown: this.framesShown
     };
   }
   // ---------------------------------------------------------------------
@@ -2592,7 +2792,7 @@ var Interviewer = class {
   /** The mute hook: flips every microphone clone, the Realtime sender, and the session's mic state together (KTD21). */
   setMuted(muted) {
     if (this.session.isMuted === muted) return;
-    _optionalChain([this, 'access', _85 => _85.microphone, 'optionalAccess', _86 => _86.setMuted, 'call', _87 => _87(muted)]);
+    this.microphone?.setMuted(muted);
     if (this.transport) {
       try {
         this.transport.setMuted(muted);
@@ -2603,16 +2803,35 @@ var Interviewer = class {
     this.session.setMuted(muted);
     this.announce(muted ? "The riffer muted their microphone; expect silence." : "The riffer unmuted their microphone.");
   }
-  /** A completed stroke or pin (KTD5): the interviewer learns the element by name and by anchor id. */
+  /** A completed stroke or pin (KTD5): the interviewer learns the element by name and by anchor id, and sees the view. */
   announceDrawing(drawing) {
     const entry = this.rememberAnchor(drawing.anchor, drawing.description, drawing.anchorId);
     const verb = drawing.kind === "pin" ? "pinned" : "drew on";
     this.announce(`The riffer ${verb} ${drawing.description} (anchor id: ${entry.id}).`);
+    void this.attachFrame("drawing");
     return entry;
   }
-  /** A click or hover the page anchored; silent, but available to "this"/"that" resolution. */
+  /** An anchor the page resolved without a gesture to report; silent, but available to "this"/"that" resolution. */
   noteAnchor(anchor, description, anchorId) {
     return this.rememberAnchor(anchor, description, anchorId);
+  }
+  /**
+   * A click the page anchored: the interviewer learns the element by name and
+   * by anchor id as it happens, so "this" and "here" resolve without asking.
+   * Repeated clicks on the same element inside `CLICK_ANNOUNCE_DEDUPE_MS`
+   * refresh the anchor but send no second note.
+   */
+  announceClick(anchor, description, anchorId) {
+    const now = this.elapsed();
+    const last = this.lastAnnouncedClick;
+    const repeat = last !== null && last.selector === anchor.selector && now - last.t <= CLICK_ANNOUNCE_DEDUPE_MS;
+    const entry = this.rememberAnchor(anchor, description, anchorId ?? (repeat ? last.id : void 0));
+    this.lastAnnouncedClick = { selector: anchor.selector, t: now, id: entry.id };
+    if (!repeat) {
+      this.announce(`The riffer clicked ${description} (anchor id: ${entry.id}).`);
+      void this.attachFrame("click");
+    }
+    return entry;
   }
   announceBuffering(state) {
     this.announce(
@@ -2621,17 +2840,72 @@ var Interviewer = class {
   }
   /** Any page-side fact as a text item; held while a response is active or the link is down (KTD6). */
   announce(text) {
-    const item = `[PAGE] ${text}`;
-    if (this.stopped) return;
-    if (!this.transport || this.responseActive) {
-      this.pendingTexts.push(item);
-      if (this.pendingTexts.length > PENDING_TEXT_LIMIT) this.pendingTexts.shift();
-      return;
-    }
-    this.sendText(item);
+    this.deliver({ kind: "text", text: `[PAGE] ${text}` });
   }
   announcedAnchors() {
     return [...this.announced];
+  }
+  /**
+   * Shows the interviewer the screen without being asked: after a click or a
+   * drawing, or when the riffer's words point at something on screen. One frame
+   * per `proactiveFrameMinIntervalMs` at most, and never while another grab is
+   * in flight, so a click burst or a long sentence costs one image.
+   */
+  async attachFrame(trigger) {
+    if (!this.screenFrames || !this.evidence?.lookAtScreen || this.stopped || !this.transport) return;
+    if (this.frameInFlight || this.now() - this.lastFrameAt < this.proactiveFrameMinIntervalMs) return;
+    this.frameInFlight = true;
+    try {
+      const look = await this.evidence.lookAtScreen();
+      if (!look || look.frame.jpeg_base64.length === 0 || this.stopped) return;
+      this.lastFrameAt = this.now();
+      this.deliver({
+        kind: "image",
+        text: `[PAGE] Screenshot of the riffer's current view on ${look.frame.route}, ${describeTrigger(trigger)} (frame id: ${look.frame.id}). ${PANEL_NOTE}`,
+        jpegBase64: look.frame.jpeg_base64,
+        frameId: look.frame.id
+      });
+    } catch (error) {
+      this.onError(error);
+    } finally {
+      this.frameInFlight = false;
+    }
+  }
+  deliver(item) {
+    if (this.stopped) return;
+    if (!this.transport || this.responseActive) {
+      this.pendingItems.push(item);
+      if (this.pendingItems.length > PENDING_TEXT_LIMIT) this.pendingItems.shift();
+      return;
+    }
+    this.sendItem(this.transport, item);
+  }
+  sendItem(transport, item) {
+    switch (item.kind) {
+      case "text":
+        this.sendText(item.text);
+        return;
+      case "image":
+        this.sendFrame(transport, item);
+        return;
+      default: {
+        const exhaustive = item;
+        return exhaustive;
+      }
+    }
+  }
+  /** One image item to the model; on success the frame counts against the rate limit and is released to the endpoint. */
+  sendFrame(transport, item) {
+    try {
+      transport.sendImage(item.text, item.jpegBase64);
+    } catch (error) {
+      this.onError(error);
+      return false;
+    }
+    this.lastFrameAt = this.now();
+    this.framesShown += 1;
+    this.evidence?.frameShown?.(item.frameId);
+    return true;
   }
   // ---------------------------------------------------------------------
   // Connection
@@ -2728,6 +3002,7 @@ var Interviewer = class {
     this.transport = transport;
     this.connections += 1;
     this.responseActive = false;
+    this.responseOwedAfterTool = false;
     this.rifferSpeaking = false;
     this.voicing = null;
     this.voicingInterrupted = false;
@@ -2767,6 +3042,7 @@ var Interviewer = class {
     this.clearFlushTimer();
     this.clearGateTimer();
     this.responseActive = false;
+    this.responseOwedAfterTool = false;
     if (this.voicing) {
       this.requeue(this.voicing);
       this.voicing = null;
@@ -2782,18 +3058,21 @@ var Interviewer = class {
   handleEvent(transport, event) {
     if (transport !== this.transport && event.type !== "closed") return;
     switch (event.type) {
+      case "session_created":
+        this.applySessionConfig(transport, event.session);
+        break;
       case "speech_started":
         this.rifferSpeaking = true;
         this.clearFlushTimer();
         if (this.voicing) this.voicingInterrupted = true;
         this.session.speechStarted();
-        _optionalChain([this, 'access', _88 => _88.evidence, 'optionalAccess', _89 => _89.speechStarted, 'optionalCall', _90 => _90()]);
+        this.evidence?.speechStarted?.();
         break;
       case "speech_stopped":
         this.rifferSpeaking = false;
         this.silenceAnchor = this.now();
         this.session.speechStopped();
-        _optionalChain([this, 'access', _91 => _91.evidence, 'optionalAccess', _92 => _92.speechStopped, 'optionalCall', _93 => _93()]);
+        this.evidence?.speechStopped?.();
         this.scheduleFlush();
         break;
       case "transcript":
@@ -2817,6 +3096,10 @@ var Interviewer = class {
           this.voicingInterrupted = false;
         }
         this.flushPendingTexts();
+        if (this.responseOwedAfterTool) {
+          this.responseOwedAfterTool = false;
+          this.createResponseNow(transport, "look_at_screen follow-up");
+        }
         this.scheduleFlush();
         break;
       case "error":
@@ -2834,23 +3117,48 @@ var Interviewer = class {
   }
   handleTranscript(transcript) {
     if (transcript.text.trim().length === 0) return;
-    if (transcript.role === "riffer") this.lastRifferTranscript = transcript;
+    if (transcript.role === "riffer") {
+      this.lastRifferTranscript = transcript;
+      if (isVisualReference(transcript.text)) void this.attachFrame("speech");
+    }
     this.session.addTranscript(transcript);
   }
   handleError(message) {
     this.onError(new Error(`riffrec live interviewer: ${message}`));
-    if (message.includes("conversation_already_has_active_response") && this.voicing) {
-      this.requeue(this.voicing);
-      this.voicing = null;
-      this.voicingInterrupted = false;
+    if (message.includes("conversation_already_has_active_response")) {
+      if (this.voicing) {
+        this.requeue(this.voicing);
+        this.voicing = null;
+        this.voicingInterrupted = false;
+      }
       this.responseActive = true;
       this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, "no response.done after a busy error");
+    }
+  }
+  /**
+   * `session.created`: the endpoint's mint owns the persona and may override
+   * any tool it copied; the page adds only what it must be able to answer
+   * (missing tools, the screen-context section) and leaves the rest alone.
+   */
+  applySessionConfig(transport, session) {
+    const patch = reconcileSessionConfig(session);
+    if (!patch) return;
+    try {
+      transport.updateSession({ type: "realtime", ...patch });
+    } catch (error) {
+      this.onError(error);
     }
   }
   // ---------------------------------------------------------------------
   // Tools (KTD5)
   // ---------------------------------------------------------------------
   handleToolCall(call) {
+    const transport = this.transport;
+    if (!transport) return;
+    if (call.name === "look_at_screen") {
+      void this.lookAtScreen(transport, call).catch((error) => this.onError(error));
+      return;
+    }
     let output;
     try {
       output = this.runTool(call);
@@ -2858,13 +3166,7 @@ var Interviewer = class {
       this.onError(error);
       output = { ok: false, reason: "tool_error", message: error instanceof Error ? error.message : String(error) };
     }
-    const result = { call_id: call.call_id, output };
-    if (!this.transport) return;
-    try {
-      this.transport.sendToolResult(result);
-    } catch (error) {
-      this.onError(error);
-    }
+    this.sendToolResult(transport, { call_id: call.call_id, output });
     this.scheduleFlush();
   }
   runTool(call) {
@@ -2883,9 +3185,63 @@ var Interviewer = class {
       }
     }
   }
+  /**
+   * `look_at_screen`: the page grabs the current view, attaches it as an image
+   * item, answers the call, and — unlike every other tool (KTD6) — asks for a
+   * response, because the model called it mid-answer and would otherwise fall
+   * silent until the riffer speaks again.
+   */
+  async lookAtScreen(transport, call) {
+    let look = null;
+    if (this.screenFrames) {
+      try {
+        look = await this.evidence?.lookAtScreen?.() ?? null;
+      } catch (error) {
+        this.onError(error);
+      }
+    }
+    if (this.transport !== transport || this.stopped) return;
+    let output;
+    if (!this.screenFrames) {
+      output = { ok: false, reason: "frames_disabled", detail: FRAMES_DISABLED_DETAIL };
+    } else if (!look || look.frame.jpeg_base64.length === 0) {
+      output = { ok: false, reason: "no_frame", detail: NO_FRAME_DETAIL };
+    } else {
+      const ageMs = Math.max(0, Math.round(this.elapsed() - look.frame.t));
+      const when = look.fresh ? "captured just now" : `captured ${Math.max(1, Math.round(ageMs / 1e3))} s ago`;
+      const sent = this.sendFrame(transport, {
+        kind: "image",
+        text: `[PAGE] Screenshot of the riffer's current view on ${look.frame.route}, ${when} (frame id: ${look.frame.id}). ${PANEL_NOTE}`,
+        jpegBase64: look.frame.jpeg_base64,
+        frameId: look.frame.id
+      });
+      output = sent ? { ok: true, frame_id: look.frame.id, route: look.frame.route, age_ms: ageMs, fresh: look.fresh } : { ok: false, reason: "send_failed", detail: NO_FRAME_DETAIL };
+    }
+    this.sendToolResult(transport, { call_id: call.call_id, output });
+    if (this.responseActive) this.responseOwedAfterTool = true;
+    else this.createResponseNow(transport, "look_at_screen follow-up");
+    this.emitStatus();
+  }
+  sendToolResult(transport, result) {
+    try {
+      transport.sendToolResult(result);
+    } catch (error) {
+      this.onError(error);
+    }
+  }
+  /** `response.create` with the same confirmation gate a voiced question uses. */
+  createResponseNow(transport, why) {
+    try {
+      transport.createResponse();
+      this.responseActive = true;
+      this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, `${why}: response.create was never confirmed`);
+    } catch (error) {
+      this.onError(error);
+    }
+  }
   recordUnit(args) {
     const raw = args;
-    if (!isRecord2(raw) || typeof raw.statement !== "string" || raw.statement.trim().length === 0) {
+    if (!isRecord3(raw) || typeof raw.statement !== "string" || raw.statement.trim().length === 0) {
       return { ok: false, reason: "invalid_arguments", detail: "statement is required" };
     }
     const statement = raw.statement.trim();
@@ -2907,7 +3263,7 @@ var Interviewer = class {
       anchors,
       ...span ? { evidence: { transcript_span: span } } : {}
     };
-    const unit = _optionalChain([this, 'access', _94 => _94.evidence, 'optionalAccess', _95 => _95.recordUnit]) ? this.evidence.recordUnit(input) : this.session.recordUnit(input);
+    const unit = this.evidence?.recordUnit ? this.evidence.recordUnit(input) : this.session.recordUnit(input);
     return {
       ok: true,
       unit_id: unit.id,
@@ -2917,7 +3273,7 @@ var Interviewer = class {
   }
   updateUnit(args) {
     const raw = args;
-    if (!isRecord2(raw) || typeof raw.unit_id !== "string") {
+    if (!isRecord3(raw) || typeof raw.unit_id !== "string") {
       return { ok: false, reason: "invalid_arguments", detail: "unit_id is required" };
     }
     const refs = stringList(raw.anchors_add);
@@ -2938,7 +3294,7 @@ var Interviewer = class {
   }
   withdrawUnit(args) {
     const raw = args;
-    if (!isRecord2(raw) || typeof raw.unit_id !== "string") {
+    if (!isRecord3(raw) || typeof raw.unit_id !== "string") {
       return { ok: false, reason: "invalid_arguments", detail: "unit_id is required" };
     }
     const reason = typeof raw.reason === "string" && raw.reason.trim().length > 0 ? raw.reason.trim() : void 0;
@@ -2949,7 +3305,7 @@ var Interviewer = class {
   }
   relayAnswer(args) {
     const raw = args;
-    if (!isRecord2(raw) || typeof raw.unit_id !== "string" || typeof raw.answer_text !== "string") {
+    if (!isRecord3(raw) || typeof raw.unit_id !== "string" || typeof raw.answer_text !== "string") {
       return { ok: false, reason: "invalid_arguments", detail: "unit_id and answer_text are required" };
     }
     const text = raw.answer_text.trim();
@@ -2963,7 +3319,7 @@ var Interviewer = class {
   // Anchors
   // ---------------------------------------------------------------------
   rememberAnchor(anchor, description, anchorId) {
-    const id = _nullishCoalesce(anchorId, () => ( `anchor_${String(this.nextAnchorId++).padStart(4, "0")}`));
+    const id = anchorId ?? `anchor_${String(this.nextAnchorId++).padStart(4, "0")}`;
     const entry = { id, anchor, description, t: this.elapsed() };
     const index = this.announced.findIndex((existing) => existing.id === id);
     if (index === -1) this.announced.push(entry);
@@ -3001,7 +3357,7 @@ var Interviewer = class {
   enqueueQuestion(question) {
     if (question.answered) return;
     if (this.queue.some((entry) => entry.unit_id === question.unit_id)) return;
-    if (_optionalChain([this, 'access', _96 => _96.voicing, 'optionalAccess', _97 => _97.unit_id]) === question.unit_id) return;
+    if (this.voicing?.unit_id === question.unit_id) return;
     this.queue.push({ unit_id: question.unit_id, question: question.question, requeued: 0 });
     this.scheduleFlush();
     this.emitStatus();
@@ -3082,8 +3438,9 @@ var Interviewer = class {
     }
   }
   flushPendingTexts() {
-    if (!this.transport) return;
-    for (const text of this.pendingTexts.splice(0)) this.sendText(text);
+    const transport = this.transport;
+    if (!transport) return;
+    for (const item of this.pendingItems.splice(0)) this.sendItem(transport, item);
   }
   sendText(text) {
     if (!this.transport) return;
@@ -3103,7 +3460,7 @@ var Interviewer = class {
     return Math.max(0, this.now() - this.session.startedAt);
   }
   emitStatus() {
-    _optionalChain([this, 'access', _98 => _98.onStatus, 'optionalCall', _99 => _99(this.status)]);
+    this.onStatus?.(this.status);
   }
 };
 function toUnitQuestion(entry) {
@@ -3123,7 +3480,7 @@ function frameKey(sessionId, frameId) {
 function requestToPromise2(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("IndexedDB request failed."))));
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
   });
 }
 function openFrameDb() {
@@ -3136,7 +3493,7 @@ function openFrameDb() {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("Failed to open riffrec live frame store."))));
+    request.onerror = () => reject(request.error ?? new Error("Failed to open riffrec live frame store."));
   });
 }
 var IndexedDbFrameStore = class {
@@ -3179,7 +3536,7 @@ var MemoryFrameStore = class {
     this.entries.set(frameKey(sessionId, frameId), jpegBase64);
   }
   async get(sessionId, frameId) {
-    return _nullishCoalesce(this.entries.get(frameKey(sessionId, frameId)), () => ( null));
+    return this.entries.get(frameKey(sessionId, frameId)) ?? null;
   }
   async delete(sessionId, frameId) {
     this.entries.delete(frameKey(sessionId, frameId));
@@ -3205,7 +3562,7 @@ function tombstoneFrame(envelope, reason) {
   return { ...envelope, payload };
 }
 function fillerEnvelope(sessionId, seq, t) {
-  return { schema_version: _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION, session_id: sessionId, seq, t, type: "stream_state", payload: { state: "buffering" } };
+  return { schema_version: LIVE_SCHEMA_VERSION, session_id: sessionId, seq, t, type: "stream_state", payload: { state: "buffering" } };
 }
 function isPlaceholder(envelope) {
   if (isFrameEnvelope(envelope)) return envelope.payload.dropped !== void 0;
@@ -3232,10 +3589,10 @@ var UnsentQueue = class _UnsentQueue {
     this.pendingPuts = /* @__PURE__ */ new Set();
     /** Envelopes replaced by a filler or tombstone since construction. */
     this.evictions = 0;
-    this.onStoreError = _nullishCoalesce(options.onStoreError, () => ( (() => {
-    })));
-    this.onStoreSettled = _nullishCoalesce(options.onStoreSettled, () => ( (() => {
-    })));
+    this.onStoreError = options.onStoreError ?? (() => {
+    });
+    this.onStoreSettled = options.onStoreSettled ?? (() => {
+    });
   }
   /**
    * Rebuilds the queue from `sessionStorage`. `entries` is null when the last
@@ -3246,12 +3603,12 @@ var UnsentQueue = class _UnsentQueue {
   static fromPersisted(sessionId, entries, range, frameStore, options) {
     const queue = new _UnsentQueue(sessionId, frameStore, options);
     const bySeq = /* @__PURE__ */ new Map();
-    for (const entry of _nullishCoalesce(entries, () => ( []))) {
+    for (const entry of entries ?? []) {
       if (entry.seq <= range.ackedSeq || entry.seq >= range.nextSeq) continue;
       bySeq.set(entry.seq, entry);
     }
     for (let seq = range.ackedSeq + 1; seq < range.nextSeq; seq += 1) {
-      const entry = _nullishCoalesce(bySeq.get(seq), () => ( fillerEnvelope(sessionId, seq, range.t)));
+      const entry = bySeq.get(seq) ?? fillerEnvelope(sessionId, seq, range.t);
       queue.entries.push(entry);
       if (!isFrameEnvelope(entry) || entry.payload.dropped) continue;
       if (entry.payload.jpeg_base64 === "") {
@@ -3270,7 +3627,7 @@ var UnsentQueue = class _UnsentQueue {
   }
   /** Lowest queued `seq`, or null when empty. */
   get headSeq() {
-    return _nullishCoalesce(_optionalChain([this, 'access', _100 => _100.entries, 'access', _101 => _101[0], 'optionalAccess', _102 => _102.seq]), () => ( null));
+    return this.entries[0]?.seq ?? null;
   }
   all() {
     return [...this.entries];
@@ -3335,7 +3692,7 @@ var UnsentQueue = class _UnsentQueue {
     for (const entry of this.entries) {
       if (isFrameEnvelope(entry) || envelopes.length >= limit) break;
       const size = byteLength(JSON.stringify(entry)) + 1;
-      if (envelopes.length > 0 && bytes + size > _chunkWMHGUF6Ucjs.LIVE_EVENTS_BODY_MAX_BYTES) break;
+      if (envelopes.length > 0 && bytes + size > LIVE_EVENTS_BODY_MAX_BYTES) break;
       envelopes.push(entry);
       bytes += size;
     }
@@ -3377,7 +3734,30 @@ var UnsentQueue = class _UnsentQueue {
     const entry = this.entries.find((candidate) => candidate.seq === seq);
     if (!entry) return null;
     if (isFrameEnvelope(entry)) return this.dropFrame(seq, "oversize");
-    const replacement = _nullishCoalesce(shrinkEnvelope(entry), () => ( fillerEnvelope(this.sessionId, seq, t)));
+    const replacement = shrinkEnvelope(entry) ?? fillerEnvelope(this.sessionId, seq, t);
+    this.replace(seq, replacement);
+    this.evictions += 1;
+    return replacement;
+  }
+  /**
+   * A same-`seq` stand-in for an envelope the endpoint refused as malformed
+   * (`400`): a shrunk copy when the envelope has something to shed, otherwise a
+   * filler; a frame goes straight to a filler, since its metadata was what was
+   * refused. Returns null once the entry is already a filler — nothing smaller
+   * exists, and the caller treats the rejection as a failure.
+   */
+  replaceRejected(seq, t) {
+    const entry = this.entries.find((candidate) => candidate.seq === seq);
+    if (!entry) return null;
+    if (isFrameEnvelope(entry)) {
+      const filler = fillerEnvelope(this.sessionId, seq, t);
+      this.replace(seq, filler);
+      this.forgetFrame(entry.payload.id);
+      this.evictions += 1;
+      return filler;
+    }
+    if (isPlaceholder(entry)) return null;
+    const replacement = shrinkEnvelope(entry) ?? fillerEnvelope(this.sessionId, seq, t);
     this.replace(seq, replacement);
     this.evictions += 1;
     return replacement;
@@ -3433,7 +3813,7 @@ function isQuotaExceededError(error) {
   return candidate.name === "QuotaExceededError" || candidate.name === "NS_ERROR_DOM_QUOTA_REACHED" || candidate.code === 22 || candidate.code === 1014;
 }
 function persistWithQuotaGuard(storage, key, queue, build, options) {
-  const fraction = _nullishCoalesce(options.evictFraction, () => ( 0.25));
+  const fraction = options.evictFraction ?? 0.25;
   let evicted = false;
   for (; ; ) {
     try {
@@ -3441,7 +3821,7 @@ function persistWithQuotaGuard(storage, key, queue, build, options) {
       return evicted ? "stored_after_eviction" : "stored";
     } catch (error) {
       if (!isQuotaExceededError(error)) return "failed";
-      const evictable = _nullishCoalesce(_optionalChain([queue, 'optionalAccess', _103 => _103.evictableCount, 'call', _104 => _104()]), () => ( 0));
+      const evictable = queue?.evictableCount() ?? 0;
       if (queue && evictable > 0) {
         queue.evictOldest(Math.max(1, Math.ceil(evictable * fraction)), options.t);
         evicted = true;
@@ -3459,7 +3839,7 @@ function persistWithQuotaGuard(storage, key, queue, build, options) {
   try {
     storage.setItem(key, build("minimal", null));
     return "stored_minimal";
-  } catch (e9) {
+  } catch {
     return "failed";
   }
 }
@@ -3474,10 +3854,10 @@ var CheckpointEmitter = class {
     this.speaking = false;
     this.pendingSend = null;
     this.disposed = false;
-    this.silenceMs = _nullishCoalesce(options.silenceMs, () => ( SILENCE_CHECKPOINT_MS));
-    this.sendWaitMs = _nullishCoalesce(options.sendWaitMs, () => ( SEND_TURN_WAIT_MS));
-    this.schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
+    this.silenceMs = options.silenceMs ?? SILENCE_CHECKPOINT_MS;
+    this.sendWaitMs = options.sendWaitMs ?? SEND_TURN_WAIT_MS;
+    this.schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = options.clearTimeout ?? ((handle) => clearTimeout(handle));
   }
   get isSpeaking() {
     return this.speaking;
@@ -3579,6 +3959,7 @@ var CheckpointEmitter = class {
 // src/live/streamClient.ts
 var DEFAULT_FAILURE_THRESHOLD = 3;
 var DEFAULT_BACKOFF_MS = [1e3, 2e3, 4e3, 8e3, 16e3, 3e4];
+var DEFAULT_POST_TIMEOUT_MS = 2e4;
 var SERVER_EVENT_NAMES = ["unit_status", "applied", "ask", "ack", "session_ended"];
 function defaultSchedule(callback) {
   if (typeof requestAnimationFrame === "function") {
@@ -3587,14 +3968,14 @@ function defaultSchedule(callback) {
     setTimeout(callback, 0);
   }
 }
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function readJson2(response) {
   try {
     const value = await response.json();
-    return isRecord3(value) ? value : null;
-  } catch (e10) {
+    return isRecord4(value) ? value : null;
+  } catch {
     return null;
   }
 }
@@ -3615,10 +3996,10 @@ function parseServerEventBlock(block) {
   let data;
   try {
     data = dataLines.length > 0 ? JSON.parse(dataLines.join("\n")) : {};
-  } catch (e11) {
+  } catch {
     return null;
   }
-  if (!isRecord3(data)) return null;
+  if (!isRecord4(data)) return null;
   return { event: name, data };
 }
 var StreamClient = class {
@@ -3638,12 +4019,13 @@ var StreamClient = class {
     this.streamRetryTimer = null;
     this.streamFailures = 0;
     this.closed = false;
-    this.fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
-    this.schedule = _nullishCoalesce(options.schedule, () => ( defaultSchedule));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.failureThreshold = _nullishCoalesce(options.failureThreshold, () => ( DEFAULT_FAILURE_THRESHOLD));
-    this.backoffMs = _nullishCoalesce(options.backoffMs, () => ( DEFAULT_BACKOFF_MS));
+    this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
+    this.schedule = options.schedule ?? defaultSchedule;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.failureThreshold = options.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
+    this.backoffMs = options.backoffMs ?? DEFAULT_BACKOFF_MS;
+    this.postTimeoutMs = options.postTimeoutMs ?? DEFAULT_POST_TIMEOUT_MS;
   }
   get queue() {
     return this.options.queue;
@@ -3654,7 +4036,7 @@ var StreamClient = class {
   headers(extra = {}) {
     return {
       Authorization: `Bearer ${this.options.token}`,
-      [_chunkWMHGUF6Ucjs.LIVE_SESSION_HEADER]: this.options.sessionId,
+      [LIVE_SESSION_HEADER]: this.options.sessionId,
       ...extra
     };
   }
@@ -3668,7 +4050,7 @@ var StreamClient = class {
   enqueue(envelope) {
     if (this.closed) return;
     this.queue.enqueue(envelope);
-    _optionalChain([this, 'access', _105 => _105.options, 'access', _106 => _106.onQueueChange, 'optionalCall', _107 => _107()]);
+    this.options.onQueueChange?.();
     this.scheduleFlush();
   }
   /** Forces a flush attempt now (used by tests and by `final`). */
@@ -3683,7 +4065,7 @@ var StreamClient = class {
   sendUnloading(envelope) {
     if (this.closed) return;
     this.queue.enqueue(envelope);
-    _optionalChain([this, 'access', _108 => _108.options, 'access', _109 => _109.onQueueChange, 'optionalCall', _110 => _110()]);
+    this.options.onQueueChange?.();
     try {
       const result = this.fetchImpl(`${this.options.endpoint}/events`, {
         method: "POST",
@@ -3697,7 +4079,7 @@ var StreamClient = class {
         if (body && typeof body.acked_seq === "number") this.applyAck(body.acked_seq);
       }).catch(() => {
       });
-    } catch (e12) {
+    } catch {
     }
   }
   close() {
@@ -3707,7 +4089,7 @@ var StreamClient = class {
     if (this.streamRetryTimer !== null) this.clearTimer(this.streamRetryTimer);
     this.retryTimer = null;
     this.streamRetryTimer = null;
-    _optionalChain([this, 'access', _111 => _111.streamAbort, 'optionalAccess', _112 => _112.abort, 'call', _113 => _113()]);
+    this.streamAbort?.abort();
     this.streamAbort = null;
     if (!this.isTerminal) this.setState("closed");
   }
@@ -3740,16 +4122,25 @@ var StreamClient = class {
   }
   async post(envelopes, frame) {
     this.postAttempts += 1;
+    const abort = typeof AbortController === "function" ? new AbortController() : null;
+    let timedOut = false;
+    const timer = this.setTimer(() => {
+      timedOut = true;
+      abort?.abort();
+    }, this.postTimeoutMs);
     let response;
     try {
       response = await this.fetchImpl(`${this.options.endpoint}/events`, {
         method: "POST",
         headers: this.headers({ "Content-Type": "application/json" }),
-        body: JSON.stringify(envelopes)
+        body: JSON.stringify(envelopes),
+        ...abort ? { signal: abort.signal } : {}
       });
     } catch (error) {
-      this.recordFailure(error);
+      this.recordFailure(timedOut ? new Error(`riffrec live: POST /events timed out after ${this.postTimeoutMs} ms`) : error);
       return "stop";
+    } finally {
+      this.clearTimer(timer);
     }
     if (response.ok) {
       const body2 = await readJson2(response);
@@ -3764,21 +4155,21 @@ var StreamClient = class {
       case 413: {
         if (frame) {
           const dropped = this.queue.dropFrame(envelopes[0].seq, "oversize");
-          if (dropped) _optionalChain([this, 'access', _114 => _114.options, 'access', _115 => _115.onFrameDropped, 'optionalCall', _116 => _116(dropped)]);
-          _optionalChain([this, 'access', _117 => _117.options, 'access', _118 => _118.onQueueChange, 'optionalCall', _119 => _119()]);
+          if (dropped) this.options.onFrameDropped?.(dropped);
+          this.options.onQueueChange?.();
           return "continue";
         }
         if (envelopes.length > 1) {
           this.batchLimit = Math.max(1, Math.floor(envelopes.length / 2));
           return "continue";
         }
-        const replaced = this.queue.shrinkOrFill(envelopes[0].seq, _nullishCoalesce(_optionalChain([this, 'access', _120 => _120.options, 'access', _121 => _121.elapsed, 'optionalCall', _122 => _122()]), () => ( 0)));
-        _optionalChain([this, 'access', _123 => _123.options, 'access', _124 => _124.onError, 'optionalCall', _125 => _125(
+        const replaced = this.queue.shrinkOrFill(envelopes[0].seq, this.options.elapsed?.() ?? 0);
+        this.options.onError?.(
           new Error(
-            `riffrec live: ${envelopes[0].type} envelope seq ${envelopes[0].seq} exceeded ${String(_optionalChain([body, 'optionalAccess', _126 => _126.max_bytes]))} bytes; ` + (replaced && replaced.type === envelopes[0].type ? "retrying without its unbounded evidence" : "replaced by a filler")
+            `riffrec live: ${envelopes[0].type} envelope seq ${envelopes[0].seq} exceeded ${String(body?.max_bytes)} bytes; ` + (replaced && replaced.type === envelopes[0].type ? "retrying without its unbounded evidence" : "replaced by a filler")
           )
-        )]);
-        _optionalChain([this, 'access', _127 => _127.options, 'access', _128 => _128.onQueueChange, 'optionalCall', _129 => _129()]);
+        );
+        this.options.onQueueChange?.();
         return "continue";
       }
       case 409: {
@@ -3799,6 +4190,21 @@ var StreamClient = class {
       case 410:
         this.markEnded(body && typeof body.reason === "string" ? body.reason : "session_ended");
         return "stop";
+      case 400: {
+        const seq = body && typeof body.seq === "number" ? body.seq : null;
+        const targets = seq !== null && envelopes.some((envelope) => envelope.seq === seq) ? [seq] : envelopes.map((envelope) => envelope.seq);
+        const reason = body && typeof body.reason === "string" ? body.reason : "invalid_envelope";
+        const t = this.options.elapsed?.() ?? 0;
+        const replaced = targets.filter((target) => this.queue.replaceRejected(target, t) !== null);
+        const label = targets.length === 1 ? `seq ${targets[0]}` : `seq ${targets.join(", ")}`;
+        if (replaced.length === 0) {
+          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting ${label} as ${reason}`));
+          return "stop";
+        }
+        this.options.onError?.(new Error(`riffrec live: the endpoint rejected ${label} as ${reason}; replaced with a placeholder so the stream keeps moving`));
+        this.options.onQueueChange?.();
+        return "continue";
+      }
       default:
         this.recordFailure(new Error(`riffrec live: POST /events returned ${response.status}`));
         return "stop";
@@ -3808,16 +4214,16 @@ var StreamClient = class {
     if (ackedSeq <= this.ackedSeq) return;
     this.ackedSeq = ackedSeq;
     this.queue.ackThrough(ackedSeq);
-    _optionalChain([this, 'access', _130 => _130.options, 'access', _131 => _131.onQueueChange, 'optionalCall', _132 => _132()]);
-    _optionalChain([this, 'access', _133 => _133.options, 'access', _134 => _134.onAck, 'optionalCall', _135 => _135(ackedSeq)]);
+    this.options.onQueueChange?.();
+    this.options.onAck?.(ackedSeq);
   }
   recordFailure(error) {
     this.consecutiveFailures += 1;
-    if (error) _optionalChain([this, 'access', _136 => _136.options, 'access', _137 => _137.onError, 'optionalCall', _138 => _138(error)]);
+    if (error) this.options.onError?.(error);
     if (this.consecutiveFailures >= this.failureThreshold && this.state === "streaming") {
       this.setState("buffering");
     }
-    const delay = _nullishCoalesce(this.backoffMs[Math.min(this.consecutiveFailures - 1, this.backoffMs.length - 1)], () => ( 1e3));
+    const delay = this.backoffMs[Math.min(this.consecutiveFailures - 1, this.backoffMs.length - 1)] ?? 1e3;
     if (this.retryTimer !== null) this.clearTimer(this.retryTimer);
     this.retryTimer = this.setTimer(() => {
       this.retryTimer = null;
@@ -3920,7 +4326,7 @@ var StreamClient = class {
         this.applyAck(event.data.acked_seq);
         break;
       case "session_ended":
-        _optionalChain([this, 'access', _139 => _139.options, 'access', _140 => _140.onServerEvent, 'optionalCall', _141 => _141(event)]);
+        this.options.onServerEvent?.(event);
         this.markEnded(event.data.reason);
         return;
       case "unit_status":
@@ -3932,13 +4338,13 @@ var StreamClient = class {
         return exhaustive;
       }
     }
-    _optionalChain([this, 'access', _142 => _142.options, 'access', _143 => _143.onServerEvent, 'optionalCall', _144 => _144(event)]);
+    this.options.onServerEvent?.(event);
   }
   scheduleStreamRetry(error) {
     if (this.closed || this.isTerminal) return;
-    if (error) _optionalChain([this, 'access', _145 => _145.options, 'access', _146 => _146.onError, 'optionalCall', _147 => _147(error)]);
+    if (error) this.options.onError?.(error);
     this.streamFailures += 1;
-    const delay = _nullishCoalesce(this.backoffMs[Math.min(this.streamFailures - 1, this.backoffMs.length - 1)], () => ( 1e3));
+    const delay = this.backoffMs[Math.min(this.streamFailures - 1, this.backoffMs.length - 1)] ?? 1e3;
     if (this.streamRetryTimer !== null) this.clearTimer(this.streamRetryTimer);
     this.streamRetryTimer = this.setTimer(() => {
       this.streamRetryTimer = null;
@@ -3948,15 +4354,15 @@ var StreamClient = class {
   markEnded(reason) {
     if (this.state === "ended") return;
     this.setState("ended");
-    _optionalChain([this, 'access', _148 => _148.options, 'access', _149 => _149.onEnded, 'optionalCall', _150 => _150(reason)]);
+    this.options.onEnded?.(reason);
     this.close();
   }
   setState(state, detail = {}) {
     if (this.state === state) return;
     this.state = state;
-    _optionalChain([this, 'access', _151 => _151.options, 'access', _152 => _152.onStateChange, 'optionalCall', _153 => _153(state, detail)]);
+    this.options.onStateChange?.(state, detail);
     if (this.isTerminal && state !== "closed") {
-      _optionalChain([this, 'access', _154 => _154.streamAbort, 'optionalAccess', _155 => _155.abort, 'call', _156 => _156()]);
+      this.streamAbort?.abort();
       this.streamAbort = null;
     }
   }
@@ -4006,7 +4412,7 @@ var UnitStore = class _UnitStore {
     return unit;
   }
   get(id) {
-    return _nullishCoalesce(this.units.get(id), () => ( null));
+    return this.units.get(id) ?? null;
   }
   all() {
     return this.order.map((id) => this.units.get(id)).filter(Boolean);
@@ -4032,13 +4438,13 @@ var UnitStore = class _UnitStore {
     const unit = this.units.get(id);
     if (!unit) return { ok: false, reason: "unknown_unit", unit: null };
     if (unit.status === "withdrawn") return { ok: false, reason: "withdrawn", unit };
-    const wantsContent = patch.statement !== void 0 || (_nullishCoalesce(_optionalChain([patch, 'access', _157 => _157.anchors_add, 'optionalAccess', _158 => _158.length]), () => ( 0))) > 0;
+    const wantsContent = patch.statement !== void 0 || (patch.anchors_add?.length ?? 0) > 0;
     if (wantsContent && (unit.status !== "initial" || this.released.has(id))) {
       return { ok: false, reason: "released", unit };
     }
     const next = {
       ...unit,
-      statement: _nullishCoalesce(patch.statement, () => ( unit.statement)),
+      statement: patch.statement ?? unit.statement,
       anchors: patch.anchors_add ? [...unit.anchors, ...patch.anchors_add] : unit.anchors,
       ...patch.confirmed ? { confirmed: patch.confirmed } : {}
     };
@@ -4110,16 +4516,16 @@ var UnitStore = class _UnitStore {
     return answered;
   }
   question(id) {
-    return _nullishCoalesce(this.questions.get(id), () => ( null));
+    return this.questions.get(id) ?? null;
   }
   openQuestions() {
     return [...this.questions.values()].filter((question) => !question.answered);
   }
   note(id) {
-    return _nullishCoalesce(this.notes.get(id), () => ( null));
+    return this.notes.get(id) ?? null;
   }
   guess(id) {
-    return _nullishCoalesce(this.guesses.get(id), () => ( null));
+    return this.guesses.get(id) ?? null;
   }
 };
 
@@ -4133,7 +4539,7 @@ function liveSessionStorageKey(sessionId) {
 function defaultStorage() {
   try {
     return typeof sessionStorage !== "undefined" ? sessionStorage : null;
-  } catch (e13) {
+  } catch {
     return null;
   }
 }
@@ -4155,7 +4561,7 @@ function base64ToBlob(base64, type) {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type });
-  } catch (e14) {
+  } catch {
     return null;
   }
 }
@@ -4200,16 +4606,16 @@ var LiveSession = class _LiveSession {
     this.listeners = /* @__PURE__ */ new Map();
     this.ackWaiters = [];
     this.persistOutcome = "stored";
-    this.now = _nullishCoalesce(options.now, () => ( (() => Date.now())));
-    this.route = _nullishCoalesce(options.route, () => ( currentRoute2));
+    this.now = options.now ?? (() => Date.now());
+    this.route = options.route ?? currentRoute2;
     this.storage = options.storage === void 0 ? defaultStorage() : options.storage;
-    this.frameStore = _nullishCoalesce(options.frameStore, () => ( createDefaultFrameStore()));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.finalAckTimeoutMs = _nullishCoalesce(options.finalAckTimeoutMs, () => ( 15e3));
-    this.keepFrames = _nullishCoalesce(options.keepFramesForArchive, () => ( true));
+    this.frameStore = options.frameStore ?? createDefaultFrameStore();
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.finalAckTimeoutMs = options.finalAckTimeoutMs ?? 15e3;
+    this.keepFrames = options.keepFramesForArchive ?? true;
     this.profile = options.evidenceProfile ? resolveEvidenceProfile(options.evidenceProfile) : FULL_EVIDENCE_PROFILE;
-    this.fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
+    this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
     this.pageHideTarget = options.pageHideTarget === void 0 ? typeof window !== "undefined" ? window : null : options.pageHideTarget;
     if (persisted) {
       this.rehydrated = true;
@@ -4238,19 +4644,19 @@ var LiveSession = class _LiveSession {
       this.phase = "running";
       this.voice = this.voiceRan ? "reconnecting" : "novoice";
     } else {
-      const bootstrap = options.bootstrap === void 0 ? _chunkHYYGBWIFcjs.readStoredBootstrap.call(void 0, this.storage) : options.bootstrap;
-      this.id = _nullishCoalesce(options.sessionId, () => ( mintSessionId()));
-      this.token = _nullishCoalesce(_optionalChain([bootstrap, 'optionalAccess', _159 => _159.token]), () => ( null));
-      this.endpointOrigin = _nullishCoalesce(_nullishCoalesce(_optionalChain([bootstrap, 'optionalAccess', _160 => _160.endpoint]), () => ( options.endpoint)), () => ( null));
+      const bootstrap = options.bootstrap === void 0 ? readStoredBootstrap(this.storage) : options.bootstrap;
+      this.id = options.sessionId ?? mintSessionId();
+      this.token = bootstrap?.token ?? null;
+      this.endpointOrigin = bootstrap?.endpoint ?? options.endpoint ?? null;
       this.startedAt = this.now();
-      this.mode = _nullishCoalesce(options.mode, () => ( _chunkWMHGUF6Ucjs.DEFAULT_EXECUTION_MODE));
+      this.mode = options.mode ?? DEFAULT_EXECUTION_MODE;
       this.units = new UnitStore();
     }
     const canStream = this.endpointOrigin !== null && this.token !== null;
     this.streamStatus = canStream ? "idle" : "offline";
     if (canStream) {
       const queueOptions = {
-        onStoreError: (error) => _optionalChain([options, 'access', _161 => _161.onError, 'optionalCall', _162 => _162(error)]),
+        onStoreError: (error) => options.onError?.(error),
         onStoreSettled: () => this.persist()
       };
       this.queue = persisted ? UnsentQueue.fromPersisted(
@@ -4276,7 +4682,7 @@ var LiveSession = class _LiveSession {
         onServerEvent: (event) => this.handleServerEvent(event),
         onEnded: (reason) => this.handleEnded(reason),
         onFrameDropped: (envelope) => this.handleFrameDropped(envelope),
-        onError: (error) => _optionalChain([options, 'access', _163 => _163.onError, 'optionalCall', _164 => _164(error)]),
+        onError: (error) => options.onError?.(error),
         onQueueChange: () => this.persist()
       });
       this.client.ackedSeq = this.ackedSeq;
@@ -4308,14 +4714,14 @@ var LiveSession = class _LiveSession {
       id = storage.getItem(LIVE_CURRENT_SESSION_KEY);
       if (!id) return null;
       raw = storage.getItem(liveSessionStorageKey(id));
-    } catch (e15) {
+    } catch {
       return null;
     }
     if (!raw) return null;
     let persisted;
     try {
       persisted = JSON.parse(raw);
-    } catch (e16) {
+    } catch {
       return null;
     }
     if (!persisted || persisted.version !== 1 || persisted.session_id !== id) return null;
@@ -4385,7 +4791,7 @@ var LiveSession = class _LiveSession {
     return this.streamStatus;
   }
   get sequence() {
-    return { nextSeq: this.nextSeq, ackedSeq: this.ackedSeq, queueLength: _nullishCoalesce(_optionalChain([this, 'access', _165 => _165.queue, 'optionalAccess', _166 => _166.length]), () => ( 0)) };
+    return { nextSeq: this.nextSeq, ackedSeq: this.ackedSeq, queueLength: this.queue?.length ?? 0 };
   }
   get lastPersistOutcome() {
     return this.persistOutcome;
@@ -4436,7 +4842,7 @@ var LiveSession = class _LiveSession {
     this.persist();
     this.emitter.dispose();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
-    _optionalChain([this, 'access', _167 => _167.client, 'optionalAccess', _168 => _168.close, 'call', _169 => _169()]);
+    this.client?.close();
     this.detachPageHide();
     this.notify();
   }
@@ -4453,7 +4859,7 @@ var LiveSession = class _LiveSession {
     }
     this.emitter.dispose();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
-    _optionalChain([this, 'access', _170 => _170.client, 'optionalAccess', _171 => _171.close, 'call', _172 => _172()]);
+    this.client?.close();
     this.detachPageHide();
     this.clearStorage();
     if (this.queue) await this.queue.clearStore();
@@ -4520,19 +4926,19 @@ var LiveSession = class _LiveSession {
   // Units (tool intake and board actions)
   // ---------------------------------------------------------------------
   recordUnit(input) {
-    const id = _nullishCoalesce(input.id, () => ( `unit_${pad(this.nextUnit++)}`));
-    const firstAnchorT = _nullishCoalesce(_optionalChain([input, 'access', _173 => _173.anchors, 'access', _174 => _174[0], 'optionalAccess', _175 => _175.t]), () => ( this.elapsed()));
+    const id = input.id ?? `unit_${pad(this.nextUnit++)}`;
+    const firstAnchorT = input.anchors[0]?.t ?? this.elapsed();
     const unit = {
       id,
       statement: input.statement,
       transcript_excerpt: input.transcript_excerpt,
       anchors: input.anchors,
       evidence: {
-        frame_ids: _nullishCoalesce(_optionalChain([input, 'access', _176 => _176.evidence, 'optionalAccess', _177 => _177.frame_ids]), () => ( [])),
-        annotation_ids: _nullishCoalesce(_optionalChain([input, 'access', _178 => _178.evidence, 'optionalAccess', _179 => _179.annotation_ids]), () => ( [])),
-        transcript_span: _nullishCoalesce(_optionalChain([input, 'access', _180 => _180.evidence, 'optionalAccess', _181 => _181.transcript_span]), () => ( { t_start: firstAnchorT, t_end: this.elapsed() })),
-        ..._optionalChain([input, 'access', _182 => _182.evidence, 'optionalAccess', _183 => _183.telemetry_window]) ? { telemetry_window: input.evidence.telemetry_window } : {},
-        ..._optionalChain([input, 'access', _184 => _184.evidence, 'optionalAccess', _185 => _185.audio_clip_id]) ? { audio_clip_id: input.evidence.audio_clip_id } : {}
+        frame_ids: input.evidence?.frame_ids ?? [],
+        annotation_ids: input.evidence?.annotation_ids ?? [],
+        transcript_span: input.evidence?.transcript_span ?? { t_start: firstAnchorT, t_end: this.elapsed() },
+        ...input.evidence?.telemetry_window ? { telemetry_window: input.evidence.telemetry_window } : {},
+        ...input.evidence?.audio_clip_id ? { audio_clip_id: input.evidence.audio_clip_id } : {}
       },
       status: "initial"
     };
@@ -4663,6 +5069,19 @@ var LiveSession = class _LiveSession {
   frameMetadata() {
     return [...this.frames];
   }
+  /**
+   * A frame the interviewer was shown is evidence the consumer should hold too:
+   * under `frames: "one"` it leaves the page now instead of waiting for a unit
+   * to reference it. No-op under `all` (already posted) and `none` (nothing
+   * leaves the page).
+   */
+  releaseFrame(frameId) {
+    this.postHeldFrame(frameId);
+  }
+  /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
+  get framesLeavePage() {
+    return this.profile.frames !== "none";
+  }
   /** An utterance audio clip's bytes for the archive's `clips/` (I6); never posted. */
   addClip(id, blob) {
     this.clipBytes.set(id, blob);
@@ -4715,20 +5134,29 @@ var LiveSession = class _LiveSession {
   /**
    * Done control, end to end: `final` checkpoint, wait for its ack (or a
    * terminal stream state / timeout), then `POST /session/end`. The session
-   * ends when the endpoint confirms; `stop()` still assembles the archive.
+   * ends when the endpoint confirms; `stop()` still assembles the archive, and
+   * when the endpoint did not confirm the result says why, so the zip fallback
+   * that follows is never silent.
    */
   async finish() {
     const checkpoint = this.final();
     let finalAcked = false;
+    let failure;
     if (this.client && this.finalSeq !== null) {
       finalAcked = await this.waitForAck(this.finalSeq, this.finalAckTimeoutMs);
+      if (!finalAcked) {
+        failure = this.client.isTerminal ? `the stream is ${this.client.state}` : `the final checkpoint was not acknowledged within ${Math.round(this.finalAckTimeoutMs / 1e3)} s`;
+      }
     }
-    let ended = false;
-    if (this.client && this.token && this.endpointOrigin && !this.client.isTerminal) {
-      ended = await this.postSessionEnd();
+    let ended = this.phase === "ended";
+    if (!ended && this.client && this.token && this.endpointOrigin && !this.client.isTerminal) {
+      const outcome = await this.postSessionEnd();
+      ended = outcome.ok;
+      if (!outcome.ok) failure = outcome.failure;
     }
     if (ended && this.phase !== "ended") this.handleEnded("riffer_done");
-    return { checkpoint, finalAcked, ended };
+    if (!this.client || ended) return { checkpoint, finalAcked, ended };
+    return { checkpoint, finalAcked, ended, failure: failure ?? "the endpoint did not confirm the session end" };
   }
   allCheckpoints() {
     return [...this.checkpoints];
@@ -4741,7 +5169,7 @@ var LiveSession = class _LiveSession {
     return () => this.changeListeners.delete(listener);
   }
   on(name, listener) {
-    const set = _nullishCoalesce(this.listeners.get(name), () => ( /* @__PURE__ */ new Set()));
+    const set = this.listeners.get(name) ?? /* @__PURE__ */ new Set();
     set.add(listener);
     this.listeners.set(name, set);
     return () => set.delete(listener);
@@ -4765,7 +5193,7 @@ var LiveSession = class _LiveSession {
       checkpoints: [...this.checkpoints],
       nextSeq: this.nextSeq,
       ackedSeq: this.ackedSeq,
-      queueLength: _nullishCoalesce(_optionalChain([this, 'access', _186 => _186.queue, 'optionalAccess', _187 => _187.length]), () => ( 0)),
+      queueLength: this.queue?.length ?? 0,
       expectedSchemaVersion: this.expectedSchemaVersion,
       error: this.error,
       finalEmitted: this.finalSeq !== null
@@ -4811,8 +5239,8 @@ var LiveSession = class _LiveSession {
    * the frame store.
    */
   async restoreFrameBytes(onError) {
-    for (const entry of _nullishCoalesce(_optionalChain([this, 'access', _188 => _188.queue, 'optionalAccess', _189 => _189.all, 'call', _190 => _190()]), () => ( []))) {
-      if (!_chunkWMHGUF6Ucjs.isLiveEnvelopeOfType.call(void 0, entry, "frame") || entry.payload.dropped) continue;
+    for (const entry of this.queue?.all() ?? []) {
+      if (!isLiveEnvelopeOfType(entry, "frame") || entry.payload.dropped) continue;
       if (entry.payload.jpeg_base64 !== "") this.frameBytes.set(entry.payload.id, entry.payload.jpeg_base64);
     }
     await Promise.all(
@@ -4821,14 +5249,14 @@ var LiveSession = class _LiveSession {
           const bytes = await this.frameStore.get(this.id, frame.id);
           if (bytes) this.frameBytes.set(frame.id, bytes);
         } catch (error) {
-          _optionalChain([onError, 'optionalCall', _191 => _191(error)]);
+          onError?.(error);
         }
       })
     );
   }
   emit(type, payload) {
     const envelope = {
-      schema_version: _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       seq: this.nextSeq++,
       t: this.elapsed(),
@@ -4838,7 +5266,7 @@ var LiveSession = class _LiveSession {
     if (this.client && this.phase === "running") {
       this.client.enqueue(envelope);
     } else if (this.client) {
-      _optionalChain([this, 'access', _192 => _192.queue, 'optionalAccess', _193 => _193.enqueue, 'call', _194 => _194(envelope)]);
+      this.queue?.enqueue(envelope);
     }
     this.persist();
     this.notify();
@@ -4865,7 +5293,7 @@ var LiveSession = class _LiveSession {
     this.units.addAnnotationId(unitId, annotationId);
   }
   frameKind(frameId) {
-    return _nullishCoalesce(_optionalChain([this, 'access', _195 => _195.frames, 'access', _196 => _196.find, 'call', _197 => _197((frame) => frame.id === frameId), 'optionalAccess', _198 => _198.kind]), () => ( null));
+    return this.frames.find((frame) => frame.id === frameId)?.kind ?? null;
   }
   /** Only the most recent held frames can still be picked by a unit (the U6 ring buffer keeps 12). */
   holdFrame(frameId, jpeg) {
@@ -4909,7 +5337,7 @@ var LiveSession = class _LiveSession {
         break;
       case "incompatible":
         this.streamStatus = "incompatible";
-        this.expectedSchemaVersion = _nullishCoalesce(detail.expectedSchemaVersion, () => ( null));
+        this.expectedSchemaVersion = detail.expectedSchemaVersion ?? null;
         break;
       case "conflict":
         this.streamStatus = "conflict";
@@ -4983,7 +5411,7 @@ var LiveSession = class _LiveSession {
     this.phase = "ended";
     this.streamStatus = "ended";
     this.emitter.dispose();
-    _optionalChain([this, 'access', _199 => _199.client, 'optionalAccess', _200 => _200.close, 'call', _201 => _201()]);
+    this.client?.close();
     this.detachPageHide();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
     this.clearStorage();
@@ -5032,9 +5460,9 @@ var LiveSession = class _LiveSession {
     });
   }
   async postSessionEnd() {
-    if (!this.client) return false;
+    if (!this.client) return { ok: false, failure: "no endpoint is configured" };
     const body = {
-      schema_version: _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       mode: this.mode,
       transcript: this.transcript,
@@ -5050,9 +5478,11 @@ var LiveSession = class _LiveSession {
         headers: this.client.headers({ "Content-Type": "application/json" }),
         body: JSON.stringify(body)
       });
-      return response.ok;
-    } catch (e17) {
-      return false;
+      if (response.ok) return { ok: true };
+      return { ok: false, failure: `POST /session/end returned ${response.status}` };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, failure: `POST /session/end failed: ${message}` };
     }
   }
   attachPageHide() {
@@ -5071,7 +5501,7 @@ var LiveSession = class _LiveSession {
       return;
     }
     const envelope = {
-      schema_version: _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       seq: this.nextSeq++,
       t: this.elapsed(),
@@ -5116,7 +5546,7 @@ var LiveSession = class _LiveSession {
     const key = liveSessionStorageKey(this.id);
     try {
       this.storage.setItem(LIVE_CURRENT_SESSION_KEY, this.id);
-    } catch (e18) {
+    } catch {
     }
     this.persistOutcome = persistWithQuotaGuard(
       this.storage,
@@ -5133,9 +5563,9 @@ var LiveSession = class _LiveSession {
     if (!this.storage) return;
     try {
       for (const key of this.storageKeys()) this.storage.removeItem(key);
-    } catch (e19) {
+    } catch {
     }
-    _chunkHYYGBWIFcjs.clearStoredBootstrap.call(void 0, this.storage);
+    clearStoredBootstrap(this.storage);
   }
   emitEvent(name, payload) {
     const set = this.listeners.get(name);
@@ -5169,6 +5599,21 @@ function toError(value) {
 function describeAnchor(anchor) {
   return anchor.component ? `${anchor.component} (${anchor.selector})` : anchor.selector;
 }
+var CLICK_TEXT_MAX_CHARS = 80;
+function truncate2(text, max) {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}\u2026` : collapsed;
+}
+function describeClick(event, route) {
+  const { element } = event;
+  const label = element.ariaLabel?.trim() || element.name?.trim() || element.tag;
+  const text = element.text?.trim() ? truncate2(element.text, CLICK_TEXT_MAX_CHARS) : "";
+  const parts = [label];
+  if (text && !label.includes(text)) parts.push(`with text "${text}"`);
+  if (event.component) parts.push(`in component ${event.component}`);
+  parts.push(`(selector ${element.selector}, route ${route})`);
+  return parts.join(" ");
+}
 function clickAnchor(event, route) {
   const box = event.element.boundingBox;
   if (!box) return null;
@@ -5181,7 +5626,7 @@ function clickAnchor(event, route) {
   };
 }
 function defaultGetUserMedia(constraints) {
-  if (typeof navigator === "undefined" || !_optionalChain([navigator, 'access', _202 => _202.mediaDevices, 'optionalAccess', _203 => _203.getUserMedia])) {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error("Microphone capture is not supported in this browser."));
   }
   return navigator.mediaDevices.getUserMedia(constraints);
@@ -5194,6 +5639,7 @@ var LiveRuntime = class {
     this.paused = false;
     this.stopping = null;
     this.suspended = false;
+    this.fallbackReason = null;
     this.annotation = (annotation) => {
       const active = this.active;
       if (!active) {
@@ -5201,22 +5647,22 @@ var LiveRuntime = class {
         return;
       }
       void active.evidence.annotationCompleted(annotation).catch((error) => this.callbacks.onError(toError(error)));
-      _optionalChain([active, 'access', _204 => _204.interviewer, 'optionalAccess', _205 => _205.announceDrawing, 'call', _206 => _206({
+      active.interviewer?.announceDrawing({
         anchor: annotation.anchor,
         description: describeAnchor(annotation.anchor),
         kind: annotation.kind
-      })]);
+      });
     };
     this.config = options.config;
     this.capture = options.capture;
     this.callbacks = options.callbacks;
-    this.getUserMedia = _nullishCoalesce(options.getUserMedia, () => ( defaultGetUserMedia));
+    this.getUserMedia = options.getUserMedia ?? defaultGetUserMedia;
     this.fetchImpl = options.fetch;
-    this.profile = resolveEvidenceProfile(_nullishCoalesce(options.config.profile, () => ( "default")));
+    this.profile = resolveEvidenceProfile(options.config.profile ?? "default");
     this.consentProfile = toConsentProfile(this.profile);
-    _chunkHYYGBWIFcjs.bootstrapLiveToken.call(void 0, );
+    bootstrapLiveToken();
     const rehydrated = LiveSession.rehydrate(this.sessionOptions());
-    this.current = _nullishCoalesce(rehydrated, () => ( LiveSession.create(this.sessionOptions())));
+    this.current = rehydrated ?? LiveSession.create(this.sessionOptions());
     this.attachSession(this.current);
     if (rehydrated) this.resume(rehydrated);
   }
@@ -5235,6 +5681,7 @@ var LiveRuntime = class {
     }
     if (this.current.status !== "idle") return;
     this.options = options;
+    this.fallbackReason = null;
     this.current.beginConsent();
   }
   /** The overlay's `onConsent`: one microphone stream fanned to every consumer (KTD21). */
@@ -5242,20 +5689,29 @@ var LiveRuntime = class {
     if (this.suspended || this.active) return;
     this.startCaptures(result.mic === "granted" ? result.stream : null);
   }
-  /** The overlay's `onFinished`: a Done the endpoint did not end still needs the archive (R4). */
+  /**
+   * The overlay's `onFinished`: a Done the endpoint did not confirm still needs
+   * the archive (R4), and the reason travels with it so the fallback is visible
+   * to the riffer and the host rather than a silent download.
+   */
   finished(result) {
-    if (!result.ended && this.current.status !== "ended") this.callbacks.onEnded();
+    if (result.ended || this.current.status === "ended") return;
+    if (result.failure) {
+      this.fallbackReason = result.failure;
+      this.callbacks.onError(new Error(`riffrec live: ${result.failure}; the session archive is downloaded instead.`));
+    }
+    this.callbacks.onEnded();
   }
   setMode(mode) {
     this.current.setMode(mode);
   }
   setMuted(muted) {
     const active = this.active;
-    if (_optionalChain([active, 'optionalAccess', _207 => _207.interviewer])) {
+    if (active?.interviewer) {
       active.interviewer.setMuted(muted);
       return;
     }
-    _optionalChain([active, 'optionalAccess', _208 => _208.microphone, 'optionalAccess', _209 => _209.setMuted, 'call', _210 => _210(muted)]);
+    active?.microphone?.setMuted(muted);
     this.current.setMuted(muted);
   }
   send() {
@@ -5264,8 +5720,8 @@ var LiveRuntime = class {
   /** R25: frames, composites, and the event stream pause; the screen recording never does. */
   setPaused(paused) {
     this.paused = paused;
-    if (paused) _optionalChain([this, 'access', _211 => _211.active, 'optionalAccess', _212 => _212.evidence, 'access', _213 => _213.pause, 'call', _214 => _214()]);
-    else _optionalChain([this, 'access', _215 => _215.active, 'optionalAccess', _216 => _216.evidence, 'access', _217 => _217.resume, 'call', _218 => _218()]);
+    if (paused) this.active?.evidence.pause();
+    else this.active?.evidence.resume();
   }
   /** After a reload: the riffer agreed to share the screen again. */
   async reshare() {
@@ -5295,7 +5751,7 @@ var LiveRuntime = class {
       this.releaseCaptures(active);
       void active.screen.stop().catch((error) => this.callbacks.onError(toError(error)));
       void active.voice.stop().catch((error) => this.callbacks.onError(toError(error)));
-      _optionalChain([active, 'access', _219 => _219.microphone, 'optionalAccess', _220 => _220.stop, 'call', _221 => _221()]);
+      active.microphone?.stop();
     }
     if (this.current.status === "consenting") this.current.declineConsent();
     this.current.suspend();
@@ -5303,7 +5759,7 @@ var LiveRuntime = class {
   }
   sessionOptions() {
     return {
-      endpoint: _nullishCoalesce(this.config.endpoint, () => ( null)),
+      endpoint: this.config.endpoint ?? null,
       evidenceProfile: this.profile,
       ...this.fetchImpl ? { fetch: this.fetchImpl } : {},
       onError: (error) => this.callbacks.onError(toError(error))
@@ -5346,19 +5802,19 @@ var LiveRuntime = class {
       recentEvents: () => events,
       onError: (error) => this.callbacks.onError(toError(error))
     });
-    const screen = new (0, _chunkHYYGBWIFcjs.ScreenCapture)(this.capture.displayMedia, this.capture.displayMediaVideo, {
+    const screen = new ScreenCapture(this.capture.displayMedia, this.capture.displayMediaVideo, {
       segmentStore: createDefaultSegmentStore(),
       sessionId: session.id,
       onStreamEnded: () => {
         evidence.setDisplayStream(null);
-        if (_optionalChain([this, 'access', _222 => _222.active, 'optionalAccess', _223 => _223.screen]) === screen && session.status !== "ended") this.callbacks.onReshareNeeded(true);
+        if (this.active?.screen === screen && session.status !== "ended") this.callbacks.onReshareNeeded(true);
       },
       onError: (error) => this.callbacks.onError(toError(error))
     });
-    const voice = new (0, _chunkHYYGBWIFcjs.VoiceCapture)();
-    const eventCapture = new (0, _chunkHYYGBWIFcjs.EventCapture)();
-    const networkCapture = new (0, _chunkHYYGBWIFcjs.NetworkCapture)();
-    const consoleCapture = new (0, _chunkHYYGBWIFcjs.ConsoleCapture)();
+    const voice = new VoiceCapture();
+    const eventCapture = new EventCapture();
+    const networkCapture = new NetworkCapture();
+    const consoleCapture = new ConsoleCapture();
     const ownsGlobalPatchMarker = typeof window !== "undefined" && !window.__RIFFREC_PATCHED__;
     if (ownsGlobalPatchMarker) window.__RIFFREC_PATCHED__ = true;
     else if (typeof console !== "undefined") {
@@ -5379,10 +5835,13 @@ var LiveRuntime = class {
           connect: connector.connect,
           microphone,
           ...this.fetchImpl ? { fetch: this.fetchImpl } : {},
+          screenFrames: session.framesLeavePage,
           evidence: {
             recordUnit: (input) => evidence.recordUnit(input),
             speechStarted: () => evidence.speechStarted(),
-            speechStopped: () => evidence.speechStopped()
+            speechStopped: () => evidence.speechStopped(),
+            lookAtScreen: () => evidence.lookAtScreen(),
+            frameShown: (frameId) => session.releaseFrame(frameId)
           },
           onError: (error) => this.callbacks.onError(toError(error))
         });
@@ -5407,13 +5866,14 @@ var LiveRuntime = class {
       events.push(event);
       if (!this.paused) session.recordEvent(event);
       if (event.type === "click" && interviewer) {
-        const anchor = clickAnchor(event, route());
-        if (anchor) interviewer.noteAnchor(anchor, describeAnchor(anchor));
+        const currentRoute3 = route();
+        const anchor = clickAnchor(event, currentRoute3);
+        if (anchor) interviewer.announceClick(anchor, describeClick(event, currentRoute3));
       }
     };
     const sessionStart = session.startedAt;
     if (ownsGlobalPatchMarker) {
-      eventCapture.start(sessionStart, onEvent);
+      eventCapture.start(sessionStart, onEvent, { ignore: isOverlayNode });
       networkCapture.start(sessionStart, onEvent, liveExcludedUrls(session.endpoint));
       consoleCapture.start(sessionStart, onEvent, this.capture.sanitizeError);
     }
@@ -5446,8 +5906,8 @@ var LiveRuntime = class {
     active.networkCapture.stop();
     active.consoleCapture.stop();
     if (active.ownsGlobalPatchMarker && typeof window !== "undefined") delete window.__RIFFREC_PATCHED__;
-    _optionalChain([active, 'access', _224 => _224.interviewer, 'optionalAccess', _225 => _225.stop, 'call', _226 => _226()]);
-    _optionalChain([active, 'access', _227 => _227.connector, 'optionalAccess', _228 => _228.dispose, 'call', _229 => _229()]);
+    active.interviewer?.stop();
+    active.connector?.dispose();
     active.evidence.dispose();
   }
   async doStop() {
@@ -5463,7 +5923,7 @@ var LiveRuntime = class {
     this.callbacks.onReshareNeeded(false);
     let recordingSegments = [];
     let voiceBlob = null;
-    const events = _nullishCoalesce(_optionalChain([active, 'optionalAccess', _230 => _230.events]), () => ( []));
+    const events = active?.events ?? [];
     if (active) {
       this.releaseCaptures(active);
       const [, voice] = await Promise.all([
@@ -5472,7 +5932,7 @@ var LiveRuntime = class {
       ]);
       voiceBlob = voice;
       recordingSegments = await active.screen.collectSegments();
-      _optionalChain([active, 'access', _231 => _231.microphone, 'optionalAccess', _232 => _232.stop, 'call', _233 => _233()]);
+      active.microphone?.stop();
     }
     const live = await session.stop();
     if (active) await active.screen.clearSegments().catch(() => {
@@ -5485,16 +5945,18 @@ var LiveRuntime = class {
       screenBlob: null,
       voiceBlob
     };
-    return { outputs, live, recordingSegments, options: this.options, endedBy };
+    const fallbackReason = endedBy === "stop" ? this.fallbackReason : null;
+    this.fallbackReason = null;
+    return { outputs, live, recordingSegments, options: this.options, endedBy, fallbackReason };
   }
 };
 
 // src/live/overlay/LiveOverlay.tsx
-
+import { useCallback as useCallback2, useEffect as useEffect3, useMemo, useRef as useRef5, useState as useState6 } from "react";
 
 // src/live/overlay/Board.tsx
-
-
+import { useState as useState3 } from "react";
+import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 var STATUS_LABELS = {
   initial: "Heard",
   triaging: "Triaging",
@@ -5584,7 +6046,7 @@ function describeAnchor2(unit) {
   return `${target} on ${anchor.route}`;
 }
 function ReplyField({ unitId, primary, onAnswer }) {
-  const [text, setText] = _react.useState.call(void 0, "");
+  const [text, setText] = useState3("");
   const submit = (event) => {
     event.preventDefault();
     const trimmed = text.trim();
@@ -5592,8 +6054,8 @@ function ReplyField({ unitId, primary, onAnswer }) {
     onAnswer(unitId, trimmed);
     setText("");
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "form", { "data-riffrec-unit-reply": "", onSubmit: submit, style: { display: "flex", gap: 6, marginTop: 6 }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs3("form", { "data-riffrec-unit-reply": "", onSubmit: submit, style: { display: "flex", gap: 6, marginTop: 6 }, children: [
+    /* @__PURE__ */ jsx3(
       "input",
       {
         type: "text",
@@ -5604,7 +6066,7 @@ function ReplyField({ unitId, primary, onAnswer }) {
         style: inputStyle
       }
     ),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "submit", disabled: text.trim().length === 0, style: primary ? primaryButtonStyle : smallButtonStyle, children: "Reply" })
+    /* @__PURE__ */ jsx3("button", { type: "submit", disabled: text.trim().length === 0, style: primary ? primaryButtonStyle : smallButtonStyle, children: "Reply" })
   ] });
 }
 function Board({
@@ -5618,22 +6080,22 @@ function Board({
   onWithdraw,
   onAnswer
 }) {
-  const openQuestion = (unitId) => _nullishCoalesce(questions.find((question) => question.unit_id === unitId && !question.answered), () => ( null));
+  const openQuestion = (unitId) => questions.find((question) => question.unit_id === unitId && !question.answered) ?? null;
   if (units.length === 0) {
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "li", { "data-riffrec-board-empty": "", style: emptyStyle, children: "Say what should change, or draw on the page." }) });
+    return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: /* @__PURE__ */ jsx3("li", { "data-riffrec-board-empty": "", style: emptyStyle, children: "Say what should change, or draw on the page." }) });
   }
-  return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: units.map((unit) => {
+  return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: units.map((unit) => {
     const withdrawn = unit.status === "withdrawn";
     const question = openQuestion(unit.id);
     const guess = guesses[unit.id];
     const note = notes[unit.id];
     const canWithdraw = onWithdraw && unit.status === "initial" && !isReleased(unit.id);
     const anchor = describeAnchor2(unit);
-    return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-unit": unit.id, "data-riffrec-unit-status": unit.status, style: itemStyle, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", alignItems: "flex-start", gap: 6 }, children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { style: { flex: 1, minWidth: 0 }, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { ...badgeStyle, background: STATUS_COLORS[unit.status] }, children: STATUS_LABELS[unit.status] }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    return /* @__PURE__ */ jsxs3("li", { "data-riffrec-unit": unit.id, "data-riffrec-unit-status": unit.status, style: itemStyle, children: [
+      /* @__PURE__ */ jsxs3("div", { style: { display: "flex", alignItems: "flex-start", gap: 6 }, children: [
+        /* @__PURE__ */ jsxs3("span", { style: { flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ jsx3("span", { style: { ...badgeStyle, background: STATUS_COLORS[unit.status] }, children: STATUS_LABELS[unit.status] }),
+          /* @__PURE__ */ jsx3(
             "span",
             {
               "data-riffrec-unit-statement": "",
@@ -5642,7 +6104,7 @@ function Board({
             }
           )
         ] }),
-        canWithdraw ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        canWithdraw ? /* @__PURE__ */ jsx3(
           "button",
           {
             type: "button",
@@ -5654,30 +6116,30 @@ function Board({
           }
         ) : null
       ] }),
-      anchor && !withdrawn ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
-      guess ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Guess:" }),
+      anchor && !withdrawn ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
+      guess ? /* @__PURE__ */ jsxs3("p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
+        /* @__PURE__ */ jsx3("strong", { children: "Guess:" }),
         " ",
         guess
       ] }) : null,
-      note ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
-      question ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-unit-question": "", style: { marginTop: 6 }, children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { style: { ...noteStyle, margin: 0, color: "#c11574" }, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Agent asks:" }),
+      note ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
+      question ? /* @__PURE__ */ jsxs3("div", { "data-riffrec-unit-question": "", style: { marginTop: 6 }, children: [
+        /* @__PURE__ */ jsxs3("p", { style: { ...noteStyle, margin: 0, color: "#c11574" }, children: [
+          /* @__PURE__ */ jsx3("strong", { children: "Agent asks:" }),
           " ",
           question.question
         ] }),
-        onAnswer ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, ReplyField, { unitId: unit.id, primary: !voice, onAnswer }) : null
+        onAnswer ? /* @__PURE__ */ jsx3(ReplyField, { unitId: unit.id, primary: !voice, onAnswer }) : null
       ] }) : null
     ] }, unit.id);
   }) });
 }
 function defaultConfirmation(unit) {
-  return _nullishCoalesce(unit.confirmed, () => ( { element: true, change: true }));
+  return unit.confirmed ?? { element: true, change: true };
 }
 function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
-  const [edits, setEdits] = _react.useState.call(void 0, {});
-  const confirmationFor = (unit) => _nullishCoalesce(edits[unit.id], () => ( defaultConfirmation(unit)));
+  const [edits, setEdits] = useState3({});
+  const confirmationFor = (unit) => edits[unit.id] ?? defaultConfirmation(unit);
   const toggle = (unit, field, value) => {
     setEdits((current) => ({ ...current, [unit.id]: { ...confirmationFor(unit), [field]: value } }));
   };
@@ -5686,17 +6148,17 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
     for (const unit of units) confirmations[unit.id] = confirmationFor(unit);
     onComplete(confirmations);
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-confirmation": "", style: { fontFamily: FONT, fontSize: 13, color: "#101828" }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 8px", fontWeight: 600 }, children: "Before you go: did we get each one right?" }),
-    units.length === 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { ...noteStyle, marginBottom: 8 }, children: "No units this session. Finishing releases anything the agent still holds." }) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { style: listStyle, children: units.map((unit) => {
+  return /* @__PURE__ */ jsxs3("div", { "data-riffrec-confirmation": "", style: { fontFamily: FONT, fontSize: 13, color: "#101828" }, children: [
+    /* @__PURE__ */ jsx3("p", { style: { margin: "0 0 8px", fontWeight: 600 }, children: "Before you go: did we get each one right?" }),
+    units.length === 0 ? /* @__PURE__ */ jsx3("p", { style: { ...noteStyle, marginBottom: 8 }, children: "No units this session. Finishing releases anything the agent still holds." }) : /* @__PURE__ */ jsx3("ul", { style: listStyle, children: units.map((unit) => {
       const confirmation = confirmationFor(unit);
       const anchor = describeAnchor2(unit);
-      return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-confirm-unit": unit.id, style: itemStyle, children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { children: unit.statement }),
-        anchor ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { ...noteStyle, marginTop: 2 }, children: anchor }) : null,
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", gap: 14, marginTop: 6, fontSize: 12 }, children: [
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-            /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      return /* @__PURE__ */ jsxs3("li", { "data-riffrec-confirm-unit": unit.id, style: itemStyle, children: [
+        /* @__PURE__ */ jsx3("div", { children: unit.statement }),
+        anchor ? /* @__PURE__ */ jsx3("p", { style: { ...noteStyle, marginTop: 2 }, children: anchor }) : null,
+        /* @__PURE__ */ jsxs3("div", { style: { display: "flex", gap: 14, marginTop: 6, fontSize: 12 }, children: [
+          /* @__PURE__ */ jsxs3("label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+            /* @__PURE__ */ jsx3(
               "input",
               {
                 type: "checkbox",
@@ -5707,8 +6169,8 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
             ),
             "Right element"
           ] }),
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-            /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+          /* @__PURE__ */ jsxs3("label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+            /* @__PURE__ */ jsx3(
               "input",
               {
                 type: "checkbox",
@@ -5722,9 +6184,9 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
         ] })
       ] }, unit.id);
     }) }),
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-confirm-cancel": "", disabled: busy, style: smallButtonStyle, onClick: onCancel, children: "Keep riffing" }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    /* @__PURE__ */ jsxs3("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }, children: [
+      /* @__PURE__ */ jsx3("button", { type: "button", "data-riffrec-confirm-cancel": "", disabled: busy, style: smallButtonStyle, onClick: onCancel, children: "Keep riffing" }),
+      /* @__PURE__ */ jsx3(
         "button",
         {
           type: "button",
@@ -5740,7 +6202,7 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
 }
 
 // src/live/overlay/ConsentDialog.tsx
-
+import { useRef as useRef3, useState as useState4 } from "react";
 
 // src/live/overlay/consentCopy.ts
 var DEFAULT_CONSENT_PROFILE = {
@@ -5752,12 +6214,12 @@ var DEFAULT_CONSENT_PROFILE = {
 };
 var OPENAI_DESTINATION = "OpenAI Realtime (the voice interviewer)";
 function resolveConsentProfile(profile) {
-  return { ...DEFAULT_CONSENT_PROFILE, ..._nullishCoalesce(profile, () => ( {})) };
+  return { ...DEFAULT_CONSENT_PROFILE, ...profile ?? {} };
 }
 function describeEndpoint(endpoint, owner) {
   if (owner && endpoint) return `${owner} (${endpoint})`;
   if (owner) return owner;
-  return _nullishCoalesce(endpoint, () => ( "no endpoint"));
+  return endpoint ?? "no endpoint";
 }
 function endpointItems(profile) {
   const items = [];
@@ -5773,15 +6235,14 @@ function endpointItems(profile) {
 function buildConsentCopy(input) {
   const profile = resolveConsentProfile(input.profile);
   const streams = input.endpoint !== null;
-  const voice = _nullishCoalesce(input.voice, () => ( streams));
+  const voice = input.voice ?? streams;
   const endpointName = describeEndpoint(input.endpoint, input.endpointOwner);
   const destinations = [];
   if (voice && streams) {
-    destinations.push({
-      id: "openai",
-      to: OPENAI_DESTINATION,
-      items: ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"]
-    });
+    const items = ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"];
+    if (profile.frames) items.push("what you click, draw on, and pin, and screenshots of the page when you point at something or ask the interviewer to look");
+    else items.push("what you click, draw on, and pin");
+    destinations.push({ id: "openai", to: OPENAI_DESTINATION, items });
   }
   if (streams) {
     destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile) });
@@ -5805,7 +6266,7 @@ function buildConsentCopy(input) {
 }
 
 // src/live/overlay/ConsentDialog.tsx
-
+import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
 var FONT2 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var backdropStyle = {
   position: "fixed",
@@ -5859,7 +6320,7 @@ var noticeStyle = {
   color: "#7a2e0e"
 };
 function defaultGetUserMedia2(constraints) {
-  if (typeof navigator === "undefined" || !_optionalChain([navigator, 'access', _234 => _234.mediaDevices, 'optionalAccess', _235 => _235.getUserMedia])) {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error("Microphone access is not available in this browser."));
   }
   return navigator.mediaDevices.getUserMedia(constraints);
@@ -5877,10 +6338,10 @@ function ConsentDialog({
   ...copyInput
 }) {
   const copy = buildConsentCopy(copyInput);
-  const [checked, setChecked] = _react.useState.call(void 0, false);
-  const [stage, setStage] = _react.useState.call(void 0, "reading");
-  const [denialReason, setDenialReason] = _react.useState.call(void 0, null);
-  const requestInFlight = _react.useRef.call(void 0, false);
+  const [checked, setChecked] = useState4(false);
+  const [stage, setStage] = useState4("reading");
+  const [denialReason, setDenialReason] = useState4(null);
+  const requestInFlight = useRef3(false);
   const accept = async () => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
@@ -5889,35 +6350,35 @@ function ConsentDialog({
       const stream = await getUserMedia({ audio: true });
       onAccept({ stream, mic: "granted" });
     } catch (error) {
-      setDenialReason(_nullishCoalesce(errorMessage(error), () => ( "Microphone access was denied.")));
+      setDenialReason(errorMessage(error) ?? "Microphone access was denied.");
       setStage("denied");
     } finally {
       requestInFlight.current = false;
     }
   };
   const busy = stage === "requesting";
-  return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "dialog", "aria-modal": "true", "aria-label": copy.title, style: dialogStyle, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "h2", { style: { margin: "0 0 12px", fontSize: 20, lineHeight: 1.2 }, children: copy.title }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 12px" }, children: copy.intro }),
-    copy.destinations.map((destination) => /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-consent-destination": destination.id, style: { marginBottom: 12 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { style: { margin: "0 0 4px", fontWeight: 600 }, children: [
+  return /* @__PURE__ */ jsx4("div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ jsxs4("div", { role: "dialog", "aria-modal": "true", "aria-label": copy.title, style: dialogStyle, children: [
+    /* @__PURE__ */ jsx4("h2", { style: { margin: "0 0 12px", fontSize: 20, lineHeight: 1.2 }, children: copy.title }),
+    /* @__PURE__ */ jsx4("p", { style: { margin: "0 0 12px" }, children: copy.intro }),
+    copy.destinations.map((destination) => /* @__PURE__ */ jsxs4("div", { "data-riffrec-consent-destination": destination.id, style: { marginBottom: 12 }, children: [
+      /* @__PURE__ */ jsxs4("p", { style: { margin: "0 0 4px", fontWeight: 600 }, children: [
         "To ",
         destination.to,
         ":"
       ] }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { style: { margin: 0, paddingLeft: 20 }, children: destination.items.map((item) => /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "li", { children: item }, item)) })
+      /* @__PURE__ */ jsx4("ul", { style: { margin: 0, paddingLeft: 20 }, children: destination.items.map((item) => /* @__PURE__ */ jsx4("li", { children: item }, item)) })
     ] }, destination.id)),
-    copy.retention ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-consent-retention": "", style: { margin: "0 0 12px" }, children: copy.retention }) : null,
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 12px" }, children: copy.noExclusions }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: 0 }, children: copy.microphone }),
-    stage === "denied" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "status", "data-riffrec-consent-mic-denied": "", style: noticeStyle, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Microphone unavailable." }),
+    copy.retention ? /* @__PURE__ */ jsx4("p", { "data-riffrec-consent-retention": "", style: { margin: "0 0 12px" }, children: copy.retention }) : null,
+    /* @__PURE__ */ jsx4("p", { style: { margin: "0 0 12px" }, children: copy.noExclusions }),
+    /* @__PURE__ */ jsx4("p", { style: { margin: 0 }, children: copy.microphone }),
+    stage === "denied" ? /* @__PURE__ */ jsxs4("div", { role: "status", "data-riffrec-consent-mic-denied": "", style: noticeStyle, children: [
+      /* @__PURE__ */ jsx4("strong", { children: "Microphone unavailable." }),
       " ",
       denialReason,
       " You can continue with drawing and the board; the interviewer will not run."
     ] }) : null,
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "flex", gap: 10, alignItems: "flex-start", marginTop: 18 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    /* @__PURE__ */ jsxs4("label", { style: { display: "flex", gap: 10, alignItems: "flex-start", marginTop: 18 }, children: [
+      /* @__PURE__ */ jsx4(
         "input",
         {
           type: "checkbox",
@@ -5926,11 +6387,11 @@ function ConsentDialog({
           onChange: (event) => setChecked(event.currentTarget.checked)
         }
       ),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: "I understand what is streamed and to whom, and I consent to this live session." })
+      /* @__PURE__ */ jsx4("span", { children: "I understand what is streamed and to whom, and I consent to this live session." })
     ] }),
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-consent-decline": "", style: secondaryButtonStyle2, disabled: busy, onClick: onDecline, children: copy.declineLabel }),
-      stage === "denied" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    /* @__PURE__ */ jsxs4("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }, children: [
+      /* @__PURE__ */ jsx4("button", { type: "button", "data-riffrec-consent-decline": "", style: secondaryButtonStyle2, disabled: busy, onClick: onDecline, children: copy.declineLabel }),
+      stage === "denied" ? /* @__PURE__ */ jsx4(
         "button",
         {
           type: "button",
@@ -5940,7 +6401,7 @@ function ConsentDialog({
           onClick: () => onAccept({ stream: null, mic: "denied" }),
           children: "Continue without microphone"
         }
-      ) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      ) : /* @__PURE__ */ jsx4(
         "button",
         {
           type: "button",
@@ -5956,10 +6417,10 @@ function ConsentDialog({
 }
 
 // src/live/overlay/EndedCard.tsx
-
+import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
 var RESIDUAL_STATUSES = ["needs_info", "blocked"];
 function countByStatus(units) {
-  const counts = Object.fromEntries(_chunkWMHGUF6Ucjs.UNIT_STATUSES.map((status) => [status, 0]));
+  const counts = Object.fromEntries(UNIT_STATUSES.map((status) => [status, 0]));
   for (const unit of units) counts[unit.status] += 1;
   return counts;
 }
@@ -6000,30 +6461,30 @@ var buttonStyle3 = {
 function EndedCard({ units, reason, residualHint, onDismiss }) {
   const counts = countByStatus(units);
   const residuals = residualCount(counts);
-  const shown = _chunkWMHGUF6Ucjs.UNIT_STATUSES.filter((status) => counts[status] > 0);
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
-    shown.length > 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: STATUS_LABELS[status] }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { fontWeight: 600, textAlign: "right" }, children: counts[status] })
+  const shown = UNIT_STATUSES.filter((status) => counts[status] > 0);
+  return /* @__PURE__ */ jsxs5("div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
+    /* @__PURE__ */ jsx5("p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
+    /* @__PURE__ */ jsx5("p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
+    shown.length > 0 ? /* @__PURE__ */ jsx5("ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ jsxs5("li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
+      /* @__PURE__ */ jsx5("span", { children: STATUS_LABELS[status] }),
+      /* @__PURE__ */ jsx5("span", { style: { fontWeight: 600, textAlign: "right" }, children: counts[status] })
     ] }, status)) }) : null,
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${_nullishCoalesce(residualHint, () => ( "Your agent's residual list has them, ready to hand to planning."))}` : _nullishCoalesce(residualHint, () => ( "Anything beyond this session is in your agent's residual list.")) }),
-    reason && reason !== "riffer_done" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
+    /* @__PURE__ */ jsx5("p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${residualHint ?? "Your agent's residual list has them, ready to hand to planning."}` : residualHint ?? "Anything beyond this session is in your agent's residual list." }),
+    reason && reason !== "riffer_done" ? /* @__PURE__ */ jsxs5("p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
       "Ended by the endpoint: ",
       reason
     ] }) : null,
-    onDismiss ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 12 }, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle3, onClick: onDismiss, children: "Close" }) }) : null
+    onDismiss ? /* @__PURE__ */ jsx5("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 12 }, children: /* @__PURE__ */ jsx5("button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle3, onClick: onDismiss, children: "Close" }) }) : null
   ] });
 }
 
 // src/live/overlay/LiveIndicator.tsx
-
+import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
 function hostOf(endpoint) {
   if (!endpoint) return null;
   try {
     return new URL(endpoint).host;
-  } catch (e20) {
+  } catch {
     return endpoint;
   }
 }
@@ -6182,11 +6643,11 @@ function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input 
   const running = isRunning(input.status);
   const micDenied = input.mic === "denied";
   const showControls = !compact && running && (onToggleMute || onTogglePause);
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", style: rootStyle2, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "aria-hidden": "true", style: { ...dotStyle, background: view.color, boxShadow: view.pulse ? `0 0 0 3px ${view.color}33` : void 0 } }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label }),
-    showControls ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { style: { display: "inline-flex", gap: 6, marginLeft: 4 }, children: [
-      onToggleMute ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs6("span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", style: rootStyle2, children: [
+    /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { ...dotStyle, background: view.color, boxShadow: view.pulse ? `0 0 0 3px ${view.color}33` : void 0 } }),
+    /* @__PURE__ */ jsx6("span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label }),
+    showControls ? /* @__PURE__ */ jsxs6("span", { style: { display: "inline-flex", gap: 6, marginLeft: 4 }, children: [
+      onToggleMute ? /* @__PURE__ */ jsx6(
         "button",
         {
           type: "button",
@@ -6200,12 +6661,12 @@ function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input 
           children: input.muted ? "Unmute" : "Mute"
         }
       ) : null,
-      onTogglePause ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      onTogglePause ? /* @__PURE__ */ jsx6(
         "button",
         {
           type: "button",
           "data-riffrec-live-pause": "",
-          "aria-pressed": _nullishCoalesce(input.paused, () => ( false)),
+          "aria-pressed": input.paused ?? false,
           "aria-label": input.paused ? "Resume frame and stream capture" : "Pause frame and stream capture",
           style: input.paused ? iconButtonPressedStyle : iconButtonStyle,
           onClick: onTogglePause,
@@ -6217,7 +6678,7 @@ function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input 
 }
 
 // src/live/overlay/ModeSwitch.tsx
-
+import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
 var MODE_LABELS = {
   instant: "Instant",
   smart: "Smart",
@@ -6259,11 +6720,11 @@ var hintStyle = {
   color: "#b54708"
 };
 function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: _chunkWMHGUF6Ucjs.EXECUTION_MODES.map((option, index) => {
+  return /* @__PURE__ */ jsxs7("div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
+    /* @__PURE__ */ jsx7("div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: EXECUTION_MODES.map((option, index) => {
       const selected = option === mode;
-      const last = index === _chunkWMHGUF6Ucjs.EXECUTION_MODES.length - 1;
-      return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      const last = index === EXECUTION_MODES.length - 1;
+      return /* @__PURE__ */ jsx7(
         "button",
         {
           type: "button",
@@ -6281,7 +6742,7 @@ function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
         option
       );
     }) }),
-    pendingMode !== null ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
+    pendingMode !== null ? /* @__PURE__ */ jsxs7("span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
       MODE_LABELS[pendingMode],
       ": ",
       PENDING_MODE_HINT.toLowerCase()
@@ -6290,8 +6751,8 @@ function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
 }
 
 // src/live/overlay/SendControl.tsx
-
-
+import { useRef as useRef4, useState as useState5 } from "react";
+import { jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
 var buttonStyle4 = {
   border: "1px solid #344054",
   borderRadius: 6,
@@ -6320,9 +6781,9 @@ var noteStyle2 = {
   marginLeft: 6
 };
 function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact = false }) {
-  const [sending, setSending] = _react.useState.call(void 0, false);
-  const [lastSend, setLastSend] = _react.useState.call(void 0, null);
-  const sendInFlight = _react.useRef.call(void 0, false);
+  const [sending, setSending] = useState5(false);
+  const [lastSend, setLastSend] = useState5(null);
+  const sendInFlight = useRef4(false);
   const send = async () => {
     if (sendInFlight.current) return;
     sendInFlight.current = true;
@@ -6337,8 +6798,8 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
     }
   };
   const busy = disabled || sending;
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs8("span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+    /* @__PURE__ */ jsx8(
       "button",
       {
         type: "button",
@@ -6351,7 +6812,7 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
         children: sending ? "Sending\u2026" : heldCount > 0 ? `Send (${heldCount})` : "Send"
       }
     ),
-    !compact ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    !compact ? /* @__PURE__ */ jsx8(
       "button",
       {
         type: "button",
@@ -6363,15 +6824,15 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
         children: "Done"
       }
     ) : null,
-    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
+    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ jsx8("span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
   ] });
 }
 
 // src/live/overlay/LiveOverlay.tsx
-
+import { Fragment, jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
 function useLiveSnapshot(session) {
-  const [snapshot, setSnapshot] = _react.useState.call(void 0, () => session.snapshot());
-  _react.useEffect.call(void 0, () => {
+  const [snapshot, setSnapshot] = useState6(() => session.snapshot());
+  useEffect3(() => {
     setSnapshot(session.snapshot());
     return session.subscribe(setSnapshot);
   }, [session]);
@@ -6501,63 +6962,63 @@ function LiveOverlay({
   now
 }) {
   const snapshot = useLiveSnapshot(session);
-  const [collapsed, setCollapsed] = _react.useState.call(void 0, defaultCollapsed);
-  const [drawing, setDrawing] = _react.useState.call(void 0, false);
-  const [view, setView] = _react.useState.call(void 0, "board");
-  const [finishing, setFinishing] = _react.useState.call(void 0, false);
-  const [finished, setFinished] = _react.useState.call(void 0, false);
-  const [uncontrolledPaused, setUncontrolledPaused] = _react.useState.call(void 0, false);
-  const [endedReason, setEndedReason] = _react.useState.call(void 0, null);
-  const [dismissed, setDismissed] = _react.useState.call(void 0, false);
-  const paused = _nullishCoalesce(controlledPaused, () => ( uncontrolledPaused));
-  const onPauseChangeRef = _react.useRef.call(void 0, onPauseChange);
+  const [collapsed, setCollapsed] = useState6(defaultCollapsed);
+  const [drawing, setDrawing] = useState6(false);
+  const [view, setView] = useState6("board");
+  const [finishing, setFinishing] = useState6(false);
+  const [finished, setFinished] = useState6(false);
+  const [uncontrolledPaused, setUncontrolledPaused] = useState6(false);
+  const [endedReason, setEndedReason] = useState6(null);
+  const [dismissed, setDismissed] = useState6(false);
+  const paused = controlledPaused ?? uncontrolledPaused;
+  const onPauseChangeRef = useRef5(onPauseChange);
   onPauseChangeRef.current = onPauseChange;
-  const uncontrolledPausedRef = _react.useRef.call(void 0, uncontrolledPaused);
+  const uncontrolledPausedRef = useRef5(uncontrolledPaused);
   uncontrolledPausedRef.current = uncontrolledPaused;
-  _react.useEffect.call(void 0, () => {
+  useEffect3(() => {
     setView("board");
     setDrawing(false);
     setFinished(false);
     setEndedReason(null);
     setDismissed(false);
-    if (uncontrolledPausedRef.current) _optionalChain([onPauseChangeRef, 'access', _236 => _236.current, 'optionalCall', _237 => _237(false)]);
+    if (uncontrolledPausedRef.current) onPauseChangeRef.current?.(false);
     setUncontrolledPaused(false);
   }, [session]);
-  _react.useEffect.call(void 0, () => {
-    return session.on("ended", ({ reason }) => setEndedReason(_nullishCoalesce(reason, () => ( "ended"))));
+  useEffect3(() => {
+    return session.on("ended", ({ reason }) => setEndedReason(reason ?? "ended"));
   }, [session]);
-  const sessionNow = _react.useMemo.call(void 0, () => _nullishCoalesce(now, () => ( (() => Math.max(0, Date.now() - session.startedAt)))), [now, session]);
-  const handleConsent = _react.useCallback.call(void 0, 
+  const sessionNow = useMemo(() => now ?? (() => Math.max(0, Date.now() - session.startedAt)), [now, session]);
+  const handleConsent = useCallback2(
     (result) => {
       if (result.mic === "granted") session.micGranted();
       else session.micDenied();
       session.start();
-      _optionalChain([onConsent, 'optionalCall', _238 => _238(result)]);
+      onConsent?.(result);
     },
     [session, onConsent]
   );
-  const handleDecline = _react.useCallback.call(void 0, () => {
+  const handleDecline = useCallback2(() => {
     session.declineConsent();
-    _optionalChain([onDecline, 'optionalCall', _239 => _239()]);
+    onDecline?.();
   }, [session, onDecline]);
-  const handleAnnotation = _react.useCallback.call(void 0, 
+  const handleAnnotation = useCallback2(
     (annotation) => {
       if (onAnnotation) onAnnotation(annotation);
       else session.addAnnotation(annotation);
     },
     [session, onAnnotation]
   );
-  const togglePause = _react.useCallback.call(void 0, () => {
+  const togglePause = useCallback2(() => {
     const next = !paused;
     if (controlledPaused === void 0) setUncontrolledPaused(next);
-    _optionalChain([onPauseChangeRef, 'access', _240 => _240.current, 'optionalCall', _241 => _241(next)]);
+    onPauseChangeRef.current?.(next);
   }, [paused, controlledPaused]);
-  const handleMode = _react.useCallback.call(void 0, (mode) => session.setMode(mode), [session]);
-  const handleSend = _react.useCallback.call(void 0, () => session.send(), [session]);
-  const handleWithdraw = _react.useCallback.call(void 0, (unitId) => void session.withdrawUnit(unitId, "riffer"), [session]);
-  const handleAnswer = _react.useCallback.call(void 0, (unitId, text) => void session.answer(unitId, text), [session]);
-  const finishInFlight = _react.useRef.call(void 0, false);
-  const handleConfirmations = _react.useCallback.call(void 0, 
+  const handleMode = useCallback2((mode) => session.setMode(mode), [session]);
+  const handleSend = useCallback2(() => session.send(), [session]);
+  const handleWithdraw = useCallback2((unitId) => void session.withdrawUnit(unitId, "riffer"), [session]);
+  const handleAnswer = useCallback2((unitId, text) => void session.answer(unitId, text), [session]);
+  const finishInFlight = useRef5(false);
+  const handleConfirmations = useCallback2(
     async (confirmations) => {
       if (finishInFlight.current || finished) return;
       finishInFlight.current = true;
@@ -6568,7 +7029,7 @@ function LiveOverlay({
         }
         setFinished(true);
         const result = await session.finish();
-        _optionalChain([onFinished, 'optionalCall', _242 => _242(result)]);
+        onFinished?.(result);
       } finally {
         finishInFlight.current = false;
         setFinishing(false);
@@ -6579,7 +7040,7 @@ function LiveOverlay({
   );
   const running = snapshot.phase === "running" && !finished;
   if (snapshot.phase === "consenting") {
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    return /* @__PURE__ */ jsx9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ jsx9(
       ConsentDialog,
       {
         profile,
@@ -6595,14 +7056,14 @@ function LiveOverlay({
   }
   if (snapshot.phase === "ended") {
     if (endedReason === "stopped" || dismissed) return null;
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, EndedCard, { units: snapshot.units, reason: endedReason, residualHint, onDismiss: () => setDismissed(true) }) });
+    return /* @__PURE__ */ jsx9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ jsx9(EndedCard, { units: snapshot.units, reason: endedReason, residualHint, onDismiss: () => setDismissed(true) }) });
   }
   if (snapshot.phase === "idle") return null;
   const { guesses, notes } = agentNotes(snapshot, session);
   const held = session.heldUnits().length;
   const confirmable = snapshot.units.filter((unit) => unit.status !== "withdrawn");
   const errored = snapshot.phase === "error";
-  const indicator = (compact) => /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  const indicator = (compact) => /* @__PURE__ */ jsx9(
     LiveIndicator,
     {
       status: snapshot.status,
@@ -6617,8 +7078,8 @@ function LiveOverlay({
       onTogglePause: running ? togglePause : void 0
     }
   );
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded", children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded", children: [
+    /* @__PURE__ */ jsx9(
       DrawingLayer,
       {
         annotations: snapshot.annotations,
@@ -6632,10 +7093,10 @@ function LiveOverlay({
         zIndex
       }
     ),
-    collapsed && view === "board" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-live-pill": "", style: { ...pillStyle, zIndex: zIndex + 1 }, children: [
+    collapsed && view === "board" ? /* @__PURE__ */ jsxs9("div", { "data-riffrec-live-pill": "", style: { ...pillStyle, zIndex: zIndex + 1 }, children: [
       indicator(true),
-      running ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), compact: true }) : null,
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      running ? /* @__PURE__ */ jsx9(SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), compact: true }) : null,
+      /* @__PURE__ */ jsx9(
         "button",
         {
           type: "button",
@@ -6647,10 +7108,10 @@ function LiveOverlay({
           children: "\u25B8"
         }
       )
-    ] }) : /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-live-panel": "", role: "region", "aria-label": "Riffrec live", style: { ...panelStyle, zIndex: zIndex + 1 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: headerStyle, children: [
+    ] }) : /* @__PURE__ */ jsxs9("div", { "data-riffrec-live-panel": "", role: "region", "aria-label": "Riffrec live", style: { ...panelStyle, zIndex: zIndex + 1 }, children: [
+      /* @__PURE__ */ jsxs9("div", { style: headerStyle, children: [
         indicator(false),
-        view === "board" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        view === "board" ? /* @__PURE__ */ jsx9(
           "button",
           {
             type: "button",
@@ -6663,10 +7124,10 @@ function LiveOverlay({
           }
         ) : null
       ] }),
-      view === "board" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, _jsxruntime.Fragment, { children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: toolbarStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+      view === "board" ? /* @__PURE__ */ jsxs9(Fragment, { children: [
+        /* @__PURE__ */ jsxs9("div", { style: toolbarStyle, children: [
+          /* @__PURE__ */ jsx9(ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
+          /* @__PURE__ */ jsxs9(
             "button",
             {
               type: "button",
@@ -6684,9 +7145,9 @@ function LiveOverlay({
             }
           )
         ] }),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: bodyStyle, children: [
-          errored && snapshot.error ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        /* @__PURE__ */ jsxs9("div", { style: bodyStyle, children: [
+          errored && snapshot.error ? /* @__PURE__ */ jsx9("p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
+          /* @__PURE__ */ jsx9(
             Board,
             {
               units: snapshot.units,
@@ -6701,11 +7162,11 @@ function LiveOverlay({
             }
           )
         ] }),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: footerStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { fontSize: 11, color: "#667085" }, children: held > 0 ? `${held} held for the next checkpoint` : "Nothing held" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), disabled: !running })
+        /* @__PURE__ */ jsxs9("div", { style: footerStyle, children: [
+          /* @__PURE__ */ jsx9("span", { style: { fontSize: 11, color: "#667085" }, children: held > 0 ? `${held} held for the next checkpoint` : "Nothing held" }),
+          /* @__PURE__ */ jsx9(SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), disabled: !running })
         ] })
-      ] }) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: bodyStyle, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      ] }) : /* @__PURE__ */ jsx9("div", { style: bodyStyle, children: /* @__PURE__ */ jsx9(
         ConfirmationPass,
         {
           units: confirmable,
@@ -6719,7 +7180,7 @@ function LiveOverlay({
 }
 
 // src/live/LiveOverlay.tsx
-
+import { Fragment as Fragment2, jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
 var resharePromptStyle = {
   position: "fixed",
   left: "50%",
@@ -6763,14 +7224,14 @@ function LiveMount({
   getUserMedia,
   fetch: fetchImpl
 }) {
-  const runtimeRef = _react.useRef.call(void 0, null);
-  const [session, setSession] = _react.useState.call(void 0, null);
-  const [reshareNeeded, setReshareNeeded] = _react.useState.call(void 0, false);
-  const callbacks = _react.useRef.call(void 0, { onHandle, onSnapshot, onEnded, onError });
+  const runtimeRef = useRef6(null);
+  const [session, setSession] = useState7(null);
+  const [reshareNeeded, setReshareNeeded] = useState7(false);
+  const callbacks = useRef6({ onHandle, onSnapshot, onEnded, onError });
   callbacks.current = { onHandle, onSnapshot, onEnded, onError };
-  const captureRef = _react.useRef.call(void 0, capture);
+  const captureRef = useRef6(capture);
   captureRef.current = capture;
-  _react.useEffect.call(void 0, () => {
+  useEffect4(() => {
     let runtime2 = null;
     runtime2 = new LiveRuntime({
       config,
@@ -6803,25 +7264,25 @@ function LiveMount({
       runtimeRef.current = null;
     };
   }, []);
-  const handlePause = _react.useCallback.call(void 0, (paused) => _optionalChain([runtimeRef, 'access', _243 => _243.current, 'optionalAccess', _244 => _244.setPaused, 'call', _245 => _245(paused)]), []);
+  const handlePause = useCallback3((paused) => runtimeRef.current?.setPaused(paused), []);
   if (!session) return null;
   const runtime = runtimeRef.current;
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, _jsxruntime.Fragment, { children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs10(Fragment2, { children: [
+    /* @__PURE__ */ jsx10(
       LiveOverlay,
       {
         session,
-        profile: _optionalChain([runtime, 'optionalAccess', _246 => _246.consentProfile]),
+        profile: runtime?.consentProfile,
         endpointOwner: config.endpointOwner,
         drawShortcut: config.drawShortcut,
         getUserMedia,
-        onConsent: (result) => _optionalChain([runtime, 'optionalAccess', _247 => _247.consent, 'call', _248 => _248(result)]),
-        onAnnotation: _optionalChain([runtime, 'optionalAccess', _249 => _249.annotation]),
-        onFinished: (result) => _optionalChain([runtime, 'optionalAccess', _250 => _250.finished, 'call', _251 => _251(result)]),
+        onConsent: (result) => runtime?.consent(result),
+        onAnnotation: runtime?.annotation,
+        onFinished: (result) => runtime?.finished(result),
         onPauseChange: handlePause
       }
     ),
-    reshareNeeded && runtime ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+    reshareNeeded && runtime ? /* @__PURE__ */ jsxs10(
       "div",
       {
         ...{ [OVERLAY_ATTRIBUTE]: "" },
@@ -6830,15 +7291,15 @@ function LiveMount({
         "data-riffrec-live-reshare": "",
         style: resharePromptStyle,
         children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: "The page reloaded. Share your screen again to keep recording." }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
+          /* @__PURE__ */ jsx10("span", { children: "The page reloaded. Share your screen again to keep recording." }),
+          /* @__PURE__ */ jsx10("button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
+          /* @__PURE__ */ jsx10("button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
         ]
       }
     ) : null
   ] });
 }
-
-
-exports.default = LiveMount;
-//# sourceMappingURL=LiveOverlay-NFBVG6CP.cjs.map
+export {
+  LiveMount as default
+};
+//# sourceMappingURL=LiveOverlay-KY7CULLX.js.map

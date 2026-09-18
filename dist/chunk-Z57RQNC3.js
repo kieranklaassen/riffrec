@@ -1,8 +1,8 @@
-"use strict";Object.defineProperty(exports, "__esModule", {value: true});// src/live/tools.ts
-var LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer"];
+// src/live/tools.ts
+var LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"];
 var anchorsProperty = {
   type: "array",
-  description: `Anchor references for the element(s) the change is about: the riffer's own words for the element ("the sidebar toggle", "that red button") or an anchor id the page announced in conversation. Empty only when the riffer named no element at all.`,
+  description: `Anchor references for the element(s) the change is about: an anchor id from a [PAGE] note announcing what the riffer clicked, drew on, or pinned ("this"/"here" means the most recent one), or the riffer's own words for the element ("the sidebar toggle", "that red button"). Empty only when the riffer named no element and no anchor was announced.`,
   items: { type: "string" }
 };
 var RECORD_UNIT_TOOL = {
@@ -73,11 +73,25 @@ var RELAY_ANSWER_TOOL = {
     additionalProperties: false
   }
 };
+var LOOK_AT_SCREEN_TOOL = {
+  type: "function",
+  name: "look_at_screen",
+  description: `See the riffer's screen right now. The page attaches a screenshot of the current view as an image in the conversation, then returns this call's result with the route and how old the frame is. Call when the riffer refers to how something looks ("this", "here", "that color", "it looks off") and the clicked or drawn anchors the page announced do not settle what they mean, when they ask whether you can see their screen, or when they ask you to look. Never call more than once per riffer turn, and never call to browse: only to answer what the riffer just said. If the result says no frame is available, ask the riffer to describe what they see.`,
+  parameters: {
+    type: "object",
+    properties: {
+      reason: { type: "string", description: "Why you need to see the screen, in a few words." }
+    },
+    required: [],
+    additionalProperties: false
+  }
+};
 var LIVE_TOOLS = [
   RECORD_UNIT_TOOL,
   UPDATE_UNIT_TOOL,
   WITHDRAW_UNIT_TOOL,
-  RELAY_ANSWER_TOOL
+  RELAY_ANSWER_TOOL,
+  LOOK_AT_SCREEN_TOOL
 ];
 function isLiveToolName(value) {
   return typeof value === "string" && LIVE_TOOL_NAMES.includes(value);
@@ -86,6 +100,45 @@ function getLiveTool(name) {
   const tool = LIVE_TOOLS.find((candidate) => candidate.name === name);
   if (!tool) throw new Error(`Unknown live tool: ${name}`);
   return tool;
+}
+
+// src/live/realtime/persona.ts
+var BRIEF_MAX_CHARS = 3e3;
+var SCREEN_CONTEXT_MARKER = "[SCREEN CONTEXT]";
+var SCREEN_CONTEXT_SECTION = [
+  `${SCREEN_CONTEXT_MARKER}`,
+  "The page keeps you informed about the screen, and this section is authoritative about it: it supersedes any earlier statement that you cannot see the page or must not claim to.",
+  `Every click the riffer makes arrives as a system note tagged [PAGE] that names the element (its component, visible text, selector, and route) and gives it an anchor id. Drawings and pins arrive the same way. The most recent note is what "this", "here", and "that" refer to: put its anchor id in record_unit's anchors, and never ask which element they mean when a note arrived within the last few seconds.`,
+  "You can also see the screen. Call look_at_screen when the riffer refers to how something looks, asks whether you can see their screen, or asks you to look; the page attaches a screenshot of the current view and you may then describe or refer to what is in it. The riffrec panel docked at the top right is not part of the app. Never say you cannot see the screen: if no frame is available the tool result says so, and you ask the riffer to describe what they see instead."
+].join("\n");
+var DEFAULT_INTERVIEWER_INSTRUCTIONS = [
+  "You are the riffrec interviewer: a calm, terse product partner listening to a designer or developer (the riffer) talk through changes they want while they click and draw on their own running app. The page tells you what they click, draw on, and pin, and shows you the screen when you ask for it; the last section says how.",
+  "Your job is to turn what the riffer says into units of change on a shared board, one unit per requested change, using the record_unit tool. A sentence that asks for three things becomes three record_unit calls. Never call record_unit for questions, thinking aloud, praise, or utterances shorter than three words without a change verb.",
+  "Ask immediately, in one short sentence, when the target element or the intended value is ambiguous: which element, which side, what color, how much. Otherwise stay quiet and let the riffer keep talking. Do not narrate, summarize, or confirm each unit aloud; the board already shows it.",
+  "Never invent anchors. Use only the anchor ids the page announced or the element references the riffer named. When the riffer names no element and no anchor was announced, record the unit with an empty anchors list.",
+  "When the riffer takes back a change, call withdraw_unit and acknowledge it aloud in a few words. When they refine a change already on the board, call update_unit; if it is rejected because the unit was already picked up, record the refinement as a new unit.",
+  "When a note marked [ENDPOINT QUESTION] arrives, read the question to the riffer in your own words at the next pause and, once they answer, call relay_answer with their answer for that unit. Never answer such a question yourself.",
+  "Keep every spoken turn under two sentences. Speak the riffer's language.",
+  SCREEN_CONTEXT_SECTION
+].join("\n\n");
+function hasScreenContext(instructions) {
+  return typeof instructions === "string" && instructions.includes(SCREEN_CONTEXT_MARKER);
+}
+function withScreenContext(instructions) {
+  if (hasScreenContext(instructions)) return instructions;
+  const trimmed = instructions.trimEnd();
+  return trimmed.length > 0 ? `${trimmed}
+
+${SCREEN_CONTEXT_SECTION}` : SCREEN_CONTEXT_SECTION;
+}
+function buildInterviewerInstructions(options = {}) {
+  const brief = options.brief?.trim();
+  if (!brief) return DEFAULT_INTERVIEWER_INSTRUCTIONS;
+  const bounded = brief.length > BRIEF_MAX_CHARS ? `${brief.slice(0, BRIEF_MAX_CHARS - 1)}\u2026` : brief;
+  return `${DEFAULT_INTERVIEWER_INSTRUCTIONS}
+
+[SESSION BRIEF]
+${bounded}`;
 }
 
 // src/live/contract.ts
@@ -271,29 +324,37 @@ function isLiveEnvelopeOfType(envelope, type) {
   return envelope.type === type;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-exports.LIVE_TOOL_NAMES = LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = RECORD_UNIT_TOOL; exports.UPDATE_UNIT_TOOL = UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = WITHDRAW_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = RELAY_ANSWER_TOOL; exports.LIVE_TOOLS = LIVE_TOOLS; exports.isLiveToolName = isLiveToolName; exports.getLiveTool = getLiveTool; exports.LIVE_SCHEMA_VERSION = LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = LIVE_SESSION_HEADER; exports.LIVE_EVENTS_BODY_MAX_BYTES = LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_FRAME_BODY_MAX_BYTES = LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = LIVE_EVENT_TYPES; exports.EXECUTION_MODES = EXECUTION_MODES; exports.DEFAULT_EXECUTION_MODE = DEFAULT_EXECUTION_MODE; exports.UNIT_STATUSES = UNIT_STATUSES; exports.CHECKPOINT_TRIGGERS = CHECKPOINT_TRIGGERS; exports.ALWAYS_WAKE_TRIGGERS = ALWAYS_WAKE_TRIGGERS; exports.FRAME_DROP_REASONS = FRAME_DROP_REASONS; exports.isLiveEventType = isLiveEventType; exports.inspectEnvelope = inspectEnvelope; exports.validateEnvelope = validateEnvelope; exports.isLiveEnvelopeOfType = isLiveEnvelopeOfType;
-//# sourceMappingURL=chunk-WMHGUF6U.cjs.map
+export {
+  LIVE_TOOL_NAMES,
+  RECORD_UNIT_TOOL,
+  UPDATE_UNIT_TOOL,
+  WITHDRAW_UNIT_TOOL,
+  RELAY_ANSWER_TOOL,
+  LOOK_AT_SCREEN_TOOL,
+  LIVE_TOOLS,
+  isLiveToolName,
+  getLiveTool,
+  BRIEF_MAX_CHARS,
+  SCREEN_CONTEXT_MARKER,
+  SCREEN_CONTEXT_SECTION,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
+  hasScreenContext,
+  withScreenContext,
+  buildInterviewerInstructions,
+  LIVE_SCHEMA_VERSION,
+  LIVE_SESSION_HEADER,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_FRAME_BODY_MAX_BYTES,
+  LIVE_EVENT_TYPES,
+  EXECUTION_MODES,
+  DEFAULT_EXECUTION_MODE,
+  UNIT_STATUSES,
+  CHECKPOINT_TRIGGERS,
+  ALWAYS_WAKE_TRIGGERS,
+  FRAME_DROP_REASONS,
+  isLiveEventType,
+  inspectEnvelope,
+  validateEnvelope,
+  isLiveEnvelopeOfType
+};
+//# sourceMappingURL=chunk-Z57RQNC3.js.map

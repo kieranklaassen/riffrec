@@ -877,18 +877,20 @@ var EventCapture = class {
   constructor() {
     this.onEvent = null;
     this.sessionStart = 0;
+    this.ignore = null;
     this.clickHandler = null;
     this.popstateHandler = null;
     this.originalPushState = null;
     this.originalReplaceState = null;
     this.previousUrl = null;
   }
-  start(sessionStart, onEvent) {
+  start(sessionStart, onEvent, options = {}) {
     if (typeof window === "undefined" || typeof document === "undefined" || this.onEvent) {
       return;
     }
     this.sessionStart = sessionStart;
     this.onEvent = onEvent;
+    this.ignore = options.ignore ?? null;
     this.previousUrl = window.location.href;
     this.clickHandler = (event) => this.handleClick(event);
     this.popstateHandler = () => this.emitNavigation(window.location.href);
@@ -913,6 +915,7 @@ var EventCapture = class {
       window.history.replaceState = this.originalReplaceState;
     }
     this.onEvent = null;
+    this.ignore = null;
     this.clickHandler = null;
     this.popstateHandler = null;
     this.originalPushState = null;
@@ -924,6 +927,9 @@ var EventCapture = class {
       return;
     }
     const element = event.target;
+    if (this.ignore?.(element)) {
+      return;
+    }
     const clickEvent = {
       t: timestamp2(this.sessionStart),
       type: "click",
@@ -1342,4 +1348,4 @@ export {
   clearStoredBootstrap,
   bootstrapLiveToken
 };
-//# sourceMappingURL=chunk-UTXIYVX5.js.map
+//# sourceMappingURL=chunk-ES6IDTXY.js.map

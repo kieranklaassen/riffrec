@@ -1,4 +1,4 @@
-import "./chunk-2GWEBU4Q.js";
+import "./chunk-ON7GEFY4.js";
 import {
   ConsoleCapture,
   DEFAULT_DISPLAY_MEDIA_OPTIONS,
@@ -12,11 +12,13 @@ import {
   parseLiveFragment,
   readStoredBootstrap,
   segmentFileName
-} from "./chunk-UTXIYVX5.js";
+} from "./chunk-ES6IDTXY.js";
 import {
   ALWAYS_WAKE_TRIGGERS,
+  BRIEF_MAX_CHARS,
   CHECKPOINT_TRIGGERS,
   DEFAULT_EXECUTION_MODE,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
   EXECUTION_MODES,
   FRAME_DROP_REASONS,
   LIVE_EVENTS_BODY_MAX_BYTES,
@@ -26,18 +28,24 @@ import {
   LIVE_SESSION_HEADER,
   LIVE_TOOLS,
   LIVE_TOOL_NAMES,
+  LOOK_AT_SCREEN_TOOL,
   RECORD_UNIT_TOOL,
   RELAY_ANSWER_TOOL,
+  SCREEN_CONTEXT_MARKER,
+  SCREEN_CONTEXT_SECTION,
   UNIT_STATUSES,
   UPDATE_UNIT_TOOL,
   WITHDRAW_UNIT_TOOL,
+  buildInterviewerInstructions,
   getLiveTool,
+  hasScreenContext,
   inspectEnvelope,
   isLiveEnvelopeOfType,
   isLiveEventType,
   isLiveToolName,
-  validateEnvelope
-} from "./chunk-FUTET4MR.js";
+  validateEnvelope,
+  withScreenContext
+} from "./chunk-Z57RQNC3.js";
 
 // src/RiffrecProvider.tsx
 import {
@@ -250,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
-var LiveMount = lazy(() => import("./LiveOverlay-JU7ZIX67.js"));
+var LiveMount = lazy(() => import("./LiveOverlay-KY7CULLX.js"));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
@@ -390,6 +398,7 @@ function RiffrecProvider({
 }) {
   const [status, setStatus] = useState("idle");
   const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
+  const [liveFallbackReason, setLiveFallbackReason] = useState(null);
   const statusRef = useRef("idle");
   const activeSession = useRef(null);
   const configRef = useRef({
@@ -457,15 +466,19 @@ function RiffrecProvider({
           setStatusNow("idle");
           return null;
         }
+        const fallback = stopped.endedBy === "stop";
+        const preference = stopped.options.download ?? configRef.current.live?.download;
+        const download = fallback ? preference !== false : preference === true;
         const writer = new SessionWriter({ reactVersion: React.version });
         const result = await writer.stop(stopped.outputs, {
-          download: stopped.options.download,
+          download,
           live: stopped.live,
           recordingSegments: stopped.recordingSegments
         });
         await stopped.options.onSessionComplete?.(result);
         setStatusNow("idle");
-        setDownloadNoticeVisible(stopped.options.download !== false && stopped.endedBy === "stop");
+        setLiveFallbackReason(fallback ? stopped.fallbackReason : null);
+        setDownloadNoticeVisible(download);
         return result;
       } catch (error) {
         liveActive.current = false;
@@ -544,6 +557,7 @@ function RiffrecProvider({
     }
     if (isLiveConfigured) {
       setDownloadNoticeVisible(false);
+      setLiveFallbackReason(null);
       const handle = await awaitLiveHandle();
       if (!handle || liveActive.current || liveStopping.current) return;
       handle.begin(options);
@@ -724,7 +738,12 @@ function RiffrecProvider({
       /* @__PURE__ */ jsx("span", { "aria-hidden": "true", style: downloadNoticeIconStyle, children: "\u2713" }),
       /* @__PURE__ */ jsxs("span", { style: recordingTextStyle, children: [
         /* @__PURE__ */ jsx("span", { style: recordingTitleStyle, children: downloadNoticeTitle }),
-        /* @__PURE__ */ jsx("span", { style: recordingHintStyle, children: downloadNoticeMessage })
+        /* @__PURE__ */ jsx("span", { style: recordingHintStyle, children: downloadNoticeMessage }),
+        liveFallbackReason ? /* @__PURE__ */ jsxs("span", { "data-riffrec-live-fallback-reason": "", style: recordingHintStyle, children: [
+          "Live endpoint did not confirm the end: ",
+          liveFallbackReason,
+          "."
+        ] }) : null
       ] }),
       /* @__PURE__ */ jsx(
         "button",
@@ -915,10 +934,12 @@ function useRiffrec() {
 }
 export {
   ALWAYS_WAKE_TRIGGERS,
+  BRIEF_MAX_CHARS,
   CHECKPOINT_TRIGGERS,
   DEFAULT_DISPLAY_MEDIA_OPTIONS,
   DEFAULT_DISPLAY_MEDIA_VIDEO,
   DEFAULT_EXECUTION_MODE,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
   EXECUTION_MODES,
   FRAME_DROP_REASONS,
   LIVE_EVENTS_BODY_MAX_BYTES,
@@ -928,20 +949,26 @@ export {
   LIVE_SESSION_HEADER,
   LIVE_TOOLS,
   LIVE_TOOL_NAMES,
+  LOOK_AT_SCREEN_TOOL,
   RECORD_UNIT_TOOL,
   RELAY_ANSWER_TOOL,
   RiffrecProvider,
   RiffrecRecorder,
+  SCREEN_CONTEXT_MARKER,
+  SCREEN_CONTEXT_SECTION,
   UNIT_STATUSES,
   UPDATE_UNIT_TOOL,
   WITHDRAW_UNIT_TOOL,
+  buildInterviewerInstructions,
   downloadSessionArchive,
   getLiveTool,
+  hasScreenContext,
   inspectEnvelope,
   isLiveEnvelopeOfType,
   isLiveEventType,
   isLiveToolName,
   useRiffrec,
-  validateEnvelope
+  validateEnvelope,
+  withScreenContext
 };
 //# sourceMappingURL=index.js.map
