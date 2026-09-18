@@ -8,7 +8,7 @@ import { createFakeEndpoint } from "../testing/fakeEndpoint";
 import type { ClipRecorderLike } from "./audioClip";
 import type { CompositeDrawer } from "./composite";
 import type { EvidenceProfileInput } from "./profile";
-import { LiveEvidence, describeAnnotation } from "./liveEvidence";
+import { LiveEvidence, RECENT_FRAME_MS, describeAnnotation } from "./liveEvidence";
 
 class FakeRecorder implements ClipRecorderLike {
   state: ClipRecorderLike["state"] = "inactive";
@@ -348,9 +348,23 @@ describe("LiveEvidence", () => {
     expect(unit.evidence.frame_ids).toEqual([look!.frame.id]);
   });
 
+  it("lookAtScreen reuses a gesture frame grabbed a moment ago instead of encoding the screen twice", async () => {
+    const h = harness();
+    const atClick = await h.evidence.gesture();
+    h.advance(RECENT_FRAME_MS);
+    expect(await h.evidence.lookAtScreen()).toEqual({ frame: atClick, fresh: true });
+    expect(h.grabber).toHaveBeenCalledTimes(1);
+
+    h.advance(1);
+    const look = await h.evidence.lookAtScreen();
+    expect(look!.frame.id).not.toBe(atClick!.id);
+    expect(h.grabber).toHaveBeenCalledTimes(2);
+  });
+
   it("lookAtScreen falls back to the latest buffered frame when the grab yields nothing, and to null while paused or without a display", async () => {
     const h = harness();
     const buffered = await h.evidence.gesture();
+    h.advance(RECENT_FRAME_MS + 1);
     h.grabber.mockResolvedValueOnce(null as never);
     expect(await h.evidence.lookAtScreen()).toEqual({ frame: buffered, fresh: false });
 

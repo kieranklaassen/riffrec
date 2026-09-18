@@ -286,10 +286,6 @@ export class StreamClient {
     } finally {
       this.clearTimer(timer);
     }
-    if (timedOut) {
-      this.recordFailure(new Error(`riffrec live: POST /events timed out after ${this.postTimeoutMs} ms`));
-      return "stop";
-    }
 
     if (response.ok) {
       const body = await readJson(response);
