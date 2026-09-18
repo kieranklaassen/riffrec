@@ -134,6 +134,8 @@ Enable it with the `live` prop:
 </RiffrecProvider>
 ```
 
+A runnable example lives in [`examples/live-demo`](examples/live-demo): a small admin dashboard with exactly this mount, linked to the package in this checkout, with a README that walks through a live polish session locally and over HTTPS tunnels.
+
 ```ts
 interface RiffrecLiveConfig {
   endpoint?: string;        // fallback endpoint origin when the URL fragment carries none
