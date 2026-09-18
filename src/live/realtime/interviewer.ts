@@ -698,6 +698,9 @@ export class Interviewer {
     this.clearGateTimer();
     this.responseActive = false;
     this.responseOwedAfterTool = false;
+    // Notes still describe what happened; a screenshot from before the drop no longer shows the current view.
+    const texts = this.pendingItems.filter((item) => item.kind === "text");
+    this.pendingItems.splice(0, this.pendingItems.length, ...texts);
     if (this.voicing) {
       this.requeue(this.voicing);
       this.voicing = null;

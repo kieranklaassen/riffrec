@@ -927,6 +927,22 @@ describe("Interviewer proactive frames", () => {
     expect(h.realtime.sentImages[0].text).toContain("attached because they just drew there");
   });
 
+  it("keeps pending click notes across a reconnect but drops the stale screenshot", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit({ type: "response_started", response_id: "resp_1" });
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toEqual([]);
+
+    await h.realtime.emit({ type: "closed" });
+    await vi.waitFor(() => expect(h.session.status).toBe("live"));
+
+    expect(h.realtime.sentTexts.at(-1)).toBe("[PAGE] The riffer clicked the revenue figure (anchor id: anchor_0001).");
+    expect(h.realtime.sentImages).toEqual([]);
+    expect(h.frameShown).not.toHaveBeenCalled();
+  });
+
   it("runs one grab at a time and swallows a failing grabber", async () => {
     const h = screenHarness();
     h.lookAtScreen.mockRejectedValueOnce(new Error("no canvas"));
