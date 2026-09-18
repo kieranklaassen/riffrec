@@ -19,8 +19,8 @@ type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 type ExecutionMode = "instant" | "smart" | "collect";
 declare const EXECUTION_MODES: readonly ExecutionMode[];
 declare const DEFAULT_EXECUTION_MODE: ExecutionMode;
-/** R11: initial -> triaging -> accepted | needs_info, then applied | blocked; withdrawn when retracted. */
-type UnitStatus = "initial" | "triaging" | "accepted" | "needs_info" | "applied" | "blocked" | "withdrawn";
+/** R11: initial -> triaging -> accepted | needs_info -> working (the agent is editing), then applied | blocked; withdrawn when retracted. */
+type UnitStatus = "initial" | "triaging" | "accepted" | "needs_info" | "working" | "applied" | "blocked" | "withdrawn";
 declare const UNIT_STATUSES: readonly UnitStatus[];
 /**
  * KTD9/KTD12: `silence`, `page_change`, `send`, and `final` are page-emitted;
@@ -175,7 +175,9 @@ type LiveEnvelopeInspection = {
     reason: LiveEnvelopeRejection;
     detail?: string;
 };
-type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended";
+type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended" | "agent";
+/** What the agent is doing right now, as the endpoint sees it (its wait loop). */
+type LiveAgentState = "listening" | "working" | "away";
 interface LiveUnitStatusEvent {
     event: "unit_status";
     data: {
@@ -211,7 +213,16 @@ interface LiveSessionEndedEvent {
         reason?: string;
     };
 }
-type LiveServerEvent = LiveUnitStatusEvent | LiveAppliedEvent | LiveAskEvent | LiveAckEvent | LiveSessionEndedEvent;
+/** Sent on connect and on every change: listening (a wait is parked), working (a batch is out), away. */
+interface LiveAgentEvent {
+    event: "agent";
+    data: {
+        state: LiveAgentState;
+        since: number;
+        checkpoint_id?: string;
+    };
+}
+type LiveServerEvent = LiveAgentEvent | LiveUnitStatusEvent | LiveAppliedEvent | LiveAskEvent | LiveAckEvent | LiveSessionEndedEvent;
 type WakeSessionStatus = "live" | "page_lost";
 /** KTD7: the JSON printed by `wait` when a batch is available. */
 interface LiveWakeBatch {

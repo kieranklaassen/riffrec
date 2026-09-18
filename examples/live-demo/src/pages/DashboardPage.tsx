@@ -69,6 +69,8 @@ export function DashboardPage() {
           <thead>
             <tr>
               <th>Order</th>
+              <th>Name</th>
+              <th>Email</th>
               <th>Status</th>
               <th className="table__num">Amount</th>
               <th>Placed</th>
@@ -78,6 +80,8 @@ export function DashboardPage() {
             {orders.map((order) => (
               <tr key={order.id}>
                 <td className="table__mono">{order.id}</td>
+                <td>{order.customer}</td>
+                <td className="table__muted">{order.email}</td>
                 <td>
                   <span className={`pill pill--${order.status}`}>{statusLabel(order.status)}</span>
                 </td>

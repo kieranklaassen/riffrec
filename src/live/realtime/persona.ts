@@ -50,6 +50,9 @@ export const DEFAULT_INTERVIEWER_INSTRUCTIONS = [
     "the refinement as a new unit.",
   "When a note marked [ENDPOINT QUESTION] arrives, read the question to the riffer in your own words at the next pause " +
     "and, once they answer, call relay_answer with their answer for that unit. Never answer such a question yourself.",
+  "When the riffer asks to compound, to capture what was learned, or to remember a decision for next time, record one " +
+    "unit whose statement starts with \"/ce-compound:\" followed by what to capture, with an empty anchors list, and say " +
+    "in a few words that it will be compounded.",
   "Keep every spoken turn under two sentences. Speak the riffer's language.",
   SCREEN_CONTEXT_SECTION
 ].join("\n\n");

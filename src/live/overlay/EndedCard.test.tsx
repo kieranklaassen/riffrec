@@ -46,7 +46,7 @@ describe("EndedCard", () => {
 
   it("counts units by final status", () => {
     const counts = countByStatus(UNITS);
-    expect(counts).toEqual({ initial: 0, triaging: 0, accepted: 0, needs_info: 1, applied: 2, blocked: 1, withdrawn: 1 });
+    expect(counts).toEqual({ initial: 0, triaging: 0, accepted: 0, needs_info: 1, working: 0, applied: 2, blocked: 1, withdrawn: 1 });
     expect(residualCount(counts)).toBe(2);
   });
 

@@ -80,6 +80,9 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header__right {
   margin-left: auto;
 }
 
@@ -198,16 +201,21 @@ a {
 
 .sidebar__section-title {
   font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
-  padding: 8px 10px 4px;
+  padding: 16px 10px 6px;
+}
+
+.sidebar__section-title:first-child {
+  padding-top: 4px;
 }
 
 .sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar__link {
@@ -215,20 +223,20 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
   color: var(--text);
   font-weight: 500;
-  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 /* Accent bar that slides in on the active item. */
 .sidebar__link::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
   width: 3px;
   border-radius: 3px;
   background: var(--brand);
@@ -239,17 +247,11 @@ a {
 
 .sidebar__link:hover {
   background: var(--bg);
-  transform: translateX(2px);
-}
-
-.sidebar__link:hover .sidebar__icon {
-  transform: rotate(-6deg) scale(1.06);
 }
 
 .sidebar__link.active {
-  background: linear-gradient(90deg, var(--brand-soft) 0%, transparent 100%);
+  background: var(--brand-soft);
   color: var(--brand-strong);
-  font-weight: 600;
 }
 
 .sidebar__link.active::before {
@@ -258,24 +260,18 @@ a {
 }
 
 .sidebar__icon {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
   color: var(--text-muted);
-  transition: transform 160ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: color 120ms ease;
 }
 
 .sidebar__link.active .sidebar__icon {
-  background: var(--surface);
-  border-color: color-mix(in srgb, var(--brand) 40%, transparent);
   color: var(--brand-strong);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--brand) 18%, transparent);
 }
 
 .sidebar__projects {
@@ -284,21 +280,23 @@ a {
   padding: 0 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   color: var(--text-muted);
 }
 
-/* Same left guide as .sidebar__link: a 28px slot for the marker, 10px gap, then the label. */
+/* Same left guide as .sidebar__link: a 20px slot for the marker, 10px gap, then the label. */
 .sidebar__projects li {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 0;
+  padding: 5px 0;
+  color: var(--text);
 }
 
 .sidebar__projects .dot {
-  margin: 0 10px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, var(--bg));
+  width: 6px;
+  height: 6px;
+  margin: 0 7px;
 }
 
 .dot {
@@ -326,9 +324,41 @@ a {
 }
 
 .plan-card {
+  position: relative;
+  overflow: hidden;
   background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: var(--radius);
   padding: 12px;
+  animation: plan-card-glow 3.2s ease-in-out infinite;
+}
+
+/* A slow sheen across the card, so the trial reads as live without shouting. */
+.plan-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: plan-card-sheen 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes plan-card-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent); }
+}
+
+@keyframes plan-card-sheen {
+  0%, 55% { transform: translateX(-120%); }
+  85%, 100% { transform: translateX(120%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card,
+  .plan-card::after {
+    animation: none;
+  }
 }
 
 .plan-card__title {

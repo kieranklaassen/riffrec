@@ -30,6 +30,8 @@ export interface DrawingLayerProps {
    * pins (no note box) wherever the pointer goes down. Omitted, a drag strokes and a tap pins.
    */
   tool?: DrawingTool;
+  /** Marks on their way out: rendered fading to transparent. */
+  fadingIds?: ReadonlySet<string>;
   zIndex?: number;
   strokeColor?: string;
 }
@@ -139,6 +141,12 @@ const tintStyle: CSSProperties = {
   boxShadow: "inset 0 0 0 2px rgba(217, 45, 32, 0.5)"
 };
 
+const FADE_MS = 600;
+
+function fadeStyle(fading: boolean | undefined): CSSProperties {
+  return { opacity: fading ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` };
+}
+
 const toggleStyle: CSSProperties = {
   position: "absolute",
   right: 16,
@@ -185,6 +193,7 @@ export function DrawingLayer({
   showToggle = true,
   pinOnTap = true,
   tool,
+  fadingIds,
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }: DrawingLayerProps) {
@@ -378,9 +387,12 @@ export function DrawingLayer({
               d={strokePath(annotation.points, true)}
               fill={strokeColor}
               fillOpacity={0.9}
+              style={fadeStyle(fadingIds?.has(annotation.id))}
             />
           ) : (
-            <Pin key={annotation.id} annotation={annotation} index={pins.indexOf(annotation) + 1} />
+            <g key={annotation.id} style={fadeStyle(fadingIds?.has(annotation.id))}>
+              <Pin annotation={annotation} index={pins.indexOf(annotation) + 1} />
+            </g>
           )
         )}
         {draftPath ? <path data-riffrec-stroke-draft="" d={draftPath} fill={strokeColor} fillOpacity={0.9} /> : null}

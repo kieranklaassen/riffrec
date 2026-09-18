@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { ExecutionMode, LiveAnnotation, LiveUnit } from "../contract";
 import type { FinishResult, LiveSession, LiveSessionSnapshot } from "../session";
 import { Board, ConfirmationPass, type ConfirmationMap } from "./Board";
+import { playAppliedChime } from "./chime";
 import { ConsentDialog, type ConsentResult } from "./ConsentDialog";
 import { DrawingLayer } from "./DrawingLayer";
 import { EndedCard } from "./EndedCard";
@@ -62,6 +63,9 @@ export type PageTool = "cursor" | "draw" | "pin";
 
 const PANEL_WIDTH = 320;
 const TOAST_MS = 900;
+/** How long a captured mark stays on the page before it fades, and the fade itself. */
+const MARK_HOLD_MS = 2000;
+const MARK_FADE_MS = 600;
 const FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 const panelStyle: CSSProperties = {
@@ -193,6 +197,7 @@ const settingsToggleStyle: CSSProperties = {
   color: "#667085",
   font: "inherit",
   fontSize: 12,
+  whiteSpace: "nowrap",
   cursor: "pointer"
 };
 
@@ -313,13 +318,25 @@ const LEGEND: [string, string][] = [
   ["D", "draw"],
   ["N", "pin"],
   ["M", "mute"],
-  ["P", "pause"],
   ["S", "send"],
   ["C", "collapse"],
-  ["E", "end"]
+  ["E", "end"],
+  ["K", "compound"]
 ];
 
 type PanelView = "board" | "confirming";
+
+/** Statuses where the agent holds the unit and is doing something with it. */
+const BUSY_STATUSES = new Set(["triaging", "accepted", "working"]);
+
+/** Keyframes for the busy bar and the pulsing badges; inline styles cannot declare them. */
+const OVERLAY_KEYFRAMES = `
+@keyframes riffrec-live-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@keyframes riffrec-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes riffrec-live-ring { 0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.9; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+@keyframes riffrec-live-rise { 0% { transform: translate(-50%, 0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(-50%, -36px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { [data-riffrec-live-busy] * { animation: none !important; } }
+`;
 
 /** Instant guesses and agent notes the store keeps beside the units, keyed by unit id. */
 function agentNotes(snapshot: LiveSessionSnapshot, session: LiveSession) {
@@ -351,6 +368,90 @@ function streamStatus(snapshot: LiveSessionSnapshot, paused: boolean): { label: 
     default:
       return { label: "Live", color: "#12b76a", halo: true };
   }
+}
+
+const COMPOUND_STATEMENT = "/ce-compound: capture the decisions and learnings from this session";
+const COMPOUND_MS = 1800;
+
+/**
+ * The compounding burst: rings that each double the last, and the count
+ * climbing 1 → 2 → 4 → 8 → 16, like interest landing on interest.
+ */
+function CompoundBurst({ zIndex }: { zIndex: number }) {
+  const steps = [1, 2, 4, 8, 16];
+  return (
+    <div data-riffrec-compound-burst="" aria-hidden="true" style={{ position: "fixed", left: "50%", top: "50%", zIndex, pointerEvents: "none" }}>
+      {steps.map((step, index) => (
+        <span
+          key={step}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: 40 * step ** 0.75,
+            height: 40 * step ** 0.75,
+            borderRadius: "50%",
+            border: `${Math.max(1, 3 - index / 2)}px solid rgba(105, 65, 198, ${0.7 - index * 0.1})`,
+            animation: `riffrec-live-ring 1.1s cubic-bezier(.2,.7,.3,1) ${index * 0.14}s both`
+          }}
+        />
+      ))}
+      {steps.map((step, index) => (
+        <span
+          key={`n${step}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: -10,
+            fontFamily: FONT,
+            fontSize: 12 + index * 3,
+            fontWeight: 600,
+            color: "#6941c6",
+            animation: `riffrec-live-rise 0.7s ease-out ${index * 0.18}s both`
+          }}
+        >
+          {index === steps.length - 1 ? "×16 compounded" : `×${step}`}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Seconds since `since`, re-rendered every second while shown. */
+function useElapsed(since: number | null): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [since]);
+  return since === null ? null : Math.max(0, Math.round((now - since) / 1000));
+}
+
+/** One line of live truth about the agent: what its wait loop is doing right now. */
+function AgentStatus({ state, since, working, queued }: { state: "listening" | "working" | "away"; since: number | null; working: number; queued: number }) {
+  const elapsed = useElapsed(state === "working" ? since : null);
+  const view =
+    state === "working"
+      ? {
+          color: "#6941c6",
+          text: `Agent working${working > 0 ? ` on ${working}` : queued > 0 ? ` on ${queued}` : ""}${elapsed !== null ? ` · ${elapsed}s` : ""}`,
+          pulse: true
+        }
+      : state === "listening"
+        ? { color: "#12b76a", text: "Agent listening · picks up when you pause", pulse: false }
+        : { color: "#98a2b3", text: "Agent not connected · run /ce-polish to pick these up", pulse: false };
+  return (
+    <div
+      data-riffrec-live-agent={state}
+      role="status"
+      aria-live="polite"
+      style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 14px 0", fontSize: 11, color: view.color }}
+    >
+      <span aria-hidden="true" style={{ ...dot(view.color), ...(view.pulse ? { animation: "riffrec-live-pulse 1.4s ease-in-out infinite" } : {}) }} />
+      {view.text}
+    </div>
+  );
 }
 
 function KeyHint({ k, children }: { k: string; children: ReactNode }) {
@@ -418,6 +519,7 @@ export function LiveOverlay({
     setTool("cursor");
     setSettingsOpen(false);
     setCleared(new Set());
+    setFading(new Set());
     setFinished(false);
     setEndedReason(null);
     setDismissed(false);
@@ -467,6 +569,42 @@ export function LiveOverlay({
     session.declineConsent();
     onDecline?.();
   }, [session, onDecline]);
+
+  // Marks are captured when they land (annotation + composited frame), so they fade off the
+  // page shortly after instead of piling up; the session keeps them all.
+  const [fading, setFading] = useState<ReadonlySet<string>>(() => new Set());
+  const seenMarks = useRef<Set<string>>(new Set());
+  const markTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  useEffect(() => {
+    for (const annotation of snapshot.annotations) {
+      if (seenMarks.current.has(annotation.id)) continue;
+      seenMarks.current.add(annotation.id);
+      const id = annotation.id;
+      markTimers.current.push(
+        setTimeout(() => setFading((current) => new Set(current).add(id)), MARK_HOLD_MS),
+        setTimeout(() => setCleared((current) => new Set(current).add(id)), MARK_HOLD_MS + MARK_FADE_MS)
+      );
+    }
+  }, [snapshot.annotations]);
+  useEffect(
+    () => () => {
+      for (const timer of markTimers.current) clearTimeout(timer);
+    },
+    []
+  );
+
+  // A small bell each time the agent lands a change; units already applied at mount stay silent.
+  const appliedSeen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const applied = snapshot.units.filter((unit) => unit.status === "applied").map((unit) => unit.id);
+    if (appliedSeen.current === null) {
+      appliedSeen.current = new Set(applied);
+      return;
+    }
+    const fresh = applied.filter((id) => !appliedSeen.current!.has(id));
+    for (const id of fresh) appliedSeen.current.add(id);
+    if (fresh.length > 0) playAppliedChime();
+  }, [snapshot.units]);
 
   const visibleAnnotations = useMemo(
     () => snapshot.annotations.filter((annotation) => !cleared.has(annotation.id)),
@@ -538,6 +676,15 @@ export function LiveOverlay({
   const canMute = running && voiceRunning(snapshot) && snapshot.mic !== "denied";
   const endedCardShown = snapshot.phase === "ended" && endedReason !== "stopped" && !dismissed;
 
+  const [compounding, setCompounding] = useState(false);
+  const compound = useCallback(() => {
+    session.recordUnit({ statement: COMPOUND_STATEMENT, transcript_excerpt: "", anchors: [] });
+    void session.send();
+    setCompounding(true);
+    setTimeout(() => setCompounding(false), COMPOUND_MS);
+    flash("Compounding what you decided");
+  }, [session, flash]);
+
   const pickTool = useCallback((next: PageTool) => setTool((current) => (current === next ? "cursor" : next)), []);
   const endSession = useCallback(() => {
     setTool("cursor");
@@ -567,6 +714,7 @@ export function LiveOverlay({
         s: () => void handleSend(),
         c: () => setCollapsed((current) => !current),
         e: endSession,
+        k: compound,
         "1": () => handleMode("instant"),
         "2": () => handleMode("smart"),
         "3": () => handleMode("collect")
@@ -636,6 +784,11 @@ export function LiveOverlay({
   if (snapshot.phase === "idle") return launcher;
 
   const { guesses, notes } = agentNotes(snapshot, session);
+  const working = snapshot.units.filter((unit) => unit.status === "working").length;
+  const queued = snapshot.units.filter((unit) => BUSY_STATUSES.has(unit.status)).length;
+  // The endpoint reports the agent's real state; without it (older endpoint) fall back to the unit statuses.
+  const agentState = snapshot.agent?.state ?? (queued > 0 ? "working" : null);
+  const busy = agentState === "working";
   const held = session.heldUnits().length;
   const confirmable: LiveUnit[] = snapshot.units.filter((unit) => unit.status !== "withdrawn");
   const errored = snapshot.phase === "error";
@@ -760,8 +913,10 @@ export function LiveOverlay({
       data-riffrec-live-overlay={collapsed ? "collapsed" : "expanded"}
       data-riffrec-live-tool={activeTool}
     >
+      <style>{OVERLAY_KEYFRAMES}</style>
       <DrawingLayer
         annotations={visibleAnnotations}
+        fadingIds={fading}
         onAnnotation={handleAnnotation}
         active={activeTool !== "cursor"}
         tool={activeTool === "pin" ? "pin" : "draw"}
@@ -779,7 +934,7 @@ export function LiveOverlay({
         <div data-riffrec-live-pill="" style={{ ...pillStyle, zIndex: zIndex + 1 }}>
           <Wordmark />
           <LiveIndicator {...indicatorInput} compact />
-          {running ? <SendControl onSend={handleSend} heldCount={held} compact /> : null}
+          {running && held > 0 ? <SendControl onSend={handleSend} heldCount={held} compact /> : null}
           <button
             type="button"
             data-riffrec-live-expand=""
@@ -801,17 +956,18 @@ export function LiveOverlay({
           style={{ ...panelStyle, zIndex: zIndex + 1 }}
         >
           <div style={headerStyle}>
-            <span style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+            <span
+              data-riffrec-live-status={status.label.toLowerCase()}
+              data-riffrec-live-indicator={deriveIndicatorState(indicatorInput)}
+              title={indicatorLabel}
+              style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+            >
+              <span aria-hidden="true" style={dot(status.color, status.halo)} />
               <Wordmark />
-              <span
-                data-riffrec-live-status={status.label.toLowerCase()}
-                data-riffrec-live-indicator={deriveIndicatorState(indicatorInput)}
-                title={indicatorLabel}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#667085", whiteSpace: "nowrap" }}
-              >
-                <span aria-hidden="true" style={dot(status.color, status.halo)} />
-                {status.label}
-              </span>
+              {/* The wordmark already says "live"; only other states get a word. */}
+              {status.label === "Live" ? null : (
+                <span style={{ fontSize: 11, color: "#667085", whiteSpace: "nowrap" }}>{status.label}</span>
+              )}
             </span>
             <span style={{ display: "flex", gap: 2, flex: "none" }}>
               {view === "board" ? (
@@ -844,26 +1000,6 @@ export function LiveOverlay({
             <>
               <div data-riffrec-voice="" style={voiceRowStyle}>
                 {micButton()}
-                <button
-                  type="button"
-                  data-riffrec-live-pause=""
-                  aria-pressed={paused}
-                  aria-label={paused ? "Resume frame and stream capture" : "Pause frame and stream capture"}
-                  title={paused ? "Resume capture (P)" : "Pause capture: frames and stream are held (P)"}
-                  disabled={!running}
-                  style={{
-                    ...rowButtonStyle,
-                    gap: 6,
-                    padding: "0 8px 0 12px",
-                    ...(paused
-                      ? { background: "#101828", borderColor: "#101828", color: "#ffffff", fontWeight: 500 }
-                      : { color: "#475467" })
-                  }}
-                  onClick={togglePause}
-                >
-                  {paused ? "Resume" : "Pause"}
-                  <Kbd dark={paused}>P</Kbd>
-                </button>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "10px 14px 0" }}>
                 <span style={sectionLabelStyle}>What you've asked for</span>
@@ -871,6 +1007,29 @@ export function LiveOverlay({
                   {confirmable.length}
                 </span>
               </div>
+              {agentState ? (
+                <AgentStatus state={agentState} since={snapshot.agent?.since ?? null} working={working} queued={queued} />
+              ) : null}
+              {busy ? (
+                <div
+                  data-riffrec-live-busy=""
+                  role="progressbar"
+                  aria-label="Agent working"
+                  style={{ position: "relative", height: 2, margin: "6px 14px 0", borderRadius: 2, background: "#f4ebff", overflow: "hidden" }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      width: "40%",
+                      borderRadius: 2,
+                      background: "linear-gradient(90deg, transparent, #7f56d9, transparent)",
+                      animation: "riffrec-live-progress 1.3s ease-in-out infinite"
+                    }}
+                  />
+                </div>
+              ) : null}
               <div style={bodyStyle}>
                 {errored && snapshot.error ? (
                   <p role="alert" data-riffrec-live-error="" style={{ margin: "0 0 10px", color: "#b42318" }}>
@@ -937,6 +1096,7 @@ export function LiveOverlay({
                 </div>
               ) : null}
               <div style={footerStyle}>
+                <span style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
                 <button
                   type="button"
                   data-riffrec-live-settings=""
@@ -950,13 +1110,30 @@ export function LiveOverlay({
                     {settingsOpen ? "▾" : "▸"}
                   </span>
                 </button>
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span data-riffrec-live-held="" style={{ fontSize: 11, color: "#98a2b3" }}>
-                    {held > 0 ? `${held} held` : "Nothing held"}
-                  </span>
-                  <SendControl onSend={handleSend} heldCount={held} disabled={!running} compact />
-                  <Kbd>S</Kbd>
+                <button
+                  type="button"
+                  data-riffrec-live-compound=""
+                  title="Compound: have the agent run /ce-compound on what you decided (K)"
+                  disabled={!running}
+                  style={{ ...settingsToggleStyle, marginLeft: 0, color: "#6941c6" }}
+                  onClick={compound}
+                >
+                  <span aria-hidden="true">◎</span> Compound
+                </button>
                 </span>
+                {/* Checkpoints go out on their own when you pause; Send only shows to push held ones now. */}
+                {held > 0 ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+                    <span data-riffrec-live-held="" title="Goes out on its own when you pause; Send (S) pushes it now" style={{ fontSize: 11, color: "#98a2b3", whiteSpace: "nowrap" }}>
+                      {held} held
+                    </span>
+                    <SendControl onSend={handleSend} heldCount={held} disabled={!running} compact />
+                  </span>
+                ) : (
+                  <span data-riffrec-live-held="" style={{ fontSize: 11, color: "#98a2b3", whiteSpace: "nowrap" }}>
+                    Auto-sends
+                  </span>
+                )}
               </div>
             </>
           ) : (
@@ -976,6 +1153,7 @@ export function LiveOverlay({
         </div>
       )}
       {toolbar}
+      {compounding ? <CompoundBurst zIndex={zIndex + 3} /> : null}
       {toast ? (
         <div data-riffrec-live-toast="" role="status" style={{ ...toastStyle, zIndex: zIndex + 1 }}>
           {toast}

@@ -31,7 +31,7 @@ import {
   isLiveToolName,
   validateEnvelope,
   withScreenContext
-} from "./chunk-7PY2EIKK.js";
+} from "./chunk-6AB4AQYG.js";
 
 // src/noop.tsx
 function RiffrecProvider({ children }) {

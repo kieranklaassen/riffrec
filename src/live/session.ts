@@ -6,6 +6,7 @@ import {
   isLiveEnvelopeOfType,
   type ExecutionMode,
   type LiveAnchor,
+  type LiveAgentState,
   type LiveAnnotation,
   type LiveAnswer,
   type LiveCheckpoint,
@@ -118,6 +119,8 @@ export interface LiveSessionSnapshot {
   voice: LiveVoiceState;
   /** Why the interviewer is not running, when it settled that way; `null` otherwise. */
   voiceUnavailable: VoiceUnavailableReason | null;
+  /** The agent's live state from the endpoint; null until the endpoint has said (or when nothing streams). */
+  agent: { state: LiveAgentState; since: number } | null;
   stream: LiveStreamStatus;
   endpoint: string | null;
   mode: ExecutionMode;
@@ -348,6 +351,7 @@ export class LiveSession {
   private readonly listeners = new Map<LiveSessionEventName, Set<Listener<LiveSessionEventName>>>();
   private readonly ackWaiters: Array<{ seq: number; resolve: (acked: boolean) => void }> = [];
   private persistOutcome: PersistOutcome = "stored";
+  private agentState: { state: LiveAgentState; since: number } | null = null;
 
   private constructor(options: LiveSessionOptions, persisted: PersistedLiveSession | null) {
     this.now = options.now ?? (() => Date.now());
@@ -1022,6 +1026,7 @@ export class LiveSession {
       phase: this.phase,
       voice: this.voice,
       voiceUnavailable: this.voiceReason,
+      agent: this.agentState,
       stream: this.streamStatus,
       endpoint: this.endpointOrigin,
       mode: this.mode,
@@ -1243,6 +1248,9 @@ export class LiveSession {
         if (question && unit) this.emitEvent("ask", { unit, question });
         break;
       }
+      case "agent":
+        this.agentState = { state: event.data.state, since: event.data.since };
+        break;
       case "ack":
         break;
       case "session_ended":

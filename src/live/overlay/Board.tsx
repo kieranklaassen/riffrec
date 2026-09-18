@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import type { ExecutionMode, LiveUnit, LiveUnitConfirmation, UnitStatus } from "../contract";
 import type { UnitQuestion } from "../units";
 
@@ -24,6 +24,7 @@ export const STATUS_LABELS: Record<UnitStatus, string> = {
   triaging: "Triaging",
   accepted: "Accepted",
   needs_info: "Needs info",
+  working: "Working",
   applied: "Applied",
   blocked: "Blocked",
   withdrawn: "Withdrawn"
@@ -34,6 +35,7 @@ const STATUS_COLORS: Record<UnitStatus, string> = {
   triaging: "#b54708",
   accepted: "#175cd3",
   needs_info: "#c11574",
+  working: "#6941c6",
   applied: "#027a48",
   blocked: "#b42318",
   withdrawn: "#98a2b3"
@@ -114,6 +116,45 @@ const emptyStyle: CSSProperties = {
   textAlign: "center"
 };
 
+/** Finished units fold into one summary row a few seconds after they finish, so the board reads like a feed. */
+const FOLDED_STATUSES: readonly UnitStatus[] = ["applied", "withdrawn"];
+export const SETTLE_MS = 4000;
+
+const foldedToggleStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  width: "100%",
+  padding: "6px 10px",
+  border: "1px dashed #e4e7ec",
+  borderRadius: 8,
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer"
+};
+
+/** Ids of applied or withdrawn units that finished at least `SETTLE_MS` ago; ones finished before mount count as settled. */
+function useSettled(units: readonly LiveUnit[]): ReadonlySet<string> {
+  const finishedAt = useRef<Map<string, number> | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const map = (finishedAt.current ??= new Map(units.filter((unit) => FOLDED_STATUSES.includes(unit.status)).map((unit) => [unit.id, 0])));
+  for (const unit of units) {
+    if (FOLDED_STATUSES.includes(unit.status)) {
+      if (!map.has(unit.id)) map.set(unit.id, Date.now());
+    } else map.delete(unit.id);
+  }
+  const pending = [...map.values()].filter((at) => now - at < SETTLE_MS);
+  const next = pending.length > 0 ? Math.min(...pending) + SETTLE_MS - now : null;
+  useEffect(() => {
+    if (next === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, next) + 20);
+    return () => clearTimeout(timer);
+  }, [next]);
+  return new Set([...map].filter(([, at]) => now - at >= SETTLE_MS).map(([id]) => id));
+}
+
 export function describeAnchor(unit: LiveUnit): string | null {
   const anchor = unit.anchors[0];
   if (!anchor) return null;
@@ -170,6 +211,8 @@ export function Board({
   onAnswer
 }: BoardProps) {
   const openQuestion = (unitId: string) => questions.find((question) => question.unit_id === unitId && !question.answered) ?? null;
+  const settled = useSettled(units);
+  const [showFolded, setShowFolded] = useState(false);
 
   if (units.length === 0) {
     return (
@@ -181,10 +224,10 @@ export function Board({
     );
   }
 
-  return (
-    <ul data-riffrec-board="" data-riffrec-board-mode={mode} style={listStyle}>
-      {units.map((unit) => {
+  const row = (unit: LiveUnit, compact: boolean) => {
         const withdrawn = unit.status === "withdrawn";
+        // Settled rows (in the folded group) keep only their badge and title.
+        const collapsed = compact;
         const question = openQuestion(unit.id);
         const guess = guesses[unit.id];
         const note = notes[unit.id];
@@ -194,7 +237,15 @@ export function Board({
           <li key={unit.id} data-riffrec-unit={unit.id} data-riffrec-unit-status={unit.status} style={itemStyle}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ ...badgeStyle, background: STATUS_COLORS[unit.status] }}>{STATUS_LABELS[unit.status]}</span>
+                <span
+                  style={{
+                    ...badgeStyle,
+                    background: STATUS_COLORS[unit.status],
+                    ...(unit.status === "working" || unit.status === "triaging"
+                      ? { animation: "riffrec-live-pulse 1.4s ease-in-out infinite" }
+                      : {})
+                  }}
+                >{STATUS_LABELS[unit.status]}</span>
                 <span
                   data-riffrec-unit-statement=""
                   style={withdrawn ? { textDecoration: "line-through", color: "#98a2b3" } : undefined}
@@ -214,17 +265,17 @@ export function Board({
                 </button>
               ) : null}
             </div>
-            {anchor && !withdrawn ? (
+            {anchor && !withdrawn && !collapsed ? (
               <p data-riffrec-unit-anchor="" style={{ ...noteStyle, color: "#667085" }}>
                 {anchor}
               </p>
             ) : null}
-            {guess ? (
+            {guess && !collapsed ? (
               <p data-riffrec-unit-guess="" style={noteStyle}>
                 <strong>Guess:</strong> {guess}
               </p>
             ) : null}
-            {note ? (
+            {note && !collapsed ? (
               <p data-riffrec-unit-note="" style={noteStyle}>
                 {note}
               </p>
@@ -239,7 +290,37 @@ export function Board({
             ) : null}
           </li>
         );
-      })}
+  };
+
+  const active = units.filter((unit) => !settled.has(unit.id));
+  const folded = units.filter((unit) => settled.has(unit.id));
+  const foldedSummary = FOLDED_STATUSES.map((status) => {
+    const count = folded.filter((unit) => unit.status === status).length;
+    return count > 0 ? `${count} ${STATUS_LABELS[status].toLowerCase()}` : null;
+  })
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <ul data-riffrec-board="" data-riffrec-board-mode={mode} style={listStyle}>
+      {active.map((unit) => row(unit, false))}
+      {folded.length > 0 ? (
+        <li style={{ listStyle: "none" }}>
+          <button
+            type="button"
+            data-riffrec-board-folded={folded.length}
+            aria-expanded={showFolded}
+            style={foldedToggleStyle}
+            onClick={() => setShowFolded((open) => !open)}
+          >
+            <span>{foldedSummary}</span>
+            <span aria-hidden="true" style={{ fontSize: 10 }}>
+              {showFolded ? "▾" : "▸"}
+            </span>
+          </button>
+        </li>
+      ) : null}
+      {showFolded ? folded.map((unit) => row(unit, true)) : null}
     </ul>
   );
 }

@@ -85,8 +85,13 @@ describe("Board", () => {
     expect(item("u1").querySelector("[data-riffrec-unit-note]")!.textContent).toBe("Beyond polish: sent to the residual list.");
   });
 
-  it("strikes through withdrawn units and hides their anchor", async () => {
-    await render({ units: [unit("u1", "withdrawn")] });
+  it("folds finished units into one summary row that expands to struck-through withdrawn units without anchors", async () => {
+    await render({ units: [unit("u1", "withdrawn"), unit("u2", "applied"), unit("u3", "triaging")] });
+    expect(container.querySelector("[data-riffrec-unit=u1]")).toBeNull();
+    expect(container.querySelector("[data-riffrec-unit=u3]")).not.toBeNull();
+    const fold = container.querySelector<HTMLButtonElement>("[data-riffrec-board-folded]")!;
+    expect(fold.textContent).toContain("1 applied · 1 withdrawn");
+    await act(async () => fold.click());
     const statement = item("u1").querySelector<HTMLElement>("[data-riffrec-unit-statement]")!;
     expect(statement.style.textDecoration).toBe("line-through");
     expect(item("u1").querySelector("[data-riffrec-unit-anchor]")).toBeNull();

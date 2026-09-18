@@ -69,7 +69,7 @@ export const DEFAULT_BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000, 16
  */
 export const DEFAULT_POST_TIMEOUT_MS = 20_000;
 
-const SERVER_EVENT_NAMES: readonly LiveServerEventName[] = ["unit_status", "applied", "ask", "ack", "session_ended"];
+const SERVER_EVENT_NAMES: readonly LiveServerEventName[] = ["unit_status", "applied", "ask", "ack", "session_ended", "agent"];
 
 function defaultSchedule(callback: () => void): void {
   if (typeof requestAnimationFrame === "function") {
@@ -498,6 +498,7 @@ export class StreamClient {
       case "unit_status":
       case "applied":
       case "ask":
+      case "agent":
         break;
       default: {
         const exhaustive: never = event;

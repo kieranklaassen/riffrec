@@ -56,12 +56,13 @@ export const EXECUTION_MODES: readonly ExecutionMode[] = ["instant", "smart", "c
 
 export const DEFAULT_EXECUTION_MODE: ExecutionMode = "smart";
 
-/** R11: initial -> triaging -> accepted | needs_info, then applied | blocked; withdrawn when retracted. */
+/** R11: initial -> triaging -> accepted | needs_info -> working (the agent is editing), then applied | blocked; withdrawn when retracted. */
 export type UnitStatus =
   | "initial"
   | "triaging"
   | "accepted"
   | "needs_info"
+  | "working"
   | "applied"
   | "blocked"
   | "withdrawn";
@@ -71,6 +72,7 @@ export const UNIT_STATUSES: readonly UnitStatus[] = [
   "triaging",
   "accepted",
   "needs_info",
+  "working",
   "applied",
   "blocked",
   "withdrawn"
@@ -278,7 +280,10 @@ export type LiveEnvelopeInspection =
 // Owned by U8; typed here so page and harness code share one definition.
 // ---------------------------------------------------------------------------
 
-export type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended";
+export type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended" | "agent";
+
+/** What the agent is doing right now, as the endpoint sees it (its wait loop). */
+export type LiveAgentState = "listening" | "working" | "away";
 
 export interface LiveUnitStatusEvent {
   event: "unit_status";
@@ -305,7 +310,14 @@ export interface LiveSessionEndedEvent {
   data: { reason?: string };
 }
 
+/** Sent on connect and on every change: listening (a wait is parked), working (a batch is out), away. */
+export interface LiveAgentEvent {
+  event: "agent";
+  data: { state: LiveAgentState; since: number; checkpoint_id?: string };
+}
+
 export type LiveServerEvent =
+  | LiveAgentEvent
   | LiveUnitStatusEvent
   | LiveAppliedEvent
   | LiveAskEvent

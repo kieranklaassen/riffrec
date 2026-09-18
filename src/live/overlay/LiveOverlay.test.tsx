@@ -155,6 +155,11 @@ describe("LiveOverlay", () => {
     if (!element) throw new Error(`Missing ${selector}`);
     await act(async () => element.click());
   };
+  const pressKey = async (key: string) => {
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    });
+  };
   const indicatorState = () => q("[data-riffrec-live-indicator]")!.getAttribute("data-riffrec-live-indicator");
 
   /** Consent with the microphone granted; the session lands in `connecting`. */
@@ -307,10 +312,10 @@ describe("LiveOverlay", () => {
     const h = harness();
     const onPauseChange = vi.fn();
     await liveSession(h, { onPauseChange });
-    await click("[data-riffrec-live-pause]");
+    await pressKey("p");
     expect(onPauseChange).toHaveBeenCalledWith(true);
     expect(indicatorState()).toBe("paused");
-    await click("[data-riffrec-live-pause]");
+    await pressKey("p");
     expect(onPauseChange).toHaveBeenCalledWith(false);
     expect(indicatorState()).toBe("streaming");
   });
@@ -340,9 +345,10 @@ describe("LiveOverlay", () => {
     expect(q(`[data-riffrec-unit="${keep}"] [data-riffrec-unit-withdraw]`)).toBeNull();
   });
 
-  it("Send emits one send checkpoint and a second Send with nothing held emits none", async () => {
+  it("Send shows only while units are held, emits one send checkpoint, and S with nothing held emits none", async () => {
     const h = harness();
     const session = await liveSession(h);
+    expect(q("[data-riffrec-send]")).toBeNull();
     await act(async () => {
       session.recordUnit({ statement: "Make this red", transcript_excerpt: "red", anchors: [anchor()] });
     });
@@ -352,7 +358,8 @@ describe("LiveOverlay", () => {
     await settled(session);
     expect(received(h.endpoint, "checkpoint").map((entry) => entry.payload)).toMatchObject([{ trigger: "send", mode: "smart" }]);
 
-    await click("[data-riffrec-send]");
+    expect(q("[data-riffrec-send]")).toBeNull();
+    await pressKey("s");
     await settled(session);
     expect(received(h.endpoint, "checkpoint")).toHaveLength(1);
     expect(q("[data-riffrec-live-toast]")!.textContent).toBe("Nothing held to send");
@@ -527,7 +534,7 @@ describe("LiveOverlay", () => {
 
     // Leave the first session mid-confirmation, drawing, and paused; the endpoint ends it.
     await click('[data-riffrec-tool="draw"]');
-    await click("[data-riffrec-live-pause]");
+    await pressKey("p");
     expect(onPauseChange).toHaveBeenLastCalledWith(true);
     await click("[data-riffrec-live-end]");
     await act(async () => {
@@ -766,7 +773,7 @@ describe("LiveOverlay", () => {
     expect(session.framesLeavePage).toBe(false);
   });
 
-  it("collapses to a pill with the indicator and Send, and marks the whole surface as overlay", async () => {
+  it("collapses to a pill with the indicator (Send only while units are held), and marks the whole surface as overlay", async () => {
     const h = harness();
     await liveSession(h);
     const rootElement = container.firstElementChild!;
@@ -777,7 +784,7 @@ describe("LiveOverlay", () => {
     expect(q("[data-riffrec-live-panel]")).toBeNull();
     const pill = q("[data-riffrec-live-pill]")!;
     expect(pill.querySelector("[data-riffrec-live-indicator]")).not.toBeNull();
-    expect(pill.querySelector("[data-riffrec-send]")).not.toBeNull();
+    expect(pill.querySelector("[data-riffrec-send]")).toBeNull();
     expect(pill.querySelector("[data-riffrec-live-end]")).toBeNull();
     expect(pill.querySelector("[data-riffrec-live-indicator-label]")!.textContent).toBe("Live");
 
