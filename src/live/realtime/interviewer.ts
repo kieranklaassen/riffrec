@@ -1,4 +1,4 @@
-import type { LiveAnchor, LiveMintResponse, LiveTranscript, LiveUnit } from "../contract";
+import type { LiveAnchor, LiveFrame, LiveMintResponse, LiveTranscript, LiveUnit } from "../contract";
 import type { LiveSession, RecordUnitInput } from "../session";
 import type {
   LiveToolCall,
@@ -12,12 +12,14 @@ import type { UnitQuestion } from "../units";
 import type { RealtimeServerEvent, RealtimeTransport } from "./client";
 import type { SharedMicrophone } from "./audioRouting";
 import { mintWithRetry, type MintRefusalReason, type MintRetryResult } from "./mint";
+import { reconcileSessionConfig, type RealtimeSessionConfig } from "./sessionConfig";
 
 /**
  * The voice interviewer (U3): connects to OpenAI Realtime through the
- * endpoint's mint, maps the four tools (KTD5) onto session actions, voices
+ * endpoint's mint, maps the tools (KTD5) onto session actions, voices
  * endpoint questions at pauses per the breathwork conversation rules (KTD6),
- * tells the interviewer about page-side facts as text items, and re-seeds a
+ * tells the interviewer what the riffer clicks, draws, and pins as text items,
+ * shows it the screen on request (`look_at_screen`), and re-seeds a
  * replacement connection from the transcript (R38).
  *
  * Timing it owns: the 1.5 s question-silence gate and the response lifecycle
@@ -34,6 +36,10 @@ export const RESEED_MAX_CHARS = 6000;
 export const RESEED_WINDOW_MS = 120_000;
 /** How recent a clicked/drawn anchor may be to stand in for "this"/"that". */
 export const ANCHOR_RECENCY_MS = 8000;
+/** Repeated clicks on the same element inside this window are one note, not three (double- and triple-clicks). */
+export const CLICK_ANNOUNCE_DEDUPE_MS = 1000;
+/** Floor between two frames the page attaches on its own initiative (a `look_at_screen` counts too). */
+export const PROACTIVE_FRAME_MIN_INTERVAL_MS = 5000;
 export const MIN_UNIT_WORDS = 3;
 export const CONNECT_MAX_ATTEMPTS = 3;
 /**
@@ -63,6 +69,8 @@ export interface InterviewerStatus {
   unavailable: VoiceUnavailableReason | null;
   mintAttempts: number;
   connections: number;
+  /** Frames shown to the interviewer so far (tool calls and proactive attachments). */
+  framesShown: number;
 }
 
 export interface AnnouncedAnchor {
@@ -82,16 +90,66 @@ export interface DrawingAnnouncement {
   kind?: "stroke" | "pin";
 }
 
+/** What `look_at_screen` gets from the page: a frame, and whether it was grabbed for this call or is the latest buffered one. */
+export interface ScreenLook {
+  frame: LiveFrame;
+  fresh: boolean;
+}
+
 /**
  * Evidence capture (U6) sits between the tools and the session: `record_unit`
  * goes through `LiveEvidence.recordUnit` so the unit carries its frame, clip,
- * and claimed annotations, and speech events reach the attacher and the clip
- * recorder beside the session's checkpoint emitter.
+ * and claimed annotations, speech events reach the attacher and the clip
+ * recorder beside the session's checkpoint emitter, and `look_at_screen`
+ * asks it for the current view.
  */
 export interface InterviewerEvidenceHooks {
   recordUnit?: (input: RecordUnitInput) => LiveUnit;
   speechStarted?: () => void;
   speechStopped?: () => void;
+  /** The current view for `look_at_screen` and proactive frames; null when none can be produced (no share, paused). */
+  lookAtScreen?: () => Promise<ScreenLook | null>;
+  /** A frame reached the interviewer: the consumer should hold it too (`LiveSession.releaseFrame`). */
+  frameShown?: (frameId: string) => void;
+}
+
+/** The `look_at_screen` result when the page has no frame to show. */
+export const NO_FRAME_DETAIL =
+  "The screen is not being shared, or frame capture is paused, so no screenshot is available; ask the riffer to describe what they see.";
+
+/** The `look_at_screen` result when the evidence profile keeps frames on the page. */
+export const FRAMES_DISABLED_DETAIL =
+  "This session's evidence profile does not let screenshots leave the page; ask the riffer to describe what they see.";
+
+/** What made the page attach a frame without being asked. */
+export type ProactiveFrameTrigger = "click" | "drawing" | "speech";
+
+/**
+ * Deictic and visual words, in the languages riffers have used so far, that
+ * mark an utterance as being about something on screen. The rate limit keeps
+ * a match from costing more than one frame every few seconds, so the list can
+ * afford to be generous.
+ */
+const VISUAL_REFERENCE_WORDS = new Set([
+  // English
+  "this", "that", "these", "those", "here", "there", "look", "see", "watch", "screen", "color", "colour", "colors",
+  "colours", "layout", "spacing", "align", "aligned", "font", "icon", "image", "picture", "red", "blue", "green",
+  "yellow", "orange", "purple", "pink", "black", "white", "gray", "grey", "bigger", "smaller", "larger", "wider",
+  "narrower", "taller", "shorter", "ugly", "pretty", "nicer",
+  // Dutch
+  "dit", "deze", "dat", "die", "hier", "daar", "kijk", "zie", "kleur", "kleuren", "scherm", "mooier", "lelijk",
+  "groter", "kleiner", "plaatje",
+  // German
+  "dies", "dieses", "diese", "dieser", "das", "dort", "schau", "siehst", "farbe", "größer", "bildschirm",
+  // French
+  "ceci", "cela", "ça", "ici", "là", "regarde", "vois", "couleur", "écran",
+  // Spanish
+  "esto", "esta", "este", "eso", "esa", "ese", "aquí", "ahí", "allí", "mira", "ves", "pantalla"
+]);
+
+/** True when the riffer's words point at something on screen ("make this red", "kijk hier"). */
+export function isVisualReference(text: string): boolean {
+  return words(text).some((token) => VISUAL_REFERENCE_WORDS.has(token));
 }
 
 export interface InterviewerOptions {
@@ -100,6 +158,12 @@ export interface InterviewerOptions {
   connect: (secret: LiveMintResponse) => RealtimeTransport | Promise<RealtimeTransport>;
   microphone?: SharedMicrophone | null;
   evidence?: InterviewerEvidenceHooks | null;
+  /**
+   * Whether frames may be shown to the interviewer at all (`look_at_screen`
+   * and proactive frames). Defaults to true; the runtime passes false under an
+   * evidence profile with `frames: "none"`, so one knob keeps frames on the page.
+   */
+  screenFrames?: boolean;
   fetch?: typeof fetch;
   now?: () => number;
   setTimeout?: (callback: () => void, ms: number) => unknown;
@@ -108,6 +172,7 @@ export interface InterviewerOptions {
   reseedMaxChars?: number;
   reseedWindowMs?: number;
   anchorRecencyMs?: number;
+  proactiveFrameMinIntervalMs?: number;
   /** Overrides anchor-reference resolution (U6 may supply the evidence store's). */
   resolveAnchor?: (ref: string, announced: AnnouncedAnchor[]) => LiveAnchor | null;
   onError?: (error: unknown) => void;
@@ -119,6 +184,9 @@ interface QueuedQuestion {
   question: string;
   requeued: number;
 }
+
+/** A page-side item held while a response is active or the link is down (KTD6). */
+type PendingItem = { kind: "text"; text: string } | { kind: "image"; text: string; jpegBase64: string; frameId: string };
 
 const CHANGE_VERBS = new Set([
   "add", "align", "animate", "bigger", "bold", "bolder", "bump", "center", "centre", "change", "collapse", "color",
@@ -189,6 +257,23 @@ export function buildReseedText(input: ReseedInput): string {
   return text.length > maxChars ? text.slice(0, maxChars) : text;
 }
 
+const PANEL_NOTE = "The riffrec panel docked at the top right is not part of the app.";
+
+function describeTrigger(trigger: ProactiveFrameTrigger): string {
+  switch (trigger) {
+    case "click":
+      return "attached because they just clicked there";
+    case "drawing":
+      return "attached because they just drew there";
+    case "speech":
+      return "attached because they referred to something on screen";
+    default: {
+      const exhaustive: never = trigger;
+      return exhaustive;
+    }
+  }
+}
+
 function formatQuestion(question: QueuedQuestion): string {
   return (
     `[ENDPOINT QUESTION] The coding agent asks about unit ${question.unit_id}: "${question.question}" ` +
@@ -217,6 +302,8 @@ export class Interviewer {
   private readonly reseedMaxChars: number;
   private readonly reseedWindowMs: number;
   private readonly anchorRecencyMs: number;
+  private readonly screenFrames: boolean;
+  private readonly proactiveFrameMinIntervalMs: number;
   private readonly resolveAnchorOverride: InterviewerOptions["resolveAnchor"];
   private readonly onError: (error: unknown) => void;
   private readonly onStatus: ((status: InterviewerStatus) => void) | null;
@@ -234,15 +321,22 @@ export class Interviewer {
   private silenceAnchor = 0;
   private flushTimer: unknown = null;
   private gateTimer: unknown = null;
+  /** A `look_at_screen` answered while a response was active: the model continues once that response settles. */
+  private responseOwedAfterTool = false;
 
   private readonly queue: QueuedQuestion[] = [];
   private voicing: QueuedQuestion | null = null;
   private voicingInterrupted = false;
-  private readonly pendingTexts: string[] = [];
+  private readonly pendingItems: PendingItem[] = [];
 
   private readonly announced: AnnouncedAnchor[] = [];
+  private lastAnnouncedClick: { selector: string; t: number; id: string } | null = null;
   private lastRifferTranscript: LiveTranscript | null = null;
   private nextAnchorId = 1;
+  /** Epoch ms of the last frame that reached the interviewer; 0 before the first. */
+  private lastFrameAt = 0;
+  private frameInFlight = false;
+  private framesShown = 0;
   private readonly unsubscribe: Array<() => void> = [];
 
   constructor(options: InterviewerOptions) {
@@ -258,6 +352,8 @@ export class Interviewer {
     this.reseedMaxChars = options.reseedMaxChars ?? RESEED_MAX_CHARS;
     this.reseedWindowMs = options.reseedWindowMs ?? RESEED_WINDOW_MS;
     this.anchorRecencyMs = options.anchorRecencyMs ?? ANCHOR_RECENCY_MS;
+    this.screenFrames = options.screenFrames ?? true;
+    this.proactiveFrameMinIntervalMs = options.proactiveFrameMinIntervalMs ?? PROACTIVE_FRAME_MIN_INTERVAL_MS;
     this.resolveAnchorOverride = options.resolveAnchor;
     this.onError = options.onError ?? (() => {});
     this.onStatus = options.onStatus ?? null;
@@ -292,6 +388,7 @@ export class Interviewer {
     this.generation += 1;
     this.clearFlushTimer();
     this.clearGateTimer();
+    this.responseOwedAfterTool = false;
     for (const off of this.unsubscribe.splice(0)) off();
     const transport = this.transport;
     this.transport = null;
@@ -316,7 +413,8 @@ export class Interviewer {
       voicing: this.voicing ? (this.session.questionFor(this.voicing.unit_id) ?? toUnitQuestion(this.voicing)) : null,
       unavailable: this.unavailable,
       mintAttempts: this.mintAttempts,
-      connections: this.connections
+      connections: this.connections,
+      framesShown: this.framesShown
     };
   }
 
@@ -339,17 +437,37 @@ export class Interviewer {
     this.announce(muted ? "The riffer muted their microphone; expect silence." : "The riffer unmuted their microphone.");
   }
 
-  /** A completed stroke or pin (KTD5): the interviewer learns the element by name and by anchor id. */
+  /** A completed stroke or pin (KTD5): the interviewer learns the element by name and by anchor id, and sees the view. */
   announceDrawing(drawing: DrawingAnnouncement): AnnouncedAnchor {
     const entry = this.rememberAnchor(drawing.anchor, drawing.description, drawing.anchorId);
     const verb = drawing.kind === "pin" ? "pinned" : "drew on";
     this.announce(`The riffer ${verb} ${drawing.description} (anchor id: ${entry.id}).`);
+    void this.attachFrame("drawing");
     return entry;
   }
 
-  /** A click or hover the page anchored; silent, but available to "this"/"that" resolution. */
+  /** An anchor the page resolved without a gesture to report; silent, but available to "this"/"that" resolution. */
   noteAnchor(anchor: LiveAnchor, description: string, anchorId?: string): AnnouncedAnchor {
     return this.rememberAnchor(anchor, description, anchorId);
+  }
+
+  /**
+   * A click the page anchored: the interviewer learns the element by name and
+   * by anchor id as it happens, so "this" and "here" resolve without asking.
+   * Repeated clicks on the same element inside `CLICK_ANNOUNCE_DEDUPE_MS`
+   * refresh the anchor but send no second note.
+   */
+  announceClick(anchor: LiveAnchor, description: string, anchorId?: string): AnnouncedAnchor {
+    const now = this.elapsed();
+    const last = this.lastAnnouncedClick;
+    const repeat = last !== null && last.selector === anchor.selector && now - last.t <= CLICK_ANNOUNCE_DEDUPE_MS;
+    const entry = this.rememberAnchor(anchor, description, anchorId ?? (repeat ? last.id : undefined));
+    this.lastAnnouncedClick = { selector: anchor.selector, t: now, id: entry.id };
+    if (!repeat) {
+      this.announce(`The riffer clicked ${description} (anchor id: ${entry.id}).`);
+      void this.attachFrame("click");
+    }
+    return entry;
   }
 
   announceBuffering(state: "buffering" | "streaming"): void {
@@ -362,18 +480,78 @@ export class Interviewer {
 
   /** Any page-side fact as a text item; held while a response is active or the link is down (KTD6). */
   announce(text: string): void {
-    const item = `[PAGE] ${text}`;
-    if (this.stopped) return;
-    if (!this.transport || this.responseActive) {
-      this.pendingTexts.push(item);
-      if (this.pendingTexts.length > PENDING_TEXT_LIMIT) this.pendingTexts.shift();
-      return;
-    }
-    this.sendText(item);
+    this.deliver({ kind: "text", text: `[PAGE] ${text}` });
   }
 
   announcedAnchors(): AnnouncedAnchor[] {
     return [...this.announced];
+  }
+
+  /**
+   * Shows the interviewer the screen without being asked: after a click or a
+   * drawing, or when the riffer's words point at something on screen. One frame
+   * per `proactiveFrameMinIntervalMs` at most, and never while another grab is
+   * in flight, so a click burst or a long sentence costs one image.
+   */
+  private async attachFrame(trigger: ProactiveFrameTrigger): Promise<void> {
+    if (!this.screenFrames || !this.evidence?.lookAtScreen || this.stopped || !this.transport) return;
+    if (this.frameInFlight || this.now() - this.lastFrameAt < this.proactiveFrameMinIntervalMs) return;
+    this.frameInFlight = true;
+    try {
+      const look = await this.evidence.lookAtScreen();
+      if (!look || look.frame.jpeg_base64.length === 0 || this.stopped) return;
+      // Reserved now, not at send time: a frame held behind an active response must still hold the next one off.
+      this.lastFrameAt = this.now();
+      this.deliver({
+        kind: "image",
+        text: `[PAGE] Screenshot of the riffer's current view on ${look.frame.route}, ${describeTrigger(trigger)} (frame id: ${look.frame.id}). ${PANEL_NOTE}`,
+        jpegBase64: look.frame.jpeg_base64,
+        frameId: look.frame.id
+      });
+    } catch (error) {
+      this.onError(error);
+    } finally {
+      this.frameInFlight = false;
+    }
+  }
+
+  private deliver(item: PendingItem): void {
+    if (this.stopped) return;
+    if (!this.transport || this.responseActive) {
+      this.pendingItems.push(item);
+      if (this.pendingItems.length > PENDING_TEXT_LIMIT) this.pendingItems.shift();
+      return;
+    }
+    this.sendItem(this.transport, item);
+  }
+
+  private sendItem(transport: RealtimeTransport, item: PendingItem): void {
+    switch (item.kind) {
+      case "text":
+        this.sendText(item.text);
+        return;
+      case "image":
+        this.sendFrame(transport, item);
+        return;
+      default: {
+        const exhaustive: never = item;
+        return exhaustive;
+      }
+    }
+  }
+
+  /** One image item to the model; on success the frame counts against the rate limit and is released to the endpoint. */
+  private sendFrame(transport: RealtimeTransport, item: Extract<PendingItem, { kind: "image" }>): boolean {
+    try {
+      transport.sendImage(item.text, item.jpegBase64);
+    } catch (error) {
+      this.onError(error);
+      return false;
+    }
+    this.lastFrameAt = this.now();
+    this.framesShown += 1;
+    this.evidence?.frameShown?.(item.frameId);
+    return true;
   }
 
   // ---------------------------------------------------------------------
@@ -476,6 +654,7 @@ export class Interviewer {
     this.transport = transport;
     this.connections += 1;
     this.responseActive = false;
+    this.responseOwedAfterTool = false;
     this.rifferSpeaking = false;
     this.voicing = null;
     this.voicingInterrupted = false;
@@ -518,6 +697,10 @@ export class Interviewer {
     this.clearFlushTimer();
     this.clearGateTimer();
     this.responseActive = false;
+    this.responseOwedAfterTool = false;
+    // Notes still describe what happened; a screenshot from before the drop no longer shows the current view.
+    const texts = this.pendingItems.filter((item) => item.kind === "text");
+    this.pendingItems.splice(0, this.pendingItems.length, ...texts);
     if (this.voicing) {
       this.requeue(this.voicing);
       this.voicing = null;
@@ -535,6 +718,9 @@ export class Interviewer {
   private handleEvent(transport: RealtimeTransport, event: RealtimeServerEvent): void {
     if (transport !== this.transport && event.type !== "closed") return;
     switch (event.type) {
+      case "session_created":
+        this.applySessionConfig(transport, event.session);
+        break;
       case "speech_started":
         this.rifferSpeaking = true;
         this.clearFlushTimer();
@@ -570,6 +756,10 @@ export class Interviewer {
           this.voicingInterrupted = false;
         }
         this.flushPendingTexts();
+        if (this.responseOwedAfterTool) {
+          this.responseOwedAfterTool = false;
+          this.createResponseNow(transport, "look_at_screen follow-up");
+        }
         this.scheduleFlush();
         break;
       case "error":
@@ -588,21 +778,42 @@ export class Interviewer {
 
   private handleTranscript(transcript: LiveTranscript): void {
     if (transcript.text.trim().length === 0) return;
-    if (transcript.role === "riffer") this.lastRifferTranscript = transcript;
+    if (transcript.role === "riffer") {
+      this.lastRifferTranscript = transcript;
+      if (isVisualReference(transcript.text)) void this.attachFrame("speech");
+    }
     this.session.addTranscript(transcript);
   }
 
   private handleError(message: string): void {
     this.onError(new Error(`riffrec live interviewer: ${message}`));
-    if (message.includes("conversation_already_has_active_response") && this.voicing) {
-      // Our response.create lost the race with a riffer turn; ask again at the
-      // next pause. The other response's `response.done` clears the gate; the
-      // timer does when that event never arrives.
-      this.requeue(this.voicing);
-      this.voicing = null;
-      this.voicingInterrupted = false;
+    if (message.includes("conversation_already_has_active_response")) {
+      // Our response.create lost the race with a riffer turn. A question is
+      // asked again at the next pause; a look_at_screen follow-up is simply
+      // superseded by the turn that won. The other response's `response.done`
+      // clears the gate; the timer does when that event never arrives.
+      if (this.voicing) {
+        this.requeue(this.voicing);
+        this.voicing = null;
+        this.voicingInterrupted = false;
+      }
       this.responseActive = true;
       this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, "no response.done after a busy error");
+    }
+  }
+
+  /**
+   * `session.created`: the endpoint's mint owns the persona and may override
+   * any tool it copied; the page adds only what it must be able to answer
+   * (missing tools, the screen-context section) and leaves the rest alone.
+   */
+  private applySessionConfig(transport: RealtimeTransport, session: RealtimeSessionConfig): void {
+    const patch = reconcileSessionConfig(session);
+    if (!patch) return;
+    try {
+      transport.updateSession({ type: "realtime", ...patch });
+    } catch (error) {
+      this.onError(error);
     }
   }
 
@@ -611,6 +822,12 @@ export class Interviewer {
   // ---------------------------------------------------------------------
 
   private handleToolCall(call: LiveToolCall): void {
+    const transport = this.transport;
+    if (!transport) return;
+    if (call.name === "look_at_screen") {
+      void this.lookAtScreen(transport, call).catch((error) => this.onError(error));
+      return;
+    }
     let output: Record<string, unknown>;
     try {
       output = this.runTool(call);
@@ -618,19 +835,13 @@ export class Interviewer {
       this.onError(error);
       output = { ok: false, reason: "tool_error", message: error instanceof Error ? error.message : String(error) };
     }
-    const result: LiveToolResult = { call_id: call.call_id, output };
-    if (!this.transport) return;
-    try {
-      this.transport.sendToolResult(result);
-    } catch (error) {
-      this.onError(error);
-    }
+    this.sendToolResult(transport, { call_id: call.call_id, output });
     // KTD6: no response.create here. A pending question is voiced by the flush
     // gate once the response that made this call settles and the riffer pauses.
     this.scheduleFlush();
   }
 
-  private runTool(call: LiveToolCall): Record<string, unknown> {
+  private runTool(call: Exclude<LiveToolCall, { name: "look_at_screen" }>): Record<string, unknown> {
     switch (call.name) {
       case "record_unit":
         return this.recordUnit(call.arguments);
@@ -644,6 +855,67 @@ export class Interviewer {
         const exhaustive: never = call;
         return exhaustive;
       }
+    }
+  }
+
+  /**
+   * `look_at_screen`: the page grabs the current view, attaches it as an image
+   * item, answers the call, and — unlike every other tool (KTD6) — asks for a
+   * response, because the model called it mid-answer and would otherwise fall
+   * silent until the riffer speaks again.
+   */
+  private async lookAtScreen(transport: RealtimeTransport, call: LiveToolCall<"look_at_screen">): Promise<void> {
+    let look: ScreenLook | null = null;
+    if (this.screenFrames) {
+      try {
+        look = (await this.evidence?.lookAtScreen?.()) ?? null;
+      } catch (error) {
+        this.onError(error);
+      }
+    }
+    if (this.transport !== transport || this.stopped) return;
+
+    let output: Record<string, unknown>;
+    if (!this.screenFrames) {
+      output = { ok: false, reason: "frames_disabled", detail: FRAMES_DISABLED_DETAIL };
+    } else if (!look || look.frame.jpeg_base64.length === 0) {
+      output = { ok: false, reason: "no_frame", detail: NO_FRAME_DETAIL };
+    } else {
+      const ageMs = Math.max(0, Math.round(this.elapsed() - look.frame.t));
+      const when = look.fresh ? "captured just now" : `captured ${Math.max(1, Math.round(ageMs / 1000))} s ago`;
+      // The model is waiting on this call, so the image goes now, response or not.
+      const sent = this.sendFrame(transport, {
+        kind: "image",
+        text: `[PAGE] Screenshot of the riffer's current view on ${look.frame.route}, ${when} (frame id: ${look.frame.id}). ${PANEL_NOTE}`,
+        jpegBase64: look.frame.jpeg_base64,
+        frameId: look.frame.id
+      });
+      output = sent
+        ? { ok: true, frame_id: look.frame.id, route: look.frame.route, age_ms: ageMs, fresh: look.fresh }
+        : { ok: false, reason: "send_failed", detail: NO_FRAME_DETAIL };
+    }
+    this.sendToolResult(transport, { call_id: call.call_id, output });
+    if (this.responseActive) this.responseOwedAfterTool = true;
+    else this.createResponseNow(transport, "look_at_screen follow-up");
+    this.emitStatus();
+  }
+
+  private sendToolResult(transport: RealtimeTransport, result: LiveToolResult): void {
+    try {
+      transport.sendToolResult(result);
+    } catch (error) {
+      this.onError(error);
+    }
+  }
+
+  /** `response.create` with the same confirmation gate a voiced question uses. */
+  private createResponseNow(transport: RealtimeTransport, why: string): void {
+    try {
+      transport.createResponse();
+      this.responseActive = true;
+      this.armGateTimer(RESPONSE_CONFIRM_TIMEOUT_MS, `${why}: response.create was never confirmed`);
+    } catch (error) {
+      this.onError(error);
     }
   }
 
@@ -881,8 +1153,9 @@ export class Interviewer {
   }
 
   private flushPendingTexts(): void {
-    if (!this.transport) return;
-    for (const text of this.pendingTexts.splice(0)) this.sendText(text);
+    const transport = this.transport;
+    if (!transport) return;
+    for (const item of this.pendingItems.splice(0)) this.sendItem(transport, item);
   }
 
   private sendText(text: string): void {

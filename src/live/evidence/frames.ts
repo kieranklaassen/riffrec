@@ -21,6 +21,13 @@ export const FRAME_BUFFER_CAPACITY = 12;
 /** Outstanding Questions default: one periodic frame every 10 seconds. */
 export const PERIODIC_FRAME_MS = 10_000;
 export const DEFAULT_FRAME_JPEG_QUALITY = 0.7;
+/**
+ * Frames wider than this are downscaled at grab time. Wide enough for UI text
+ * to stay legible to the coding agent and the interviewer, small enough that a
+ * frame shown to the interviewer costs a bounded number of image tokens and a
+ * lone `frame` envelope stays well under the 2 MB body cap.
+ */
+export const DEFAULT_FRAME_MAX_WIDTH = 1280;
 
 export interface FrameBufferOptions {
   /** Milliseconds since session start, the clock anchors use. */
@@ -178,7 +185,7 @@ export class FrameBuffer {
 
 export interface DisplayGrabberOptions {
   quality?: number;
-  /** Downscale wider frames to this width (Outstanding Questions: viewport size to start). */
+  /** Downscale wider frames to this width; defaults to `DEFAULT_FRAME_MAX_WIDTH`, `0` disables. */
   maxWidth?: number;
   document?: Document;
 }
@@ -200,6 +207,7 @@ export function createDisplayFrameGrabber(stream: MediaStream, options: DisplayG
   const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc) return async () => null;
   const quality = options.quality ?? DEFAULT_FRAME_JPEG_QUALITY;
+  const maxWidth = options.maxWidth ?? DEFAULT_FRAME_MAX_WIDTH;
   const video = doc.createElement("video");
   video.muted = true;
   video.playsInline = true;
@@ -214,7 +222,7 @@ export function createDisplayFrameGrabber(stream: MediaStream, options: DisplayG
     const width = video.videoWidth;
     const height = video.videoHeight;
     if (!width || !height) return null;
-    const scale = options.maxWidth && width > options.maxWidth ? options.maxWidth / width : 1;
+    const scale = maxWidth > 0 && width > maxWidth ? maxWidth / width : 1;
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
     const context = canvas.getContext("2d");

@@ -36,6 +36,8 @@ export interface EvidenceSession {
 }
 
 export const TELEMETRY_WINDOW_MS = 10_000;
+/** A buffered frame this young still shows the current view; `lookAtScreen` reuses it instead of grabbing again. */
+export const RECENT_FRAME_MS = 500;
 
 export interface LiveEvidenceOptions {
   session: EvidenceSession;
@@ -197,6 +199,24 @@ export class LiveEvidence {
   gesture(t: number = this.now()): Promise<LiveFrame | null> {
     if (this.paused) return Promise.resolve(null);
     return this.frames.capture("gesture", t);
+  }
+
+  /**
+   * `look_at_screen` and proactive frames: the view right now. A gesture frame
+   * grabbed within `RECENT_FRAME_MS` (the pointerdown that preceded a click)
+   * already is the current view and is reused; otherwise a fresh grab, buffered
+   * like a gesture frame so the unit that follows attaches to it; otherwise the
+   * most recent buffered frame, marked stale. Null while paused (R25: nothing
+   * leaves the page) or when no display source exists.
+   */
+  async lookAtScreen(): Promise<{ frame: LiveFrame; fresh: boolean } | null> {
+    if (this.paused || this.disposed) return null;
+    const recent = this.frames.latest();
+    if (recent && this.now() - recent.t <= RECENT_FRAME_MS) return { frame: recent, fresh: true };
+    const fresh = await this.frames.capture("gesture");
+    if (fresh) return { frame: fresh, fresh: true };
+    const latest = this.frames.latest();
+    return latest ? { frame: latest, fresh: false } : null;
   }
 
   /** R25: stop frames and composites; the screen recording and the clip recorder keep running. */

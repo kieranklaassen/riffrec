@@ -77,7 +77,8 @@ function isDocumentChrome(element: Element): boolean {
   return tag === "html" || tag === "body";
 }
 
-function isOverlayNode(element: Element): boolean {
+/** True for the overlay's own DOM (panel, consent dialog, drawing layer). */
+export function isOverlayNode(element: Element): boolean {
   return element.closest(OVERLAY_SELECTOR) !== null;
 }
 

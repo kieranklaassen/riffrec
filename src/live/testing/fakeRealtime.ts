@@ -1,15 +1,17 @@
 import type { LiveTranscript } from "../contract";
 import type { LiveToolCall, LiveToolResult } from "../tools";
+import type { RealtimeSessionConfig } from "../realtime/sessionConfig";
 
 /**
  * Scripted stand-in for the OpenAI Realtime data channel. It emits the events
- * the interviewer reacts to (speech start/stop, transcripts, tool calls,
- * response lifecycle) without WebRTC, and records everything the interviewer
- * sends back (text items, tool results, response control, session updates) so
- * tests can assert on ordering.
+ * the interviewer reacts to (session config, speech start/stop, transcripts,
+ * tool calls, response lifecycle) without WebRTC, and records everything the
+ * interviewer sends back (text and image items, tool results, response
+ * control, session updates) so tests can assert on ordering.
  */
 
 export type FakeRealtimeServerEvent =
+  | { type: "session_created"; session: RealtimeSessionConfig }
   | { type: "speech_started"; t: number }
   | { type: "speech_stopped"; t: number }
   | { type: "transcript"; transcript: LiveTranscript }
@@ -21,6 +23,7 @@ export type FakeRealtimeServerEvent =
 
 export type FakeRealtimeClientAction =
   | { type: "send_text"; text: string }
+  | { type: "send_image"; text: string; jpegBase64: string }
   | { type: "send_tool_result"; result: LiveToolResult }
   | { type: "create_response" }
   | { type: "cancel_response" }
@@ -79,6 +82,10 @@ export class FakeRealtime {
     this.record({ type: "send_text", text });
   }
 
+  sendImage(text: string, jpegBase64: string): void {
+    this.record({ type: "send_image", text, jpegBase64 });
+  }
+
   sendToolResult(result: LiveToolResult): void {
     this.record({ type: "send_tool_result", result });
   }
@@ -113,6 +120,10 @@ export class FakeRealtime {
 
   get sentTexts(): string[] {
     return this.actions.flatMap((action) => (action.type === "send_text" ? [action.text] : []));
+  }
+
+  get sentImages(): Array<{ text: string; jpegBase64: string }> {
+    return this.actions.flatMap((action) => (action.type === "send_image" ? [{ text: action.text, jpegBase64: action.jpegBase64 }] : []));
   }
 
   actionsNamed<T extends FakeRealtimeClientAction["type"]>(type: T): Extract<FakeRealtimeClientAction, { type: T }>[] {

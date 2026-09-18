@@ -263,6 +263,163 @@ describe("StreamClient", () => {
     client.close();
   });
 
+  it("replaces an envelope the endpoint rejects with 400 instead of retrying it forever, and keeps the rest flowing", async () => {
+    const h = harness();
+    const errors: unknown[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/events") && init?.method === "POST") {
+        const batch = JSON.parse(String(init.body)) as LiveEnvelope[];
+        const poison = batch.find((entry) => entry.type === "mic" && (entry.payload as { state: string }).state === "granted" && entry.seq === 2);
+        if (poison) return new Response(JSON.stringify({ reason: "invalid_payload", seq: 2 }), { status: 400 });
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback),
+      backoffMs: [5, 5, 5],
+      elapsed: () => 777,
+      onError: (error) => errors.push(error)
+    });
+    client.start();
+    client.enqueue(micEnvelope(1));
+    client.enqueue(micEnvelope(2));
+    client.enqueue(envelope(3, "mic", { state: "muted" }));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(3));
+
+    expect(h.endpoint.received.map((entry) => [entry.seq, entry.type, entry.payload])).toEqual([
+      [1, "mic", { state: "granted" }],
+      [2, "stream_state", { state: "buffering" }],
+      [3, "mic", { state: "muted" }]
+    ]);
+    expect(client.state).toBe("streaming");
+    expect(client.consecutiveFailures).toBe(0);
+    expect(String(errors[0])).toMatch(/rejected seq 2 as invalid_payload/);
+    client.close();
+  });
+
+  it("a 400 without a seq in the batch (a proxy page, a body-level error) is a plain failure and the batch stays queued", async () => {
+    const h = harness();
+    const errors: unknown[] = [];
+    const bodies = [
+      new Response("<html>Bad Request</html>", { status: 400, headers: { "Content-Type": "text/html" } }),
+      new Response(JSON.stringify({ error: "body must be an envelope or an array of envelopes" }), { status: 400 }),
+      new Response(JSON.stringify({ reason: "invalid_payload", seq: 999 }), { status: 400 })
+    ];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/events") && init?.method === "POST") {
+        const canned = bodies.shift();
+        if (canned) return canned;
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const states: StreamClientState[] = [];
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback),
+      backoffMs: [1, 1, 1],
+      onStateChange: (state) => states.push(state),
+      onError: (error) => errors.push(error)
+    });
+    client.start();
+    client.enqueue(micEnvelope(1));
+    client.enqueue(micEnvelope(2));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(2));
+
+    expect(states).toEqual(["streaming", "buffering", "streaming"]);
+    expect(h.endpoint.received.map((entry) => [entry.seq, entry.type])).toEqual([
+      [1, "mic"],
+      [2, "mic"]
+    ]);
+    expect(h.queue.evictions).toBe(0);
+    expect(errors.map(String)).toEqual([
+      "Error: riffrec live: POST /events returned 400",
+      "Error: riffrec live: POST /events returned 400",
+      "Error: riffrec live: POST /events returned 400 (invalid_payload)"
+    ]);
+    client.close();
+  });
+
+  it("a 400 that survives the filler counts as a failure, so a stream the endpoint refuses shows as buffering", async () => {
+    const h = harness();
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/events") && init?.method === "POST") {
+        return new Response(JSON.stringify({ reason: "session_mismatch", seq: 1 }), { status: 400 });
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const states: StreamClientState[] = [];
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback),
+      backoffMs: [1, 1, 1],
+      onStateChange: (state) => states.push(state)
+    });
+    client.start();
+    client.enqueue(micEnvelope(1));
+
+    await vi.waitFor(() => expect(states).toContain("buffering"));
+    expect(h.queue.all()[0]).toMatchObject({ seq: 1, type: "stream_state" });
+    client.close();
+  });
+
+  it("a POST that never settles times out, counts as a failure, and lets the next attempt through", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      let hang = true;
+      const fetchImpl: typeof fetch = (input, init) => {
+        if (hang && String(input).endsWith("/events") && init?.method === "POST") {
+          return new Promise<Response>((_, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          });
+        }
+        return h.endpoint.fetch(input, init);
+      };
+      const errors: unknown[] = [];
+      const client = new StreamClient({
+        endpoint: h.endpoint.baseUrl,
+        token: h.endpoint.pageToken,
+        sessionId: SESSION_ID,
+        queue: h.queue,
+        fetch: fetchImpl,
+        schedule: (callback) => queueMicrotask(callback),
+        postTimeoutMs: 1000,
+        backoffMs: [10, 10, 10],
+        onError: (error) => errors.push(error)
+      });
+      client.start();
+      client.enqueue(micEnvelope(1));
+      await vi.advanceTimersByTimeAsync(999);
+      expect(client.consecutiveFailures).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(client.consecutiveFailures).toBe(1);
+      expect(String(errors[0])).toMatch(/timed out after 1000 ms/);
+
+      hang = false;
+      await vi.advanceTimersByTimeAsync(20);
+      expect(client.ackedSeq).toBe(1);
+      expect(client.consecutiveFailures).toBe(0);
+      client.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("halves the batch after a 413 on a multi-envelope body", async () => {
     const h = harness();
     const sizes: number[] = [];

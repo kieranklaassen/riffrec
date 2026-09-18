@@ -294,6 +294,29 @@ describe("RiffrecProvider live mode (U7)", () => {
       expect(onError).not.toHaveBeenCalled();
     });
 
+    it("tells the interviewer what the riffer clicks, by name and anchor id, and ignores clicks on its own panel", async () => {
+      await goLive();
+      const realtime = mocks.realtime as FakeRealtime;
+      const host = document.createElement("button");
+      host.id = "export";
+      host.textContent = "Export";
+      container.appendChild(host);
+
+      await act(async () => host.click());
+
+      await vi.waitFor(() => expect(realtime.sentTexts.some((text) => text.includes("Export"))).toBe(true));
+      const note = realtime.sentTexts.find((text) => text.includes("Export"))!;
+      expect(note).toMatch(/^\[PAGE\] The riffer clicked button "Export" .*\(selector .*button#export, route \/settings\) \(anchor id: anchor_\d{4}\)\.$/);
+      await vi.waitFor(() => expect(received("click").some((entry) => (entry.payload as { element: { id: string } }).element.id === "export")).toBe(true));
+
+      const before = realtime.sentTexts.length;
+      await clickSelector("[data-riffrec-live-collapse]");
+      await clickSelector("[data-riffrec-live-expand]");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(realtime.sentTexts).toHaveLength(before);
+      expect(received("click").some((entry) => /live panel/.test(String((entry.payload as { element: { ariaLabel?: string } }).element.ariaLabel)))).toBe(false);
+    });
+
     it("excludes its own traffic from network capture and strips the live fragment from captured URLs", async () => {
       await goLive();
       const before = received("network_request").length;
@@ -358,16 +381,81 @@ describe("RiffrecProvider live mode (U7)", () => {
       expect(container.textContent).not.toContain("We downloaded the zip file.");
     });
 
-    it("assembles the archive when the endpoint ends the session and shows the ended card instead of the notice", async () => {
-      await goLive({ download: true });
+    it("assembles the archive without downloading it when the endpoint ends the session, and shows the ended card instead of the notice", async () => {
+      await goLive();
 
       await act(async () => {
         await endpoint.fetch("/session/end", { method: "POST", headers: endpoint.pageHeaders(), body: "{}" });
       });
       await vi.waitFor(() => expect(mocks.writerStop).toHaveBeenCalledTimes(1));
       await vi.waitFor(() => expect(text("status")).toBe("idle"));
+      expect(mocks.writerStop.mock.calls[0]![1]).toMatchObject({ download: false });
       expect(q("[data-riffrec-live-overlay='ended']")).toBeTruthy();
       expect(container.textContent).not.toContain("We downloaded the zip file.");
+    });
+
+    describe("Done with a streaming endpoint (the zip is a stream that was never sent, R4)", () => {
+      const finishSession = async () => {
+        await clickSelector("[data-riffrec-done]");
+        await clickSelector("[data-riffrec-confirm-finish]");
+        await vi.waitFor(() => expect(mocks.writerStop).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(text("status")).toBe("idle"));
+      };
+
+      it("does not download the zip when the endpoint acknowledged the final checkpoint and confirmed the end", async () => {
+        const onSessionComplete = vi.fn();
+        await goLive({ onSessionComplete });
+
+        await finishSession();
+
+        const finals = received("checkpoint").filter((entry) => (entry.payload as { trigger: string }).trigger === "final");
+        expect(finals).toHaveLength(1);
+        expect(endpoint.ackedSeq).toBeGreaterThanOrEqual(finals[0].seq);
+        expect(endpoint.ended).toBe(true);
+        expect(mocks.writerStop.mock.calls[0]![1]).toMatchObject({ download: false });
+        expect(onSessionComplete).toHaveBeenCalledWith(archive);
+        expect(q("[data-riffrec-ended-card]")).toBeTruthy();
+        expect(container.textContent).not.toContain("We downloaded the zip file.");
+        expect(q("[data-riffrec-live-fallback-reason]")).toBeNull();
+        expect(onError).not.toHaveBeenCalled();
+      });
+
+      it("downloads the zip after an acknowledged Done only when the host opted in with download: true", async () => {
+        await goLive({ download: true });
+
+        await finishSession();
+
+        expect(endpoint.ended).toBe(true);
+        expect(mocks.writerStop.mock.calls[0]![1]).toMatchObject({ download: true });
+        expect(container.textContent).toContain("We downloaded the zip file.");
+        expect(q("[data-riffrec-live-fallback-reason]")).toBeNull();
+      });
+
+      it("live.download is the default for sessions that start without options", async () => {
+        await goLive({}, { download: true });
+
+        await finishSession();
+
+        expect(mocks.writerStop.mock.calls[0]![1]).toMatchObject({ download: true });
+      });
+
+      it("falls back to the zip when the endpoint does not confirm the end, and says why", async () => {
+        await goLive();
+        hostFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = new URL(String(input instanceof Request ? input.url : input), window.location.href);
+          if (url.pathname === "/session/end") return new Response("{}", { status: 500 });
+          if (url.origin === endpoint.baseUrl) return endpoint.fetch(input as string, init);
+          return new Response("{}", { status: 200 });
+        });
+
+        await finishSession();
+
+        expect(endpoint.ended).toBe(false);
+        expect(mocks.writerStop.mock.calls[0]![1]).toMatchObject({ download: true });
+        expect(container.textContent).toContain("We downloaded the zip file.");
+        expect(q("[data-riffrec-live-fallback-reason]")!.textContent).toContain("POST /session/end returned 500");
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("POST /session/end returned 500") }));
+      });
     });
 
     it("declining consent returns to idle without an archive", async () => {

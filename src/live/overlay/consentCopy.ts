@@ -85,11 +85,10 @@ export function buildConsentCopy(input: ConsentCopyInput): ConsentCopy {
   const destinations: ConsentDestination[] = [];
 
   if (voice && streams) {
-    destinations.push({
-      id: "openai",
-      to: OPENAI_DESTINATION,
-      items: ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"]
-    });
+    const items = ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"];
+    if (profile.frames) items.push("what you click, draw on, and pin, and screenshots of the page when you point at something or ask the interviewer to look");
+    else items.push("what you click, draw on, and pin");
+    destinations.push({ id: "openai", to: OPENAI_DESTINATION, items });
   }
 
   if (streams) {

@@ -18,6 +18,7 @@ import { LiveEvidence } from "./evidence/liveEvidence";
 import { resolveEvidenceProfile, type EvidenceProfile } from "./evidence/profile";
 import type { ConsentResult } from "./overlay/ConsentDialog";
 import type { ConsentEvidenceProfile } from "./overlay/consentCopy";
+import { isOverlayNode } from "./overlay/strokeAnchor";
 import { SharedMicrophone } from "./realtime/audioRouting";
 import { REALTIME_CALLS_URL, createRealtimeConnector, type RealtimeConnector } from "./realtime/client";
 import { createInterviewer, type Interviewer } from "./realtime/interviewer";
@@ -40,8 +41,16 @@ export interface LiveStopResult {
   live: LiveArchiveInputs;
   recordingSegments: Blob[];
   options: RiffrecSessionOptions;
-  /** `endpoint` when the endpoint or the Done control ended the session; `stop` for an explicit stop. */
+  /**
+   * `endpoint` when the endpoint confirmed the end (Done acknowledged, or
+   * `session_ended`): the stream delivered everything and the archive is kept
+   * only for `onSessionComplete`. `stop` when the page ended the session on its
+   * own — an explicit `stop()`, or a Done the endpoint never confirmed — and the
+   * archive is the delivery.
+   */
   endedBy: "stop" | "endpoint";
+  /** Why a Done fell back to the archive (R4), when it did; shown beside the download notice. */
+  fallbackReason: string | null;
 }
 
 export interface LiveRuntimeCallbacks {
@@ -85,6 +94,29 @@ function toError(value: unknown): Error {
 
 function describeAnchor(anchor: LiveAnchor): string {
   return anchor.component ? `${anchor.component} (${anchor.selector})` : anchor.selector;
+}
+
+const CLICK_TEXT_MAX_CHARS = 80;
+
+function truncate(text: string, max: number): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
+}
+
+/**
+ * How a click is described to the interviewer: what the riffer would call it
+ * first (accessible name, visible text), then what the coding agent needs
+ * (component, selector, route). Everything here is already in `events.json`.
+ */
+export function describeClick(event: ClickEvent, route: string): string {
+  const { element } = event;
+  const label = element.ariaLabel?.trim() || element.name?.trim() || element.tag;
+  const text = element.text?.trim() ? truncate(element.text, CLICK_TEXT_MAX_CHARS) : "";
+  const parts = [label];
+  if (text && !label.includes(text)) parts.push(`with text "${text}"`);
+  if (event.component) parts.push(`in component ${event.component}`);
+  parts.push(`(selector ${element.selector}, route ${route})`);
+  return parts.join(" ");
 }
 
 function clickAnchor(event: ClickEvent, route: string): LiveAnchor | null {
@@ -138,6 +170,7 @@ export class LiveRuntime {
   private paused = false;
   private stopping: Promise<LiveStopResult | null> | null = null;
   private suspended = false;
+  private fallbackReason: string | null = null;
 
   constructor(options: LiveRuntimeOptions) {
     this.config = options.config;
@@ -173,6 +206,7 @@ export class LiveRuntime {
     }
     if (this.current.status !== "idle") return;
     this.options = options;
+    this.fallbackReason = null;
     this.current.beginConsent();
   }
 
@@ -182,9 +216,18 @@ export class LiveRuntime {
     this.startCaptures(result.mic === "granted" ? result.stream : null);
   }
 
-  /** The overlay's `onFinished`: a Done the endpoint did not end still needs the archive (R4). */
+  /**
+   * The overlay's `onFinished`: a Done the endpoint did not confirm still needs
+   * the archive (R4), and the reason travels with it so the fallback is visible
+   * to the riffer and the host rather than a silent download.
+   */
   finished(result: FinishResult): void {
-    if (!result.ended && this.current.status !== "ended") this.callbacks.onEnded();
+    if (result.ended || this.current.status === "ended") return;
+    if (result.failure) {
+      this.fallbackReason = result.failure;
+      this.callbacks.onError(new Error(`riffrec live: ${result.failure}; the session archive is downloaded instead.`));
+    }
+    this.callbacks.onEnded();
   }
 
   annotation = (annotation: LiveAnnotation): void => {
@@ -351,10 +394,13 @@ export class LiveRuntime {
           connect: connector.connect,
           microphone,
           ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}),
+          screenFrames: session.framesLeavePage,
           evidence: {
             recordUnit: (input) => evidence.recordUnit(input),
             speechStarted: () => evidence.speechStarted(),
-            speechStopped: () => evidence.speechStopped()
+            speechStopped: () => evidence.speechStopped(),
+            lookAtScreen: () => evidence.lookAtScreen(),
+            frameShown: (frameId) => session.releaseFrame(frameId)
           },
           onError: (error) => this.callbacks.onError(toError(error))
         });
@@ -381,13 +427,15 @@ export class LiveRuntime {
       events.push(event);
       if (!this.paused) session.recordEvent(event);
       if (event.type === "click" && interviewer) {
-        const anchor = clickAnchor(event, route());
-        if (anchor) interviewer.noteAnchor(anchor, describeAnchor(anchor));
+        const currentRoute = route();
+        const anchor = clickAnchor(event, currentRoute);
+        if (anchor) interviewer.announceClick(anchor, describeClick(event, currentRoute));
       }
     };
     const sessionStart = session.startedAt;
     if (ownsGlobalPatchMarker) {
-      eventCapture.start(sessionStart, onEvent);
+      // Clicks on riffrec's own panel are not the host app: not an event, not an anchor.
+      eventCapture.start(sessionStart, onEvent, { ignore: isOverlayNode });
       networkCapture.start(sessionStart, onEvent, liveExcludedUrls(session.endpoint));
       consoleCapture.start(sessionStart, onEvent, this.capture.sanitizeError);
     }
@@ -466,6 +514,8 @@ export class LiveRuntime {
       screenBlob: null,
       voiceBlob
     };
-    return { outputs, live, recordingSegments, options: this.options, endedBy };
+    const fallbackReason = endedBy === "stop" ? this.fallbackReason : null;
+    this.fallbackReason = null;
+    return { outputs, live, recordingSegments, options: this.options, endedBy, fallbackReason };
   }
 }

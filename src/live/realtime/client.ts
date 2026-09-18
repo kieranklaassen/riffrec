@@ -7,6 +7,7 @@ import {
   type RemoteAudioRoute,
   type SharedMicrophone
 } from "./audioRouting";
+import { readSessionConfig, type RealtimeSessionConfig } from "./sessionConfig";
 
 /**
  * Thin typed WebRTC client for the OpenAI Realtime API, ported from
@@ -35,6 +36,7 @@ export const DATA_CHANNEL_READY_TIMEOUT_MS = 10_000;
 export const PEER_DISCONNECTED_GRACE_MS = 10_000;
 
 export type RealtimeServerEvent =
+  | { type: "session_created"; session: RealtimeSessionConfig }
   | { type: "speech_started"; t: number }
   | { type: "speech_stopped"; t: number }
   | { type: "transcript"; transcript: LiveTranscript }
@@ -56,6 +58,8 @@ export interface RealtimeTransport {
   connect(handlers: RealtimeTransportHandlers): void | Promise<void>;
   readonly connected: boolean;
   sendText(text: string): void;
+  /** A screenshot as a user message: the JPEG (base64, no `data:` prefix) followed by a caption. */
+  sendImage(text: string, jpegBase64: string): void;
   sendToolResult(result: LiveToolResult): void;
   createResponse(): void;
   cancelResponse(): void;
@@ -140,6 +144,8 @@ export function parseRealtimeEvent(raw: unknown, context: ParseContext): Realtim
   const message = asRecord(raw);
   const type = asString(message.type);
   switch (type) {
+    case "session.created":
+      return { type: "session_created", session: readSessionConfig(message.session) };
     case "input_audio_buffer.speech_started":
       return { type: "speech_started", t: context.t };
     case "input_audio_buffer.speech_stopped":
@@ -366,6 +372,26 @@ export class RealtimeClient implements RealtimeTransport {
     this.send({
       type: "conversation.item.create",
       item: { type: "message", role: this.textRole, content: [{ type: "input_text", text }] }
+    });
+  }
+
+  /**
+   * A screenshot the interviewer asked for (`look_at_screen`). Image content is
+   * only valid on a `user` message, so the role is fixed here regardless of
+   * `textRole`; the caption travels in the same item so the model reads them
+   * together.
+   */
+  sendImage(text: string, jpegBase64: string): void {
+    this.send({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_image", image_url: `data:image/jpeg;base64,${jpegBase64}` },
+          { type: "input_text", text }
+        ]
+      }
     });
   }
 

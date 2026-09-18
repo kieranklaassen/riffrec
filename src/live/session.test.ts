@@ -208,6 +208,50 @@ describe("LiveSession lifecycle", () => {
     expect(h.storage.keys()).toEqual([]);
   });
 
+  it("finish says why the end was not confirmed when /session/end fails, and the session stays local", async () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options({ fetch: async (input, init) => {
+      h.requests.push({ url: String(input), init });
+      if (String(input).endsWith("/session/end")) return new Response("{}", { status: 502 });
+      return h.endpoint.fetch(input, init);
+    } })));
+    session.start();
+    session.voiceConnected();
+
+    const result = await session.finish();
+
+    expect(result.finalAcked).toBe(true);
+    expect(result.ended).toBe(false);
+    expect(result.failure).toBe("POST /session/end returned 502");
+    expect(session.status).toBe("live");
+    expect(h.endpoint.ended).toBe(false);
+  });
+
+  it("finish reports the unacknowledged final and the failed end when the endpoint is unreachable", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const session = track(LiveSession.create(h.options({ finalAckTimeoutMs: 200 })));
+    session.start();
+    h.setDown(true);
+
+    const finishing = session.finish();
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await finishing;
+
+    expect(result.finalAcked).toBe(false);
+    expect(result.ended).toBe(false);
+    expect(result.failure).toBe("POST /session/end failed: Failed to fetch");
+    expect(session.streamState).toBe("buffering");
+  });
+
+  it("finish carries no failure without an endpoint", async () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options({ bootstrap: null, endpoint: null })));
+    session.start();
+    const result = await session.finish();
+    expect(result).toEqual({ checkpoint: expect.objectContaining({ trigger: "final" }), finalAcked: false, ended: false });
+  });
+
   it("stop() clears every sessionStorage key the session wrote", async () => {
     const h = harness();
     h.storage.setItem(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify({ token: "t", endpoint: "http://e" }));

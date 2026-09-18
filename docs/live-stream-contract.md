@@ -295,6 +295,24 @@ and input transcription, calls OpenAI's client-secret endpoint with the key from
 its own environment, and returns the response below. Riffrec never sees the key
 and accepts none in configuration. The page re-mints on every reconnect.
 
+**Reconciliation after connect.** The page answers the tool calls and attaches
+the screenshots, so once the data channel opens it reads the session the
+endpoint minted (`session.created`) and sends one `session.update` only when
+something it must be able to answer is missing:
+
+- tools in `LIVE_TOOLS` the mint did not carry are appended; tools the endpoint
+  did define are kept verbatim, in the endpoint's order (the endpoint's copies
+  win, so it may refine descriptions);
+- a persona that lacks the `[SCREEN CONTEXT]` section (`SCREEN_CONTEXT_MARKER`)
+  gets `SCREEN_CONTEXT_SECTION` appended;
+- a session with no riffrec tool at all gets `DEFAULT_INTERVIEWER_INSTRUCTIONS`
+  and all of `LIVE_TOOLS`.
+
+An endpoint that copies `DEFAULT_INTERVIEWER_INSTRUCTIONS` (which contains the
+section) and `LIVE_TOOLS` verbatim is never patched. An endpoint persona must not
+tell the interviewer it cannot see the screen: the page contradicts that with
+notes and frames, and the appended section says it supersedes such statements.
+
 ### `mint_request`
 
 | Field | Type | Required | Description |
@@ -335,7 +353,7 @@ with `409 { "active_session_id": "<bound id>" }`.
 | `POST /events` | JSON array of envelopes | `200 { "acked_seq": <n> }`. Body cap 64 KB (`LIVE_EVENTS_BODY_MAX_BYTES`), or 2 MB for a body holding a lone `frame` envelope (`LIVE_FRAME_BODY_MAX_BYTES`); oversize returns `413 { "max_bytes": <cap> }` and does not count toward buffering. Any envelope with an unsupported `schema_version` returns `409 { "expected_schema_version": "live/1" }`; any other invalid envelope returns `400 { "reason": <LiveEnvelopeRejection>, "seq": <n> }`. |
 | `GET /stream` | — | `text/event-stream`. Event names: `unit_status`, `applied`, `ask`, `ack`, `session_ended` (data shapes below). Consumed with a fetch-based reader so the bearer header travels with it; never `EventSource`. |
 | `POST /mint` | `mint_request` | `mint_response` or an I2 error. |
-| `POST /session/end` | full-evidence archive | `200 {}`; the session is ended and `session_ended` is broadcast. |
+| `POST /session/end` | full-evidence archive | `200 {}`; the session is ended and `session_ended` is broadcast. A `2xx` here (or a `session_ended` event) is the page's signal that the stream was the delivery: it assembles its archive for the host's `onSessionComplete` but does not download the zip unless the host opted in. Any other outcome makes the page fall back to the zip and report the reason. |
 
 Page routes answer `OPTIONS` with `Access-Control-Allow-Origin` equal to the
 exact configured app origin, `Access-Control-Allow-Headers: Authorization, Content-Type, X-Riffrec-Session`,
@@ -392,11 +410,65 @@ re-emits a stored session under another evidence profile.
 
 ## Interviewer tools
 
-The interviewer's tool set is exactly four flat function tools, exported as
+The interviewer's tool set is exactly five flat function tools, exported as
 `LIVE_TOOLS` from `src/live/tools.ts` and copied verbatim into the endpoint's
 mint body: `record_unit(statement, anchors[], transcript_excerpt)`,
 `update_unit(unit_id, statement?, anchors_add?)` (rejected once a unit has left
-`initial`), `withdraw_unit(unit_id, reason?)`, `relay_answer(unit_id, answer_text)`.
-No tool emits checkpoints, reports state, or carries image content. Tool
-`anchors` are text references (the riffer's words or an anchor id the page
-announced) which the page resolves to `anchor` objects.
+`initial`), `withdraw_unit(unit_id, reason?)`, `relay_answer(unit_id, answer_text)`,
+and `look_at_screen(reason?)`. No tool emits checkpoints or reports state, and
+no tool *parameter* carries image content. Tool `anchors` are text references
+(an anchor id the page announced, or the riffer's words) which the page resolves
+to `anchor` objects.
+
+### `look_at_screen`
+
+```json
+{
+  "type": "function",
+  "name": "look_at_screen",
+  "description": "See the riffer's screen right now. …",
+  "parameters": {
+    "type": "object",
+    "properties": { "reason": { "type": "string", "description": "Why you need to see the screen, in a few words." } },
+    "required": [],
+    "additionalProperties": false
+  }
+}
+```
+
+When the model calls it, the page grabs the current view (or takes the latest
+buffered frame), sends a `conversation.item.create` with a `user` message whose
+content is `[{ type: "input_image", image_url: "data:image/jpeg;base64,…" }, { type: "input_text", text: "<caption>" }]`,
+then the `function_call_output`, then `response.create` (deferred until the
+calling response's `response.done` when one is active). Result shapes:
+
+| Result | Meaning |
+|---|---|
+| `{ ok: true, frame_id, route, age_ms, fresh }` | The screenshot precedes this result in the conversation. `fresh` is false when the latest buffered frame stood in. |
+| `{ ok: false, reason: "no_frame", detail }` | The screen is not shared or capture is paused. |
+| `{ ok: false, reason: "frames_disabled", detail }` | The evidence profile is `frames: "none"`; nothing visual leaves the page. |
+| `{ ok: false, reason: "send_failed", detail }` | The image item could not be sent. |
+
+The frame is buffered like a gesture frame (the next unit attaches to it) and
+released to the endpoint as a `frame` envelope even under `frames: "one"`.
+
+### Page → interviewer announcements
+
+Page-side facts reach the interviewer as `system`-role `input_text` items
+(`conversation.item.create`), never as tool calls, and are held while a response
+is active. Endpoint personas and tests should key on these shapes:
+
+| Shape | When |
+|---|---|
+| `[PAGE] The riffer clicked <description> (anchor id: anchor_NNNN).` | Every click on the host page. `<description>` is `<accessible name or tag>[ with text "<visible text, ≤80 chars>"][ in component <Component>] (selector <css>, route </path>)`. Repeated clicks on the same selector inside 1 s refresh the anchor but send no second note. Clicks on riffrec's own panel are not announced. |
+| `[PAGE] The riffer drew on <description> (anchor id: anchor_NNNN).` | A completed stroke. |
+| `[PAGE] The riffer pinned <description> (anchor id: anchor_NNNN).` | A pin. |
+| `[PAGE] Screenshot of the riffer's current view on </path>, <attached because they just clicked there \| attached because they just drew there \| attached because they referred to something on screen \| captured just now \| captured N s ago> (frame id: frame_NNNN). The riffrec panel docked at the top right is not part of the app.` | The caption of an image item: proactive (first three) or `look_at_screen` (last two). Proactive frames are rate-limited to one per 5 s, a `look_at_screen` counts against the same limit, and speech triggers only when the transcript contains a deictic or visual word (`isVisualReference`). |
+| `[PAGE] The riffer muted their microphone; expect silence.` / `… unmuted their microphone.` | Mute toggles. |
+| `[PAGE] The page lost its connection to the coding agent and is buffering; units still land on the board.` / `… reconnected …` | Stream state changes. |
+| `[ENDPOINT QUESTION] The coding agent asks about unit <id>: "<question>" …` | An `ask` from the endpoint, voiced at the next pause. |
+| `[RECONNECT] Your connection was replaced mid-session. …` | The re-seed on a replacement connection. |
+
+Anchor ids are `anchor_NNNN`, minted per connection in announcement order; the
+most recent one is what "this", "here", and "that" resolve to when a
+`record_unit` reference matches nothing else within 8 s.

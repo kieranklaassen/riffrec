@@ -67,6 +67,7 @@ export type {
 export {
   LIVE_TOOLS,
   LIVE_TOOL_NAMES,
+  LOOK_AT_SCREEN_TOOL,
   RECORD_UNIT_TOOL,
   RELAY_ANSWER_TOOL,
   UPDATE_UNIT_TOOL,
@@ -83,8 +84,20 @@ export type {
   LiveToolDefinition,
   LiveToolName,
   LiveToolResult,
+  LookAtScreenArgs,
   RecordUnitArgs,
   RelayAnswerArgs,
   UpdateUnitArgs,
   WithdrawUnitArgs
 } from "./tools";
+// The default persona and its screen-context section are data an endpoint
+// copies into its mint body (KTD4); no browser dependency.
+export {
+  BRIEF_MAX_CHARS,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
+  SCREEN_CONTEXT_MARKER,
+  SCREEN_CONTEXT_SECTION,
+  buildInterviewerInstructions,
+  hasScreenContext,
+  withScreenContext
+} from "./realtime/persona";

@@ -1,4 +1,4 @@
-"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { newObj[key] = obj[key]; } } } newObj.default = obj; return newObj; } } function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }require('./chunk-G4R6R3NJ.cjs');
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { newObj[key] = obj[key]; } } } newObj.default = obj; return newObj; } } function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }require('./chunk-7QKH5JWE.cjs');
 
 
 
@@ -12,7 +12,7 @@
 
 
 
-var _chunkHYYGBWIFcjs = require('./chunk-HYYGBWIF.cjs');
+var _chunkOGVGX2XHcjs = require('./chunk-OGVGX2XH.cjs');
 
 
 
@@ -37,7 +37,15 @@ var _chunkHYYGBWIFcjs = require('./chunk-HYYGBWIF.cjs');
 
 
 
-var _chunkWMHGUF6Ucjs = require('./chunk-WMHGUF6U.cjs');
+
+
+
+
+
+
+
+
+var _chunk4XWUXLDEcjs = require('./chunk-4XWUXLDE.cjs');
 
 // src/RiffrecProvider.tsx
 
@@ -114,12 +122,12 @@ var ZipWriter = class {
 function filterZipSessionFiles(files) {
   let recordingBytes = 0;
   for (const [filename, blob] of files) {
-    if (_chunkHYYGBWIFcjs.isRecordingFileName.call(void 0, filename)) recordingBytes += blob.size;
+    if (_chunkOGVGX2XHcjs.isRecordingFileName.call(void 0, filename)) recordingBytes += blob.size;
   }
   const dropRecordings = recordingBytes > MAX_RECORDING_IN_ZIP_BYTES;
   const filtered = /* @__PURE__ */ new Map();
   for (const [filename, blob] of files) {
-    if (dropRecordings && _chunkHYYGBWIFcjs.isRecordingFileName.call(void 0, filename)) {
+    if (dropRecordings && _chunkOGVGX2XHcjs.isRecordingFileName.call(void 0, filename)) {
       continue;
     }
     filtered.set(filename, blob);
@@ -148,10 +156,10 @@ function addLiveFiles(files, live) {
 function addRecordingFiles(files, screenBlob, segments) {
   const present = (_nullishCoalesce(segments, () => ( []))).filter((segment) => segment.size > 0);
   if (present.length > 0) {
-    present.forEach((segment, index) => files.set(_chunkHYYGBWIFcjs.segmentFileName.call(void 0, index + 1), segment));
+    present.forEach((segment, index) => files.set(_chunkOGVGX2XHcjs.segmentFileName.call(void 0, index + 1), segment));
     return;
   }
-  if (screenBlob) files.set(_chunkHYYGBWIFcjs.RECORDING_FILE_NAME, screenBlob);
+  if (screenBlob) files.set(_chunkOGVGX2XHcjs.RECORDING_FILE_NAME, screenBlob);
 }
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -250,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 var _jsxruntime = require('react/jsx-runtime');
-var LiveMount = _react.lazy.call(void 0, () => Promise.resolve().then(() => _interopRequireWildcard(require("./LiveOverlay-NFBVG6CP.cjs"))));
+var LiveMount = _react.lazy.call(void 0, () => Promise.resolve().then(() => _interopRequireWildcard(require("./LiveOverlay-QDQCOEXH.cjs"))));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
@@ -390,6 +398,7 @@ function RiffrecProvider({
 }) {
   const [status, setStatus] = _react.useState.call(void 0, "idle");
   const [isDownloadNoticeVisible, setDownloadNoticeVisible] = _react.useState.call(void 0, false);
+  const [liveFallbackReason, setLiveFallbackReason] = _react.useState.call(void 0, null);
   const statusRef = _react.useRef.call(void 0, "idle");
   const activeSession = _react.useRef.call(void 0, null);
   const configRef = _react.useRef.call(void 0, {
@@ -414,8 +423,8 @@ function RiffrecProvider({
   const didAutoStart = _react.useRef.call(void 0, false);
   const [hasLiveBootstrap] = _react.useState.call(void 0, () => {
     if (live === void 0 || typeof window === "undefined") return false;
-    if (_chunkHYYGBWIFcjs.parseLiveFragment.call(void 0, window.location.hash).bootstrap !== null) return true;
-    return _chunkHYYGBWIFcjs.readStoredBootstrap.call(void 0, ) !== null;
+    if (_chunkOGVGX2XHcjs.parseLiveFragment.call(void 0, window.location.hash).bootstrap !== null) return true;
+    return _chunkOGVGX2XHcjs.readStoredBootstrap.call(void 0, ) !== null;
   });
   const shouldAutoStart = _nullishCoalesce(_optionalChain([live, 'optionalAccess', _4 => _4.autoStart]), () => ( hasLiveBootstrap));
   _react.useEffect.call(void 0, () => {
@@ -457,19 +466,23 @@ function RiffrecProvider({
           setStatusNow("idle");
           return null;
         }
+        const fallback = stopped.endedBy === "stop";
+        const preference = _nullishCoalesce(stopped.options.download, () => ( _optionalChain([configRef, 'access', _5 => _5.current, 'access', _6 => _6.live, 'optionalAccess', _7 => _7.download])));
+        const download = fallback ? preference !== false : preference === true;
         const writer = new SessionWriter({ reactVersion: React.version });
         const result = await writer.stop(stopped.outputs, {
-          download: stopped.options.download,
+          download,
           live: stopped.live,
           recordingSegments: stopped.recordingSegments
         });
-        await _optionalChain([stopped, 'access', _5 => _5.options, 'access', _6 => _6.onSessionComplete, 'optionalCall', _7 => _7(result)]);
+        await _optionalChain([stopped, 'access', _8 => _8.options, 'access', _9 => _9.onSessionComplete, 'optionalCall', _10 => _10(result)]);
         setStatusNow("idle");
-        setDownloadNoticeVisible(stopped.options.download !== false && stopped.endedBy === "stop");
+        setLiveFallbackReason(fallback ? stopped.fallbackReason : null);
+        setDownloadNoticeVisible(download);
         return result;
       } catch (error) {
         liveActive.current = false;
-        _optionalChain([configRef, 'access', _8 => _8.current, 'access', _9 => _9.onError, 'optionalCall', _10 => _10(toError(error))]);
+        _optionalChain([configRef, 'access', _11 => _11.current, 'access', _12 => _12.onError, 'optionalCall', _13 => _13(toError(error))]);
         setStatusNow("error");
         return null;
       } finally {
@@ -518,14 +531,14 @@ function RiffrecProvider({
         reactVersion: React.version
       });
       const result = await writer.stop(outputs, { download: session.options.download });
-      await _optionalChain([session, 'access', _11 => _11.options, 'access', _12 => _12.onSessionComplete, 'optionalCall', _13 => _13(result)]);
+      await _optionalChain([session, 'access', _14 => _14.options, 'access', _15 => _15.onSessionComplete, 'optionalCall', _16 => _16(result)]);
       statusRef.current = "idle";
       setStatus("idle");
       setDownloadNoticeVisible(session.options.download !== false);
       return result;
     } catch (error) {
       const err = toError(error);
-      _optionalChain([configRef, 'access', _14 => _14.current, 'access', _15 => _15.onError, 'optionalCall', _16 => _16(err)]);
+      _optionalChain([configRef, 'access', _17 => _17.current, 'access', _18 => _18.onError, 'optionalCall', _19 => _19(err)]);
       statusRef.current = "error";
       setStatus("error");
       return null;
@@ -544,6 +557,7 @@ function RiffrecProvider({
     }
     if (isLiveConfigured) {
       setDownloadNoticeVisible(false);
+      setLiveFallbackReason(null);
       const handle = await awaitLiveHandle();
       if (!handle || liveActive.current || liveStopping.current) return;
       handle.begin(options);
@@ -551,14 +565,14 @@ function RiffrecProvider({
     }
     setDownloadNoticeVisible(false);
     const sessionStart = Date.now();
-    const screen = new (0, _chunkHYYGBWIFcjs.ScreenCapture)(
+    const screen = new (0, _chunkOGVGX2XHcjs.ScreenCapture)(
       configRef.current.displayMedia,
       configRef.current.displayMediaVideo
     );
-    const voice = new (0, _chunkHYYGBWIFcjs.VoiceCapture)();
-    const eventCapture = new (0, _chunkHYYGBWIFcjs.EventCapture)();
-    const networkCapture = new (0, _chunkHYYGBWIFcjs.NetworkCapture)();
-    const consoleCapture = new (0, _chunkHYYGBWIFcjs.ConsoleCapture)();
+    const voice = new (0, _chunkOGVGX2XHcjs.VoiceCapture)();
+    const eventCapture = new (0, _chunkOGVGX2XHcjs.EventCapture)();
+    const networkCapture = new (0, _chunkOGVGX2XHcjs.NetworkCapture)();
+    const consoleCapture = new (0, _chunkOGVGX2XHcjs.ConsoleCapture)();
     const events = [];
     const onEvent = (event) => events.push(event);
     const ownsGlobalPatchMarker = !window.__RIFFREC_PATCHED__;
@@ -600,7 +614,7 @@ function RiffrecProvider({
         delete window.__RIFFREC_PATCHED__;
       }
       const err = toError(error);
-      _optionalChain([configRef, 'access', _17 => _17.current, 'access', _18 => _18.onError, 'optionalCall', _19 => _19(err)]);
+      _optionalChain([configRef, 'access', _20 => _20.current, 'access', _21 => _21.onError, 'optionalCall', _22 => _22(err)]);
       statusRef.current = "error";
       setStatus("error");
       throw err;
@@ -659,7 +673,7 @@ function RiffrecProvider({
     void stopLive();
   }, [stopLive]);
   const handleLiveError = _react.useCallback.call(void 0, (error) => {
-    _optionalChain([configRef, 'access', _20 => _20.current, 'access', _21 => _21.onError, 'optionalCall', _22 => _22(error)]);
+    _optionalChain([configRef, 'access', _23 => _23.current, 'access', _24 => _24.onError, 'optionalCall', _25 => _25(error)]);
   }, []);
   _react.useEffect.call(void 0, () => {
     if (!isLiveConfigured || !shouldAutoStart || !isLiveReady || didAutoStart.current) return;
@@ -669,12 +683,12 @@ function RiffrecProvider({
   }, [isLiveConfigured, isLiveReady, shouldAutoStart, start]);
   const liveControls = _react.useMemo.call(void 0, 
     () => ({
-      status: isLiveConfigured ? _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _23 => _23.status]), () => ( "idle")) : "disabled",
-      mode: _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _24 => _24.mode]), () => ( DEFAULT_LIVE_MODE)),
-      setMode: (mode) => _optionalChain([liveHandle, 'access', _25 => _25.current, 'optionalAccess', _26 => _26.setMode, 'call', _27 => _27(mode)]),
-      muted: _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _28 => _28.muted]), () => ( false)),
-      setMuted: (muted) => _optionalChain([liveHandle, 'access', _29 => _29.current, 'optionalAccess', _30 => _30.setMuted, 'call', _31 => _31(muted)]),
-      send: () => _nullishCoalesce(_optionalChain([liveHandle, 'access', _32 => _32.current, 'optionalAccess', _33 => _33.send, 'call', _34 => _34()]), () => ( Promise.resolve(false))),
+      status: isLiveConfigured ? _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _26 => _26.status]), () => ( "idle")) : "disabled",
+      mode: _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _27 => _27.mode]), () => ( DEFAULT_LIVE_MODE)),
+      setMode: (mode) => _optionalChain([liveHandle, 'access', _28 => _28.current, 'optionalAccess', _29 => _29.setMode, 'call', _30 => _30(mode)]),
+      muted: _nullishCoalesce(_optionalChain([liveSnapshot, 'optionalAccess', _31 => _31.muted]), () => ( false)),
+      setMuted: (muted) => _optionalChain([liveHandle, 'access', _32 => _32.current, 'optionalAccess', _33 => _33.setMuted, 'call', _34 => _34(muted)]),
+      send: () => _nullishCoalesce(_optionalChain([liveHandle, 'access', _35 => _35.current, 'optionalAccess', _36 => _36.send, 'call', _37 => _37()]), () => ( Promise.resolve(false))),
       stop: stopLive
     }),
     [isLiveConfigured, liveSnapshot, stopLive]
@@ -724,7 +738,12 @@ function RiffrecProvider({
       /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "aria-hidden": "true", style: downloadNoticeIconStyle, children: "\u2713" }),
       /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { style: recordingTextStyle, children: [
         /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: recordingTitleStyle, children: downloadNoticeTitle }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: recordingHintStyle, children: downloadNoticeMessage })
+        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: recordingHintStyle, children: downloadNoticeMessage }),
+        liveFallbackReason ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-live-fallback-reason": "", style: recordingHintStyle, children: [
+          "Live endpoint did not confirm the end: ",
+          liveFallbackReason,
+          "."
+        ] }) : null
       ] }),
       /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
         "button",
@@ -943,5 +962,13 @@ function useRiffrec() {
 
 
 
-exports.ALWAYS_WAKE_TRIGGERS = _chunkWMHGUF6Ucjs.ALWAYS_WAKE_TRIGGERS; exports.CHECKPOINT_TRIGGERS = _chunkWMHGUF6Ucjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = _chunkHYYGBWIFcjs.DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = _chunkHYYGBWIFcjs.DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_EXECUTION_MODE = _chunkWMHGUF6Ucjs.DEFAULT_EXECUTION_MODE; exports.EXECUTION_MODES = _chunkWMHGUF6Ucjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunkWMHGUF6Ucjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunkWMHGUF6Ucjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunkWMHGUF6Ucjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunkWMHGUF6Ucjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunkWMHGUF6Ucjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunkWMHGUF6Ucjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunkWMHGUF6Ucjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunkWMHGUF6Ucjs.LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = _chunkWMHGUF6Ucjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunkWMHGUF6Ucjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.UNIT_STATUSES = _chunkWMHGUF6Ucjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunkWMHGUF6Ucjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunkWMHGUF6Ucjs.WITHDRAW_UNIT_TOOL; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunkWMHGUF6Ucjs.getLiveTool; exports.inspectEnvelope = _chunkWMHGUF6Ucjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunkWMHGUF6Ucjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunkWMHGUF6Ucjs.isLiveEventType; exports.isLiveToolName = _chunkWMHGUF6Ucjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunkWMHGUF6Ucjs.validateEnvelope;
+
+
+
+
+
+
+
+
+exports.ALWAYS_WAKE_TRIGGERS = _chunk4XWUXLDEcjs.ALWAYS_WAKE_TRIGGERS; exports.BRIEF_MAX_CHARS = _chunk4XWUXLDEcjs.BRIEF_MAX_CHARS; exports.CHECKPOINT_TRIGGERS = _chunk4XWUXLDEcjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = _chunkOGVGX2XHcjs.DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = _chunkOGVGX2XHcjs.DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_EXECUTION_MODE = _chunk4XWUXLDEcjs.DEFAULT_EXECUTION_MODE; exports.DEFAULT_INTERVIEWER_INSTRUCTIONS = _chunk4XWUXLDEcjs.DEFAULT_INTERVIEWER_INSTRUCTIONS; exports.EXECUTION_MODES = _chunk4XWUXLDEcjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunk4XWUXLDEcjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunk4XWUXLDEcjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunk4XWUXLDEcjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunk4XWUXLDEcjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunk4XWUXLDEcjs.LIVE_TOOL_NAMES; exports.LOOK_AT_SCREEN_TOOL = _chunk4XWUXLDEcjs.LOOK_AT_SCREEN_TOOL; exports.RECORD_UNIT_TOOL = _chunk4XWUXLDEcjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunk4XWUXLDEcjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.SCREEN_CONTEXT_MARKER = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_MARKER; exports.SCREEN_CONTEXT_SECTION = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_SECTION; exports.UNIT_STATUSES = _chunk4XWUXLDEcjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunk4XWUXLDEcjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunk4XWUXLDEcjs.WITHDRAW_UNIT_TOOL; exports.buildInterviewerInstructions = _chunk4XWUXLDEcjs.buildInterviewerInstructions; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunk4XWUXLDEcjs.getLiveTool; exports.hasScreenContext = _chunk4XWUXLDEcjs.hasScreenContext; exports.inspectEnvelope = _chunk4XWUXLDEcjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunk4XWUXLDEcjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunk4XWUXLDEcjs.isLiveEventType; exports.isLiveToolName = _chunk4XWUXLDEcjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunk4XWUXLDEcjs.validateEnvelope; exports.withScreenContext = _chunk4XWUXLDEcjs.withScreenContext;
 //# sourceMappingURL=index.cjs.map

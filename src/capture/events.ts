@@ -14,22 +14,29 @@ function isElement(value: EventTarget | null): value is Element {
 
 export { buildElementInfo, buildSelector };
 
+export interface EventCaptureOptions {
+  /** Clicks whose target satisfies this are not recorded (riffrec's own live overlay, for instance). */
+  ignore?: (target: Element) => boolean;
+}
+
 export class EventCapture {
   private onEvent: RiffrecEventSink | null = null;
   private sessionStart = 0;
+  private ignore: ((target: Element) => boolean) | null = null;
   private clickHandler: ((event: MouseEvent) => void) | null = null;
   private popstateHandler: (() => void) | null = null;
   private originalPushState: HistoryMethod | null = null;
   private originalReplaceState: HistoryMethod | null = null;
   private previousUrl: string | null = null;
 
-  start(sessionStart: number, onEvent: RiffrecEventSink): void {
+  start(sessionStart: number, onEvent: RiffrecEventSink, options: EventCaptureOptions = {}): void {
     if (typeof window === "undefined" || typeof document === "undefined" || this.onEvent) {
       return;
     }
 
     this.sessionStart = sessionStart;
     this.onEvent = onEvent;
+    this.ignore = options.ignore ?? null;
     this.previousUrl = window.location.href;
     this.clickHandler = (event) => this.handleClick(event);
     this.popstateHandler = () => this.emitNavigation(window.location.href);
@@ -58,6 +65,7 @@ export class EventCapture {
     }
 
     this.onEvent = null;
+    this.ignore = null;
     this.clickHandler = null;
     this.popstateHandler = null;
     this.originalPushState = null;
@@ -71,6 +79,9 @@ export class EventCapture {
     }
 
     const element = event.target;
+    if (this.ignore?.(element)) {
+      return;
+    }
     const clickEvent: ClickEvent = {
       t: timestamp(this.sessionStart),
       type: "click",

@@ -145,7 +145,14 @@ export interface RecordUnitInput {
 export interface FinishResult {
   checkpoint: LiveCheckpoint;
   finalAcked: boolean;
+  /** The endpoint confirmed the end (`/session/end` succeeded or `session_ended` arrived). */
   ended: boolean;
+  /**
+   * Why a streaming session's end was not confirmed, when it was not: the
+   * reason the zip fallback is about to run. Absent when the endpoint confirmed
+   * or when nothing streams.
+   */
+  failure?: string;
 }
 
 export interface LiveSessionEvents {
@@ -869,6 +876,21 @@ export class LiveSession {
     return [...this.frames];
   }
 
+  /**
+   * A frame the interviewer was shown is evidence the consumer should hold too:
+   * under `frames: "one"` it leaves the page now instead of waiting for a unit
+   * to reference it. No-op under `all` (already posted) and `none` (nothing
+   * leaves the page).
+   */
+  releaseFrame(frameId: string): void {
+    this.postHeldFrame(frameId);
+  }
+
+  /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
+  get framesLeavePage(): boolean {
+    return this.profile.frames !== "none";
+  }
+
   /** An utterance audio clip's bytes for the archive's `clips/` (I6); never posted. */
   addClip(id: string, blob: Blob): void {
     this.clipBytes.set(id, blob);
@@ -931,20 +953,31 @@ export class LiveSession {
   /**
    * Done control, end to end: `final` checkpoint, wait for its ack (or a
    * terminal stream state / timeout), then `POST /session/end`. The session
-   * ends when the endpoint confirms; `stop()` still assembles the archive.
+   * ends when the endpoint confirms; `stop()` still assembles the archive, and
+   * when the endpoint did not confirm the result says why, so the zip fallback
+   * that follows is never silent.
    */
   async finish(): Promise<FinishResult> {
     const checkpoint = this.final();
     let finalAcked = false;
+    let failure: string | undefined;
     if (this.client && this.finalSeq !== null) {
       finalAcked = await this.waitForAck(this.finalSeq, this.finalAckTimeoutMs);
+      if (!finalAcked) {
+        failure = this.client.isTerminal
+          ? `the stream is ${this.client.state}`
+          : `the final checkpoint was not acknowledged within ${Math.round(this.finalAckTimeoutMs / 1000)} s`;
+      }
     }
-    let ended = false;
-    if (this.client && this.token && this.endpointOrigin && !this.client.isTerminal) {
-      ended = await this.postSessionEnd();
+    let ended = this.phase === "ended";
+    if (!ended && this.client && this.token && this.endpointOrigin && !this.client.isTerminal) {
+      const outcome = await this.postSessionEnd();
+      ended = outcome.ok;
+      if (!outcome.ok) failure = outcome.failure;
     }
     if (ended && this.phase !== "ended") this.handleEnded("riffer_done");
-    return { checkpoint, finalAcked, ended };
+    if (!this.client || ended) return { checkpoint, finalAcked, ended };
+    return { checkpoint, finalAcked, ended, failure: failure ?? "the endpoint did not confirm the session end" };
   }
 
   allCheckpoints(): LiveCheckpoint[] {
@@ -1276,8 +1309,8 @@ export class LiveSession {
     });
   }
 
-  private async postSessionEnd(): Promise<boolean> {
-    if (!this.client) return false;
+  private async postSessionEnd(): Promise<{ ok: true } | { ok: false; failure: string }> {
+    if (!this.client) return { ok: false, failure: "no endpoint is configured" };
     const body = {
       schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
@@ -1295,9 +1328,11 @@ export class LiveSession {
         headers: this.client.headers({ "Content-Type": "application/json" }),
         body: JSON.stringify(body)
       });
-      return response.ok;
-    } catch {
-      return false;
+      if (response.ok) return { ok: true };
+      return { ok: false, failure: `POST /session/end returned ${response.status}` };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, failure: `POST /session/end failed: ${message}` };
     }
   }
 
