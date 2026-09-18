@@ -277,7 +277,7 @@ a {
 .sidebar__projects {
   list-style: none;
   margin: 0;
-  padding: 0 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -289,8 +289,16 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 0;
+  padding: 7px 10px;
+  border-radius: 6px;
   color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.sidebar__projects li:hover {
+  background: var(--bg);
 }
 
 .sidebar__projects .dot {
