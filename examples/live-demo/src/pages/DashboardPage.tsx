@@ -83,7 +83,10 @@ export function DashboardPage() {
                 <td>{order.customer}</td>
                 <td className="table__muted">{order.email}</td>
                 <td>
-                  <span className={`pill pill--${order.status}`}>{statusLabel(order.status)}</span>
+                  <span className={`pill pill--${order.status}`}>
+                    {statusLabel(order.status)}
+                    {order.status === 'paid' ? ` · $${order.amount.toFixed(2)}` : null}
+                  </span>
                 </td>
                 <td className="table__num">${order.amount.toFixed(2)}</td>
                 <td className="table__muted">{order.placedAt}</td>

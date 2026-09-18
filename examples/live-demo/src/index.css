@@ -334,10 +334,16 @@ a {
 .plan-card {
   position: relative;
   overflow: hidden;
-  background: var(--brand-soft);
+  /* Texture: a fine dot grid over two soft colour blooms, fading out behind the text. */
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--brand) 22%, transparent) 1px, transparent 0) 0 0 / 10px 10px,
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--brand) 26%, transparent) 0%, transparent 60%),
+    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, var(--blue) 18%, transparent) 0%, transparent 65%),
+    var(--brand-soft);
   border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px 12px 12px;
+  min-height: 108px;
   animation: plan-card-glow 3.2s ease-in-out infinite;
 }
 
@@ -665,9 +671,21 @@ a {
   color: var(--brand-strong);
 }
 
+/* Calm, not alarming: a neutral pill with a small red dot carries the state. */
 .pill--failed {
-  background: var(--red-soft);
-  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.pill--failed::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--red) 80%, white);
 }
 
 /* Feed */

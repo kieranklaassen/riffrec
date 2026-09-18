@@ -934,6 +934,38 @@ export function LiveOverlay({
         <div data-riffrec-live-pill="" style={{ ...pillStyle, zIndex: zIndex + 1 }}>
           <Wordmark />
           <LiveIndicator {...indicatorInput} compact />
+          {agentState === "working" ? (
+            <span
+              data-riffrec-live-pill-working={working || queued}
+              title="The agent is working on these now"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#6941c6", whiteSpace: "nowrap" }}
+            >
+              <span aria-hidden="true" style={{ ...dot("#7f56d9"), animation: "riffrec-live-pulse 1.4s ease-in-out infinite" }} />
+              {working || queued} working
+            </span>
+          ) : null}
+          {voiceRunning(snapshot) ? (
+            <button
+              type="button"
+              data-riffrec-live-pill-mute={snapshot.muted ? "muted" : "live"}
+              aria-pressed={snapshot.muted}
+              aria-label={snapshot.muted ? "Unmute microphone" : "Mute microphone"}
+              title={snapshot.muted ? "Mic muted: click to unmute (M)" : "Mic on: click to mute (M)"}
+              disabled={!canMute}
+              style={{
+                ...rowButtonStyle,
+                height: 26,
+                padding: "0 8px",
+                gap: 5,
+                borderRadius: 999,
+                ...(snapshot.muted ? { background: "#fef3f2", borderColor: "#fecdca", color: "#b42318" } : {})
+              }}
+              onClick={() => session.setMuted(!snapshot.muted)}
+            >
+              <span aria-hidden="true" style={dot(snapshot.muted ? "#f04438" : "#12b76a")} />
+              {snapshot.muted ? "Muted" : "Mic on"}
+            </button>
+          ) : null}
           {running && held > 0 ? <SendControl onSend={handleSend} heldCount={held} compact /> : null}
           <button
             type="button"

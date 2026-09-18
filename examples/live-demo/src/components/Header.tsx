@@ -35,6 +35,9 @@ export function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
         <NavLink to="/settings" className="header__link">
           Settings
         </NavLink>
+        <NavLink to="/fun" className="header__link">
+          Fun
+        </NavLink>
       </nav>
 
       <div className="header__right">

@@ -32,6 +32,7 @@ export type ActivityEvent = {
 
 export const stats: Stat[] = [
   { label: 'Revenue', value: '$48,210', delta: '+12.4%', trend: 'up', icon: 'revenue', tone: 'brand' },
+  { label: 'Churn', value: '2.1%', delta: '-0.4 pts', trend: 'down', icon: 'churn', tone: 'blue' },
   { label: 'Open tickets', value: '27', delta: '0', trend: 'flat', icon: 'tickets', tone: 'amber' },
 ]
 

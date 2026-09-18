@@ -258,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
-var LiveMount = lazy(() => import("./LiveOverlay-NSZHPGQF.js"));
+var LiveMount = lazy(() => import("./LiveOverlay-TIYS5AQE.js"));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
