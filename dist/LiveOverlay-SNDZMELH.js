@@ -7278,7 +7278,7 @@ function voiceUnavailableCause(reason) {
     case "connect_failed":
       return "couldn't connect to OpenAI Realtime";
     case "exhausted":
-      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "couldn't reach the endpoint";
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "can't reach the /ce-polish server";
     case "refused":
       switch (reason.reason) {
         case "openai_error":
@@ -8262,6 +8262,26 @@ function LiveOverlay({
                 ] }),
                 /* @__PURE__ */ jsxs12("div", { style: bodyStyle, children: [
                   errored && snapshot.error ? /* @__PURE__ */ jsx12("p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
+                  snapshot.status === "buffering" || snapshot.voiceUnavailable?.kind === "exhausted" ? /* @__PURE__ */ jsxs12(
+                    "p",
+                    {
+                      role: "alert",
+                      "data-riffrec-live-unreachable": "",
+                      style: {
+                        margin: "0 0 10px",
+                        padding: "8px 10px",
+                        border: "1px solid #fedf89",
+                        borderRadius: 8,
+                        background: "#fffaeb",
+                        color: "#7a2e0e",
+                        fontSize: 12
+                      },
+                      children: [
+                        /* @__PURE__ */ jsx12("strong", { style: { fontWeight: 600 }, children: "Can't reach the /ce-polish server." }),
+                        " If it was restarted, run /ce-polish again and open the new link it gives you. What you do here is held until then."
+                      ]
+                    }
+                  ) : null,
                   snapshot.status === "incompatible" ? /* @__PURE__ */ jsx12("p", { role: "alert", style: { margin: "0 0 10px", fontSize: 12, color: "#b42318" }, children: indicatorLabel }) : null,
                   onRetryVoice && running && snapshot.status === "live_novoice" && needsOpenAIKey(snapshot.voiceUnavailable) ? /* @__PURE__ */ jsx12(KeyPrompt, { reason: snapshot.voiceUnavailable, onRetry: onRetryVoice }) : null,
                   /* @__PURE__ */ jsx12(
@@ -8506,4 +8526,4 @@ export {
   NEXT_SESSION_PROBE_INTERVAL_MS,
   LiveMount as default
 };
-//# sourceMappingURL=LiveOverlay-IRBI5SSB.js.map
+//# sourceMappingURL=LiveOverlay-SNDZMELH.js.map

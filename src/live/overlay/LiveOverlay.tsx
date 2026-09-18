@@ -877,6 +877,24 @@ export function LiveOverlay({
                     {snapshot.error.message}
                   </p>
                 ) : null}
+                {snapshot.status === "buffering" || snapshot.voiceUnavailable?.kind === "exhausted" ? (
+                  <p
+                    role="alert"
+                    data-riffrec-live-unreachable=""
+                    style={{
+                      margin: "0 0 10px",
+                      padding: "8px 10px",
+                      border: "1px solid #fedf89",
+                      borderRadius: 8,
+                      background: "#fffaeb",
+                      color: "#7a2e0e",
+                      fontSize: 12
+                    }}
+                  >
+                    <strong style={{ fontWeight: 600 }}>Can't reach the /ce-polish server.</strong> If it was restarted, run
+                    /ce-polish again and open the new link it gives you. What you do here is held until then.
+                  </p>
+                ) : null}
                 {snapshot.status === "incompatible" ? (
                   <p role="alert" style={{ margin: "0 0 10px", fontSize: 12, color: "#b42318" }}>
                     {indicatorLabel}

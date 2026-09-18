@@ -70,7 +70,7 @@ export function voiceUnavailableCause(reason: VoiceUnavailableReason | null | un
     case "connect_failed":
       return "couldn't connect to OpenAI Realtime";
     case "exhausted":
-      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "couldn't reach the endpoint";
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "can't reach the /ce-polish server";
     case "refused":
       switch (reason.reason) {
         case "openai_error":

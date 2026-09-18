@@ -30,7 +30,7 @@ describe("voiceUnavailableCause", () => {
     [{ kind: "refused", reason: "openai_error", status: 502 }, "couldn't reach OpenAI"],
     [{ kind: "refused", reason: "no_key", status: 503 }, "the endpoint has no OpenAI key"],
     [{ kind: "refused", reason: "unauthorized", status: 401 }, "the endpoint rejected this page's token"],
-    [{ kind: "exhausted", reason: "network_error" }, "couldn't reach the endpoint"],
+    [{ kind: "exhausted", reason: "network_error" }, "can't reach the /ce-polish server"],
     [{ kind: "connect_failed", message: "ice failed" }, "couldn't connect to OpenAI Realtime"]
   ] as const)("names %j as %s", (reason, cause) => {
     expect(voiceUnavailableCause(reason)).toBe(cause);

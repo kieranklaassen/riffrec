@@ -7278,7 +7278,7 @@ function voiceUnavailableCause(reason) {
     case "connect_failed":
       return "couldn't connect to OpenAI Realtime";
     case "exhausted":
-      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "couldn't reach the endpoint";
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "can't reach the /ce-polish server";
     case "refused":
       switch (reason.reason) {
         case "openai_error":
@@ -8262,6 +8262,26 @@ function LiveOverlay({
                 ] }),
                 /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: bodyStyle, children: [
                   errored && snapshot.error ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
+                  snapshot.status === "buffering" || _optionalChain([snapshot, 'access', _291 => _291.voiceUnavailable, 'optionalAccess', _292 => _292.kind]) === "exhausted" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+                    "p",
+                    {
+                      role: "alert",
+                      "data-riffrec-live-unreachable": "",
+                      style: {
+                        margin: "0 0 10px",
+                        padding: "8px 10px",
+                        border: "1px solid #fedf89",
+                        borderRadius: 8,
+                        background: "#fffaeb",
+                        color: "#7a2e0e",
+                        fontSize: 12
+                      },
+                      children: [
+                        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { style: { fontWeight: 600 }, children: "Can't reach the /ce-polish server." }),
+                        " If it was restarted, run /ce-polish again and open the new link it gives you. What you do here is held until then."
+                      ]
+                    }
+                  ) : null,
                   snapshot.status === "incompatible" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { role: "alert", style: { margin: "0 0 10px", fontSize: 12, color: "#b42318" }, children: indicatorLabel }) : null,
                   onRetryVoice && running && snapshot.status === "live_novoice" && needsOpenAIKey(snapshot.voiceUnavailable) ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, KeyPrompt, { reason: snapshot.voiceUnavailable, onRetry: onRetryVoice }) : null,
                   /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
@@ -8464,7 +8484,7 @@ function LiveMount({
       runtimeRef.current = null;
     };
   }, []);
-  const handlePause = _react.useCallback.call(void 0, (paused) => _optionalChain([runtimeRef, 'access', _291 => _291.current, 'optionalAccess', _292 => _292.setPaused, 'call', _293 => _293(paused)]), []);
+  const handlePause = _react.useCallback.call(void 0, (paused) => _optionalChain([runtimeRef, 'access', _293 => _293.current, 'optionalAccess', _294 => _294.setPaused, 'call', _295 => _295(paused)]), []);
   if (!session) return null;
   const runtime = runtimeRef.current;
   return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, _jsxruntime.Fragment, { children: [
@@ -8472,15 +8492,15 @@ function LiveMount({
       LiveOverlay,
       {
         session,
-        profile: _optionalChain([runtime, 'optionalAccess', _294 => _294.consentProfile]),
+        profile: _optionalChain([runtime, 'optionalAccess', _296 => _296.consentProfile]),
         endpointOwner: config.endpointOwner,
         drawShortcut: config.drawShortcut,
         getUserMedia,
-        onConsent: (result) => _optionalChain([runtime, 'optionalAccess', _295 => _295.consent, 'call', _296 => _296(result)]),
-        onAnnotation: _optionalChain([runtime, 'optionalAccess', _297 => _297.annotation]),
-        onFinished: (result) => _optionalChain([runtime, 'optionalAccess', _298 => _298.finished, 'call', _299 => _299(result)]),
+        onConsent: (result) => _optionalChain([runtime, 'optionalAccess', _297 => _297.consent, 'call', _298 => _298(result)]),
+        onAnnotation: _optionalChain([runtime, 'optionalAccess', _299 => _299.annotation]),
+        onFinished: (result) => _optionalChain([runtime, 'optionalAccess', _300 => _300.finished, 'call', _301 => _301(result)]),
         onPauseChange: handlePause,
-        onRetryVoice: () => _optionalChain([runtime, 'optionalAccess', _300 => _300.retryVoice, 'call', _301 => _301()]),
+        onRetryVoice: () => _optionalChain([runtime, 'optionalAccess', _302 => _302.retryVoice, 'call', _303 => _303()]),
         nextSession,
         onStartNext: onStart
       }
@@ -8506,4 +8526,4 @@ function LiveMount({
 
 
 exports.NEXT_SESSION_PROBE_INTERVAL_MS = NEXT_SESSION_PROBE_INTERVAL_MS; exports.default = LiveMount;
-//# sourceMappingURL=LiveOverlay-RGCKNPH5.cjs.map
+//# sourceMappingURL=LiveOverlay-U35FNUAQ.cjs.map
