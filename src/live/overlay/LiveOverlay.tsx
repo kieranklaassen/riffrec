@@ -583,6 +583,12 @@ export function LiveOverlay({
     setSettingsOpen(false);
     setCleared(new Set());
     setFading(new Set());
+    // Ids restart at `ann_0001` / `unit_0001`, so what the last session captured and applied
+    // must go too, or the next session's marks never fade and its chime never rings.
+    for (const timer of markTimers.current) clearTimeout(timer);
+    markTimers.current = [];
+    seenMarks.current.clear();
+    appliedSeen.current = null;
     setFinished(false);
     setEndedReason(null);
     setDismissed(false);
@@ -708,11 +714,25 @@ export function LiveOverlay({
   }, [paused, controlledPaused]);
 
   const handleMode = useCallback((mode: ExecutionMode) => session.setMode(mode), [session]);
+
+  // A ref, not state: the S key, the Send button and Compound all release the same held batch,
+  // so a second one before the first settles must not wake the agent with a second checkpoint.
+  const sendInFlight = useRef(false);
+  /** The one guarded `send`; `null` when a send was already in flight and carries this batch. */
+  const sendHeld = useCallback(async (): Promise<boolean | null> => {
+    if (sendInFlight.current) return null;
+    sendInFlight.current = true;
+    try {
+      return await session.send();
+    } finally {
+      sendInFlight.current = false;
+    }
+  }, [session]);
   const handleSend = useCallback(async () => {
-    const emitted = await session.send();
-    flash(emitted ? "Sent" : "Nothing held to send");
-    return emitted;
-  }, [session, flash]);
+    const emitted = await sendHeld();
+    if (emitted !== null) flash(emitted ? "Sent" : "Nothing held to send");
+    return emitted === true;
+  }, [sendHeld, flash]);
   const handleWithdraw = useCallback((unitId: string) => void session.withdrawUnit(unitId, "riffer"), [session]);
   const handleAnswer = useCallback((unitId: string, text: string) => void session.answer(unitId, text), [session]);
 
@@ -752,11 +772,11 @@ export function LiveOverlay({
   const [compounding, setCompounding] = useState(false);
   const compound = useCallback(() => {
     session.recordUnit({ statement: COMPOUND_STATEMENT, transcript_excerpt: "", anchors: [] });
-    void session.send();
+    void sendHeld();
     setCompounding(true);
     setTimeout(() => setCompounding(false), COMPOUND_MS);
     flash("Compounding what you decided");
-  }, [session, flash]);
+  }, [session, sendHeld, flash]);
 
   const pickTool = useCallback((next: PageTool) => setTool((current) => (current === next ? "cursor" : next)), []);
   const endSession = useCallback(() => {
