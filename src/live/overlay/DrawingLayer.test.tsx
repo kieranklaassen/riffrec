@@ -256,9 +256,11 @@ describe("DrawingLayer", () => {
       { x: 60, y: 36 },
       { x: 160, y: 136 }
     ]);
-    expect(onAnnotation).not.toHaveBeenCalled();
     expect(document.querySelector("[data-riffrec-stroke-draft]")).toBeNull();
-    expect(document.querySelector("[data-riffrec-pin-composer]")).not.toBeNull();
+    expect(document.querySelector("[data-riffrec-pin-composer]")).toBeNull();
+    expect(onAnnotation).toHaveBeenCalledTimes(1);
+    expect(onAnnotation.mock.calls[0][0]).toMatchObject({ kind: "pin", points: [{ x: 60, y: 36 }] });
+    expect(onAnnotation.mock.calls[0][0].text).toBeUndefined();
   });
 
   it("renders annotations passed by prop after a remount", async () => {

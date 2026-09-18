@@ -80,6 +80,7 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
 .brand {
@@ -101,7 +102,7 @@ a {
 .header__nav {
   display: flex;
   gap: 4px;
-  margin-left: auto;
+  margin-left: 32px;
 }
 
 .header__link {

@@ -27,7 +27,7 @@ export interface DrawingLayerProps {
   pinOnTap?: boolean;
   /**
    * One tool at a time, as the page toolbar picks it: `draw` only strokes, `pin` only drops
-   * pins wherever the pointer goes down. Omitted, a drag strokes and a tap pins.
+   * pins (no note box) wherever the pointer goes down. Omitted, a drag strokes and a tap pins.
    */
   tool?: DrawingTool;
   zIndex?: number;
@@ -263,22 +263,29 @@ export function DrawingLayer({
     [anchorOptions, createId, onAnnotation]
   );
 
-  const completePin = useCallback(
-    (comment: string) => {
-      if (!pendingPin) return;
+  const emitPin = useCallback(
+    (pin: PendingPin, comment?: string) => {
       const options = anchorOptions();
-      const bbox = { x: pendingPin.point.x, y: pendingPin.point.y, width: 0, height: 0 };
+      const bbox = { x: pin.point.x, y: pin.point.y, width: 0, height: 0 };
       onAnnotation({
         id: createId(),
         kind: "pin",
-        points: [pendingPin.point],
+        points: [pin.point],
         bbox,
-        anchor: pendingPin.target ? buildAnchor(pendingPin.target, options) : buildFallbackAnchor(bbox, options),
-        text: comment
+        anchor: pin.target ? buildAnchor(pin.target, options) : buildFallbackAnchor(bbox, options),
+        ...(comment ? { text: comment } : {})
       });
+    },
+    [anchorOptions, createId, onAnnotation]
+  );
+
+  const completePin = useCallback(
+    (comment: string) => {
+      if (!pendingPin) return;
+      emitPin(pendingPin, comment);
       setPendingPin(null);
     },
-    [anchorOptions, createId, onAnnotation, pendingPin]
+    [emitPin, pendingPin]
   );
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -317,8 +324,9 @@ export function DrawingLayer({
     resetDraft();
 
     const start = points[0];
+    // The Pin tool drops the pin at once; the riffer says what it is about, no note box.
     if (tool === "pin") {
-      setPendingPin({ point: start, target: resolvePointTarget(start) });
+      emitPin({ point: start, target: resolvePointTarget(start) });
       return;
     }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);

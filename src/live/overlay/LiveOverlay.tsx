@@ -305,7 +305,7 @@ const TOOLS: { tool: PageTool; icon: string; label: string; key: string; title: 
 
 const TOOL_HINTS: Record<Exclude<PageTool, "cursor">, [string, string]> = {
   draw: ["Draw mode", "drag to circle or underline · Esc for cursor"],
-  pin: ["Pin mode", "click to drop a pin · Esc for cursor"]
+  pin: ["Pin mode", "click to drop a pin, then say what it is about · Esc for cursor"]
 };
 
 const LEGEND: [string, string][] = [

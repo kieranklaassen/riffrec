@@ -1059,22 +1059,28 @@ function DrawingLayer({
     },
     [anchorOptions, createId, onAnnotation]
   );
-  const completePin = _react.useCallback.call(void 0, 
-    (comment) => {
-      if (!pendingPin) return;
+  const emitPin = _react.useCallback.call(void 0, 
+    (pin, comment) => {
       const options = anchorOptions();
-      const bbox = { x: pendingPin.point.x, y: pendingPin.point.y, width: 0, height: 0 };
+      const bbox = { x: pin.point.x, y: pin.point.y, width: 0, height: 0 };
       onAnnotation({
         id: createId(),
         kind: "pin",
-        points: [pendingPin.point],
+        points: [pin.point],
         bbox,
-        anchor: pendingPin.target ? buildAnchor(pendingPin.target, options) : buildFallbackAnchor(bbox, options),
-        text: comment
+        anchor: pin.target ? buildAnchor(pin.target, options) : buildFallbackAnchor(bbox, options),
+        ...comment ? { text: comment } : {}
       });
+    },
+    [anchorOptions, createId, onAnnotation]
+  );
+  const completePin = _react.useCallback.call(void 0, 
+    (comment) => {
+      if (!pendingPin) return;
+      emitPin(pendingPin, comment);
       setPendingPin(null);
     },
-    [anchorOptions, createId, onAnnotation, pendingPin]
+    [emitPin, pendingPin]
   );
   const onPointerDown = (event) => {
     if (!active || event.button !== 0 || pointerIdRef.current !== null) return;
@@ -1109,7 +1115,7 @@ function DrawingLayer({
     resetDraft();
     const start = points[0];
     if (tool === "pin") {
-      setPendingPin({ point: start, target: resolvePointTarget(start) });
+      emitPin({ point: start, target: resolvePointTarget(start) });
       return;
     }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);
@@ -7746,7 +7752,7 @@ var TOOLS = [
 ];
 var TOOL_HINTS = {
   draw: ["Draw mode", "drag to circle or underline \xB7 Esc for cursor"],
-  pin: ["Pin mode", "click to drop a pin \xB7 Esc for cursor"]
+  pin: ["Pin mode", "click to drop a pin, then say what it is about \xB7 Esc for cursor"]
 };
 var LEGEND = [
   ["V", "cursor"],
@@ -8526,4 +8532,4 @@ function LiveMount({
 
 
 exports.NEXT_SESSION_PROBE_INTERVAL_MS = NEXT_SESSION_PROBE_INTERVAL_MS; exports.default = LiveMount;
-//# sourceMappingURL=LiveOverlay-U35FNUAQ.cjs.map
+//# sourceMappingURL=LiveOverlay-LCFAWHV3.cjs.map

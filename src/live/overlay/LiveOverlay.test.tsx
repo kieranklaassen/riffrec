@@ -727,7 +727,7 @@ describe("LiveOverlay", () => {
     expect(q("[data-riffrec-ended-card]")).toBeNull();
   });
 
-  it("Pin drops a pin wherever the pointer goes down, and Clear hides marks from the page only", async () => {
+  it("Pin drops a pin at once wherever the pointer goes down, and Clear hides marks from the page only", async () => {
     const h = harness();
     const session = await liveSession(h);
     (document as Document & { elementsFromPoint?: (x: number, y: number) => Element[] }).elementsFromPoint = () => [];
@@ -740,13 +740,7 @@ describe("LiveOverlay", () => {
       surface.dispatchEvent(pointer("pointermove", { x: 90, y: 90 }));
       surface.dispatchEvent(pointer("pointerup", { x: 90, y: 90 }));
     });
-    const composer = q("[data-riffrec-pin-composer]")!;
-    const textarea = composer.querySelector("textarea")!;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "bigger");
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => composer.querySelector<HTMLButtonElement>("button[type=submit]")!.click());
+    expect(q("[data-riffrec-pin-composer]")).toBeNull();
     expect(session.allAnnotations().map((annotation) => annotation.kind)).toEqual(["stroke", "pin"]);
     expect(q("[data-riffrec-live-toast]")!.textContent).toBe("Pin 1 added");
 
