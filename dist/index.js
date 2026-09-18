@@ -12,7 +12,7 @@ import {
   parseLiveFragment,
   readStoredBootstrap,
   segmentFileName
-} from "./chunk-ES6IDTXY.js";
+} from "./chunk-CBFDNQ3P.js";
 import {
   ALWAYS_WAKE_TRIGGERS,
   BRIEF_MAX_CHARS,
@@ -258,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
-var LiveMount = lazy(() => import("./LiveOverlay-7FXZD7KL.js"));
+var LiveMount = lazy(() => import("./LiveOverlay-LQJM63HJ.js"));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);

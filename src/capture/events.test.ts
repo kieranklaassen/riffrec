@@ -49,6 +49,17 @@ describe("event element capture", () => {
     });
   });
 
+  it("drops textarea, select, and contenteditable contents from the text of a wrapping element", () => {
+    document.body.innerHTML =
+      '<label id="wrap">Notes <textarea>my private draft</textarea> <select><option>Chosen option</option></select> <div contenteditable="true">typed here</div> <span>visible hint</span></label>';
+    const label = document.querySelector("#wrap")!;
+    const info = buildElementInfo(label);
+
+    expect(info.text).toBe("Notes visible hint");
+    expect(info.name).toBe('label "Notes visible hint"');
+    expect(JSON.stringify(info)).not.toMatch(/private draft|Chosen option|typed here/);
+  });
+
   it("does not capture text from password or hidden inputs", () => {
     document.body.innerHTML = '<input id="password" type="password" value="secret" />';
     const input = document.querySelector("input")!;

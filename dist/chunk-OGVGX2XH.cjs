@@ -1,4 +1,4 @@
-// src/output/segmentStore.ts
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } async function _asyncNullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return await rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }// src/output/segmentStore.ts
 var RECORDING_FILE_NAME = "recording.webm";
 var RECORDING_FILE_PATTERN = /^recording(-\d{3})?\.webm$/;
 function isRecordingFileName(name) {
@@ -12,7 +12,7 @@ async function assembleRecordingSegments(store, sessionId, replacements = /* @__
   const segments = await store.listSegments(sessionId);
   const blobs = [];
   for (const meta of segments.sort((a, b) => a.segment - b.segment)) {
-    const blob = replacements.get(meta.segment) ?? await store.readSegment(sessionId, meta.segment);
+    const blob = await _asyncNullishCoalesce(replacements.get(meta.segment), async () => ( await store.readSegment(sessionId, meta.segment)));
     if (blob && blob.size > 0) blobs.push(blob);
   }
   return blobs;
@@ -39,13 +39,13 @@ var DEFAULT_DISPLAY_MEDIA_OPTIONS = {
 };
 var RECORDING_TIMESLICE_MS = 1e3;
 function browserSupportsScreenCapture() {
-  return typeof window !== "undefined" && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia) && typeof MediaRecorder !== "undefined";
+  return typeof window !== "undefined" && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _ => _.mediaDevices, 'optionalAccess', _2 => _2.getDisplayMedia])) && typeof MediaRecorder !== "undefined";
 }
 function chooseVideoMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
     return "video/webm";
   }
-  return VIDEO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "video/webm";
+  return _nullishCoalesce(VIDEO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)), () => ( "video/webm"));
 }
 function isShareDeclined(error) {
   if (typeof error !== "object" || error === null) return false;
@@ -70,9 +70,9 @@ var ScreenCapture = class {
     this.onPageHide = () => this.handlePageHide();
     this.pageHideAttached = false;
     this.options = options;
-    this.sessionId = options.sessionId ?? null;
+    this.sessionId = _nullishCoalesce(options.sessionId, () => ( null));
     this.segmentStore = options.segmentStore && this.sessionId ? options.segmentStore : null;
-    this.timesliceMs = options.timesliceMs ?? RECORDING_TIMESLICE_MS;
+    this.timesliceMs = _nullishCoalesce(options.timesliceMs, () => ( RECORDING_TIMESLICE_MS));
     this.pageHideTarget = options.pageHideTarget === void 0 ? typeof window !== "undefined" ? window : null : options.pageHideTarget;
   }
   /** The live display stream, for frame grabbing; null until shared and after it ends. */
@@ -139,7 +139,7 @@ var ScreenCapture = class {
       return "recording";
     } catch (error) {
       if (isShareDeclined(error.cause)) return "declined";
-      this.options.onError?.(error);
+      _optionalChain([this, 'access', _3 => _3.options, 'access', _4 => _4.onError, 'optionalCall', _5 => _5(error)]);
       return "unavailable";
     }
   }
@@ -171,7 +171,7 @@ var ScreenCapture = class {
         const unstored = this.completedSegments.filter((entry) => entry.segment === null).map((entry) => entry.blob);
         return [...persisted, ...unstored];
       } catch (error) {
-        this.options.onError?.(error);
+        _optionalChain([this, 'access', _6 => _6.options, 'access', _7 => _7.onError, 'optionalCall', _8 => _8(error)]);
       }
     }
     return this.completedSegments.map((entry) => entry.blob);
@@ -182,7 +182,7 @@ var ScreenCapture = class {
     try {
       return (await this.segmentStore.listSegments(this.sessionId)).length > 0;
     } catch (error) {
-      this.options.onError?.(error);
+      _optionalChain([this, 'access', _9 => _9.options, 'access', _10 => _10.onError, 'optionalCall', _11 => _11(error)]);
       return false;
     }
   }
@@ -192,7 +192,7 @@ var ScreenCapture = class {
     await this.segmentStore.clear(this.sessionId);
   }
   isRecording() {
-    return this.recorder?.state === "recording";
+    return _optionalChain([this, 'access', _12 => _12.recorder, 'optionalAccess', _13 => _13.state]) === "recording";
   }
   /** A store that cannot open a segment degrades to in-memory recording rather than failing the share. */
   async openSegment() {
@@ -200,7 +200,7 @@ var ScreenCapture = class {
     try {
       return await this.segmentStore.openSegment(this.sessionId, this.mimeType);
     } catch (error) {
-      this.options.onError?.(error);
+      _optionalChain([this, 'access', _14 => _14.options, 'access', _15 => _15.onError, 'optionalCall', _16 => _16(error)]);
       return null;
     }
   }
@@ -211,14 +211,14 @@ var ScreenCapture = class {
     if (this.segmentStore && this.sessionId && segment !== null) {
       const write = this.segmentStore.appendChunk(this.sessionId, segment, index, chunk).catch((error) => {
         this.failedSegments.add(segment);
-        this.options.onError?.(error);
+        _optionalChain([this, 'access', _17 => _17.options, 'access', _18 => _18.onError, 'optionalCall', _19 => _19(error)]);
       });
       this.pendingWrites.push(write);
       void write.finally(() => {
         this.pendingWrites = this.pendingWrites.filter((pending) => pending !== write);
       });
     }
-    this.options.onChunk?.(chunk, segment, index);
+    _optionalChain([this, 'access', _20 => _20.options, 'access', _21 => _21.onChunk, 'optionalCall', _22 => _22(chunk, segment, index)]);
   }
   finishRecording(reason) {
     const recorder = this.recorder;
@@ -239,7 +239,7 @@ var ScreenCapture = class {
         else resolve(null);
       };
       if (recorder.state === "inactive") {
-        recorder.onstop?.(new Event("stop"));
+        _optionalChain([recorder, 'access', _23 => _23.onstop, 'optionalCall', _24 => _24(new Event("stop"))]);
       } else {
         recorder.stop();
       }
@@ -247,10 +247,10 @@ var ScreenCapture = class {
   }
   closeSegment(segment, reason) {
     if (this.segmentStore && this.sessionId && segment !== null) {
-      const close = this.segmentStore.closeSegment(this.sessionId, segment).catch((error) => this.options.onError?.(error));
+      const close = this.segmentStore.closeSegment(this.sessionId, segment).catch((error) => _optionalChain([this, 'access', _25 => _25.options, 'access', _26 => _26.onError, 'optionalCall', _27 => _27(error)]));
       this.pendingWrites.push(close);
     }
-    this.options.onSegmentClosed?.(segment, reason);
+    _optionalChain([this, 'access', _28 => _28.options, 'access', _29 => _29.onSegmentClosed, 'optionalCall', _30 => _30(segment, reason)]);
   }
   watchTracks(stream) {
     for (const track of stream.getVideoTracks()) {
@@ -261,11 +261,11 @@ var ScreenCapture = class {
     if (!this.stream || !this.stream.getVideoTracks().includes(track)) return;
     const wasRecording = this.recorder !== null;
     if (wasRecording) {
-      void this.finishRecording("track_ended").catch((error) => this.options.onError?.(error));
+      void this.finishRecording("track_ended").catch((error) => _optionalChain([this, 'access', _31 => _31.options, 'access', _32 => _32.onError, 'optionalCall', _33 => _33(error)]));
     } else {
       this.cleanupStream();
     }
-    this.options.onStreamEnded?.();
+    _optionalChain([this, 'access', _34 => _34.options, 'access', _35 => _35.onStreamEnded, 'optionalCall', _36 => _36()]);
   }
   /** KTD15: flush the in-flight timeslice and mark the segment closed before the page goes away. */
   handlePageHide() {
@@ -274,7 +274,7 @@ var ScreenCapture = class {
     try {
       if (recorder.state === "recording") recorder.requestData();
     } catch (error) {
-      this.options.onError?.(error);
+      _optionalChain([this, 'access', _37 => _37.options, 'access', _38 => _38.onError, 'optionalCall', _39 => _39(error)]);
     }
     this.closeSegment(this.segment, "pagehide");
   }
@@ -296,7 +296,7 @@ var ScreenCapture = class {
     this.detachPageHide();
   }
   cleanupStream() {
-    this.stream?.getTracks().forEach((track) => track.stop());
+    _optionalChain([this, 'access', _40 => _40.stream, 'optionalAccess', _41 => _41.getTracks, 'call', _42 => _42(), 'access', _43 => _43.forEach, 'call', _44 => _44((track) => track.stop())]);
     this.stream = null;
   }
 };
@@ -374,20 +374,20 @@ function readDisplayName(type) {
   if (!isComponentType(type)) {
     return null;
   }
-  const candidate = type.displayName ?? type.name;
+  const candidate = _nullishCoalesce(type.displayName, () => ( type.name));
   if (!candidate || isMinifiedName(candidate) || isFrameworkInternal(candidate)) {
     return null;
   }
   return candidate;
 }
 function getDataComponent(el) {
-  const candidate = el.closest("[data-component]")?.dataset.component ?? null;
+  const candidate = _nullishCoalesce(_optionalChain([el, 'access', _45 => _45.closest, 'call', _46 => _46("[data-component]"), 'optionalAccess', _47 => _47.dataset, 'access', _48 => _48.component]), () => ( null));
   return candidate && candidate.trim().length > 0 ? candidate : null;
 }
 function getReactFiberKey(el) {
-  return Object.keys(el).find(
+  return _nullishCoalesce(Object.keys(el).find(
     (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
-  ) ?? null;
+  ), () => ( null));
 }
 function getComponentNameFromFiber(fiber) {
   const tag = fiber.tag;
@@ -396,15 +396,15 @@ function getComponentNameFromFiber(fiber) {
   }
   if (tag === FiberTags.ForwardRef) {
     const elementType = fiber.elementType;
-    return readDisplayName(elementType?.render) ?? readDisplayName(elementType) ?? readDisplayName(fiber.type);
+    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _49 => _49.render])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
   }
   if (tag === FiberTags.MemoComponent || tag === FiberTags.SimpleMemoComponent) {
     const elementType = fiber.elementType;
-    return readDisplayName(elementType?.type) ?? readDisplayName(elementType) ?? readDisplayName(fiber.type);
+    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _50 => _50.type])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
   }
   if (tag === FiberTags.ContextProvider) {
     const type = fiber.type;
-    const name = type?._context?.displayName;
+    const name = _optionalChain([type, 'optionalAccess', _51 => _51._context, 'optionalAccess', _52 => _52.displayName]);
     return name && !isMinifiedName(name) ? `${name}.Provider` : null;
   }
   if (tag === FiberTags.ContextConsumer) {
@@ -413,12 +413,12 @@ function getComponentNameFromFiber(fiber) {
   }
   if (tag === FiberTags.LazyComponent) {
     const elementType = fiber.elementType;
-    return elementType?._status === 1 ? readDisplayName(elementType._result) : null;
+    return _optionalChain([elementType, 'optionalAccess', _53 => _53._status]) === 1 ? readDisplayName(elementType._result) : null;
   }
   if (typeof fiber.type === "string") {
     return null;
   }
-  return readDisplayName(fiber.type) ?? readDisplayName(fiber.elementType);
+  return _nullishCoalesce(readDisplayName(fiber.type), () => ( readDisplayName(fiber.elementType)));
 }
 function getComponentPath(el) {
   if (!el) {
@@ -430,7 +430,7 @@ function getComponentPath(el) {
     if (!fiberKey) {
       return dataComponent ? [dataComponent] : null;
     }
-    let fiber = el[fiberKey] ?? null;
+    let fiber = _nullishCoalesce(el[fiberKey], () => ( null));
     const components = [];
     let depth = 0;
     while (fiber && depth < MAX_DEPTH && components.length < MAX_COMPONENTS) {
@@ -438,14 +438,14 @@ function getComponentPath(el) {
       if (componentName) {
         components.push(componentName);
       }
-      fiber = fiber.return ?? null;
+      fiber = _nullishCoalesce(fiber.return, () => ( null));
       depth++;
     }
     if (components.length === 0) {
       return dataComponent ? [dataComponent] : null;
     }
     return components.reverse();
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -455,7 +455,7 @@ function getComponentName(el) {
   if (!path || path.length === 0) {
     return dataComponent;
   }
-  return path[path.length - 1] ?? dataComponent;
+  return _nullishCoalesce(path[path.length - 1], () => ( dataComponent));
 }
 
 // src/capture/console.ts
@@ -464,7 +464,7 @@ function timestamp(sessionStart) {
 }
 function isTestEnvironment() {
   const maybeProcess = globalThis;
-  const nodeEnv = maybeProcess.process?.env?.NODE_ENV;
+  const nodeEnv = _optionalChain([maybeProcess, 'access', _54 => _54.process, 'optionalAccess', _55 => _55.env, 'optionalAccess', _56 => _56.NODE_ENV]);
   return nodeEnv === "test" || typeof globalThis !== "undefined" && "jest" in globalThis || typeof globalThis !== "undefined" && "vi" in globalThis;
 }
 function stringifyConsoleArgs(args) {
@@ -477,13 +477,13 @@ function stringifyConsoleArgs(args) {
     }
     try {
       return JSON.stringify(arg);
-    } catch {
+    } catch (e2) {
       return String(arg);
     }
   }).join(" ");
 }
 function readStack(value) {
-  return value instanceof Error ? value.stack ?? null : null;
+  return value instanceof Error ? _nullishCoalesce(value.stack, () => ( null)) : null;
 }
 var ConsoleCapture = class {
   constructor() {
@@ -526,7 +526,7 @@ var ConsoleCapture = class {
     window.onerror = (message, source, lineno, colno, error) => {
       const renderedMessage = [
         String(message),
-        source ? `at ${source}:${lineno ?? 0}:${colno ?? 0}` : null
+        source ? `at ${source}:${_nullishCoalesce(lineno, () => ( 0))}:${_nullishCoalesce(colno, () => ( 0))}` : null
       ].filter(Boolean).join(" ");
       this.emit(renderedMessage, readStack(error));
       if (this.originalOnError) {
@@ -538,8 +538,8 @@ var ConsoleCapture = class {
   patchConsoleError() {
     this.originalConsoleError = console.error;
     console.error = (...args) => {
-      this.emit(stringifyConsoleArgs(args), args.map(readStack).find(Boolean) ?? null);
-      this.originalConsoleError?.(...args);
+      this.emit(stringifyConsoleArgs(args), _nullishCoalesce(args.map(readStack).find(Boolean), () => ( null)));
+      _optionalChain([this, 'access', _57 => _57.originalConsoleError, 'optionalCall', _58 => _58(...args)]);
     };
   }
   patchUnhandledRejection() {
@@ -557,7 +557,7 @@ var ConsoleCapture = class {
     let sanitizedMessage = message;
     try {
       sanitizedMessage = this.sanitize ? this.sanitize(message, stack) : message;
-    } catch {
+    } catch (e3) {
       sanitizedMessage = message;
     }
     const event = {
@@ -565,7 +565,7 @@ var ConsoleCapture = class {
       type: "console_error",
       message: sanitizedMessage,
       stack,
-      component: typeof document !== "undefined" ? getComponentName(document.activeElement ?? document.body) : null
+      component: typeof document !== "undefined" ? getComponentName(_nullishCoalesce(document.activeElement, () => ( document.body))) : null
     };
     this.onEvent(event);
   }
@@ -696,6 +696,23 @@ function isUnsafeTextElement(el) {
   }
   return el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el instanceof HTMLElement && el.getAttribute("aria-hidden") === "true";
 }
+var CONTROL_TEXT_SELECTOR = "textarea, select, [contenteditable='']:not([contenteditable='false']), [contenteditable='true'], [contenteditable='plaintext-only']";
+function isControlTextNode(node) {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element !== null && element.closest(CONTROL_TEXT_SELECTOR) !== null;
+}
+function visibleTextContent(el) {
+  if (!el.querySelector(CONTROL_TEXT_SELECTOR)) {
+    return _nullishCoalesce(el.textContent, () => ( ""));
+  }
+  const doc = el.ownerDocument;
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const parts = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!isControlTextNode(node)) parts.push(_nullishCoalesce(node.textContent, () => ( "")));
+  }
+  return parts.join("");
+}
 function safeTextContent(el, limit = TEXT_LIMIT) {
   if (isUnsafeTextElement(el)) {
     return null;
@@ -703,7 +720,7 @@ function safeTextContent(el, limit = TEXT_LIMIT) {
   if (el instanceof HTMLInputElement) {
     return null;
   }
-  const text = el.textContent?.replace(/\s+/g, " ").trim();
+  const text = visibleTextContent(el).replace(/\s+/g, " ").trim();
   return text ? truncate(text, limit) : null;
 }
 function identifyElement(el) {
@@ -719,7 +736,7 @@ function identifyElement(el) {
   }
   if (tag === "svg") {
     const parent = getParentElement(el);
-    if (parent?.tagName.toLowerCase() === "button") {
+    if (_optionalChain([parent, 'optionalAccess', _59 => _59.tagName, 'access', _60 => _60.toLowerCase, 'call', _61 => _61()]) === "button") {
       const text = safeTextContent(parent);
       return text ? `icon in "${truncate(text, 25)}" button` : "button icon";
     }
@@ -890,7 +907,7 @@ var EventCapture = class {
     }
     this.sessionStart = sessionStart;
     this.onEvent = onEvent;
-    this.ignore = options.ignore ?? null;
+    this.ignore = _nullishCoalesce(options.ignore, () => ( null));
     this.previousUrl = window.location.href;
     this.clickHandler = (event) => this.handleClick(event);
     this.popstateHandler = () => this.emitNavigation(window.location.href);
@@ -927,7 +944,7 @@ var EventCapture = class {
       return;
     }
     const element = event.target;
-    if (this.ignore?.(element)) {
+    if (_optionalChain([this, 'access', _62 => _62.ignore, 'optionalCall', _63 => _63(element)])) {
       return;
     }
     const clickEvent = {
@@ -956,7 +973,7 @@ var EventCapture = class {
     if (!this.onEvent) {
       return;
     }
-    const from = this.previousUrl ?? nextUrl;
+    const from = _nullishCoalesce(this.previousUrl, () => ( nextUrl));
     if (from === nextUrl) {
       return;
     }
@@ -1001,7 +1018,7 @@ function extractRequestUrl(input) {
   return input.url;
 }
 function extractRequestMethod(input, init) {
-  if (init?.method) {
+  if (_optionalChain([init, 'optionalAccess', _64 => _64.method])) {
     return init.method.toUpperCase();
   }
   if (typeof input === "object" && "method" in input && input.method) {
@@ -1023,7 +1040,7 @@ function redactUrl(value) {
       return `${url.pathname}${url.search}${url.hash}`.replace(/%5Bredacted%5D/g, "[redacted]");
     }
     return url.href.replace(/%5Bredacted%5D/g, "[redacted]");
-  } catch {
+  } catch (e4) {
     const hashIndex = value.indexOf("#");
     const withoutHash = hashIndex === -1 ? value : value.slice(0, hashIndex);
     const hash = hashIndex === -1 ? "" : redactFragment(value.slice(hashIndex));
@@ -1112,9 +1129,9 @@ var NetworkCapture = class {
         this,
         method,
         url,
-        async ?? true,
-        username ?? void 0,
-        password ?? void 0
+        _nullishCoalesce(async, () => ( true)),
+        _nullishCoalesce(username, () => ( void 0)),
+        _nullishCoalesce(password, () => ( void 0))
       );
     };
     XMLHttpRequest.prototype.send = function send(body) {
@@ -1154,13 +1171,13 @@ function browserSupportsMediaRecorder() {
   return typeof window !== "undefined" && typeof MediaRecorder !== "undefined";
 }
 function browserSupportsVoiceCapture() {
-  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _65 => _65.mediaDevices, 'optionalAccess', _66 => _66.getUserMedia]));
 }
 function chooseAudioMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
     return "audio/webm";
   }
-  return AUDIO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "audio/webm";
+  return _nullishCoalesce(AUDIO_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)), () => ( "audio/webm"));
 }
 var VoiceCapture = class {
   constructor() {
@@ -1225,14 +1242,14 @@ var VoiceCapture = class {
         resolve(null);
       };
       if (recorder.state === "inactive") {
-        recorder.onstop?.(new Event("stop"));
+        _optionalChain([recorder, 'access', _67 => _67.onstop, 'optionalCall', _68 => _68(new Event("stop"))]);
       } else {
         recorder.stop();
       }
     });
   }
   isRecording() {
-    return this.recorder?.state === "recording";
+    return _optionalChain([this, 'access', _69 => _69.recorder, 'optionalAccess', _70 => _70.state]) === "recording";
   }
   /** The stream being recorded, so a mute can be asserted against its tracks. */
   get activeStream() {
@@ -1243,7 +1260,7 @@ var VoiceCapture = class {
     this.cleanupStream();
   }
   cleanupStream() {
-    if (this.ownsStream) this.stream?.getTracks().forEach((track) => track.stop());
+    if (this.ownsStream) _optionalChain([this, 'access', _71 => _71.stream, 'optionalAccess', _72 => _72.getTracks, 'call', _73 => _73(), 'access', _74 => _74.forEach, 'call', _75 => _75((track) => track.stop())]);
     this.stream = null;
     this.ownsStream = false;
   }
@@ -1257,7 +1274,7 @@ var nativeReplaceState = typeof History !== "undefined" && typeof History.protot
 function defaultStorage() {
   try {
     return typeof sessionStorage !== "undefined" ? sessionStorage : null;
-  } catch {
+  } catch (e5) {
     return null;
   }
 }
@@ -1266,7 +1283,7 @@ function normalizeOrigin(value) {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     return url.origin;
-  } catch {
+  } catch (e6) {
     return null;
   }
 }
@@ -1293,19 +1310,19 @@ function readStoredBootstrap(storage = defaultStorage()) {
     const parsed = JSON.parse(raw);
     if (typeof parsed.token !== "string" || typeof parsed.endpoint !== "string") return null;
     return { token: parsed.token, endpoint: parsed.endpoint };
-  } catch {
+  } catch (e7) {
     return null;
   }
 }
 function clearStoredBootstrap(storage = defaultStorage()) {
   try {
-    storage?.removeItem(LIVE_BOOTSTRAP_STORAGE_KEY);
-  } catch {
+    _optionalChain([storage, 'optionalAccess', _76 => _76.removeItem, 'call', _77 => _77(LIVE_BOOTSTRAP_STORAGE_KEY)]);
+  } catch (e8) {
   }
 }
 function bootstrapLiveToken(options = {}) {
-  const location = options.location ?? (typeof window !== "undefined" ? window.location : null);
-  const history = options.history ?? (typeof window !== "undefined" ? window.history : null);
+  const location = _nullishCoalesce(options.location, () => ( (typeof window !== "undefined" ? window.location : null)));
+  const history = _nullishCoalesce(options.history, () => ( (typeof window !== "undefined" ? window.history : null)));
   const storage = options.storage === void 0 ? defaultStorage() : options.storage;
   const replaceState = options.replaceState === void 0 ? nativeReplaceState : options.replaceState;
   if (!location) return readStoredBootstrap(storage);
@@ -1319,33 +1336,33 @@ function bootstrapLiveToken(options = {}) {
       } else {
         history.replaceState(history.state, "", cleaned);
       }
-    } catch {
+    } catch (e9) {
     }
   }
   if (!bootstrap) return readStoredBootstrap(storage);
   try {
-    storage?.setItem(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap));
-  } catch {
+    _optionalChain([storage, 'optionalAccess', _78 => _78.setItem, 'call', _79 => _79(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap))]);
+  } catch (e10) {
   }
   return bootstrap;
 }
 
-export {
-  getComponentName,
-  ConsoleCapture,
-  buildSelector,
-  EventCapture,
-  NetworkCapture,
-  RECORDING_FILE_NAME,
-  isRecordingFileName,
-  segmentFileName,
-  DEFAULT_DISPLAY_MEDIA_VIDEO,
-  DEFAULT_DISPLAY_MEDIA_OPTIONS,
-  ScreenCapture,
-  VoiceCapture,
-  parseLiveFragment,
-  readStoredBootstrap,
-  clearStoredBootstrap,
-  bootstrapLiveToken
-};
-//# sourceMappingURL=chunk-ES6IDTXY.js.map
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.getComponentName = getComponentName; exports.ConsoleCapture = ConsoleCapture; exports.buildSelector = buildSelector; exports.EventCapture = EventCapture; exports.NetworkCapture = NetworkCapture; exports.RECORDING_FILE_NAME = RECORDING_FILE_NAME; exports.isRecordingFileName = isRecordingFileName; exports.segmentFileName = segmentFileName; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.ScreenCapture = ScreenCapture; exports.VoiceCapture = VoiceCapture; exports.parseLiveFragment = parseLiveFragment; exports.readStoredBootstrap = readStoredBootstrap; exports.clearStoredBootstrap = clearStoredBootstrap; exports.bootstrapLiveToken = bootstrapLiveToken;
+//# sourceMappingURL=chunk-OGVGX2XH.cjs.map

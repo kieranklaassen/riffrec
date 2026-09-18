@@ -159,6 +159,32 @@ function isUnsafeTextElement(el: Element): boolean {
   );
 }
 
+/** Descendants whose text is what a person typed or picked, not what the page shows them. */
+const CONTROL_TEXT_SELECTOR = "textarea, select, [contenteditable='']:not([contenteditable='false']), [contenteditable='true'], [contenteditable='plaintext-only']";
+
+function isControlTextNode(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element !== null && element.closest(CONTROL_TEXT_SELECTOR) !== null;
+}
+
+/**
+ * The element's text without its form controls: a label wrapping a textarea, a
+ * card holding a select, or a container with an editable region must not carry
+ * what the person typed or chose into `events.json` or to the interviewer.
+ */
+function visibleTextContent(el: Element): string {
+  if (!el.querySelector(CONTROL_TEXT_SELECTOR)) {
+    return el.textContent ?? "";
+  }
+  const doc = el.ownerDocument;
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!isControlTextNode(node)) parts.push(node.textContent ?? "");
+  }
+  return parts.join("");
+}
+
 function safeTextContent(el: Element, limit = TEXT_LIMIT): string | null {
   if (isUnsafeTextElement(el)) {
     return null;
@@ -168,7 +194,7 @@ function safeTextContent(el: Element, limit = TEXT_LIMIT): string | null {
     return null;
   }
 
-  const text = el.textContent?.replace(/\s+/g, " ").trim();
+  const text = visibleTextContent(el).replace(/\s+/g, " ").trim();
   return text ? truncate(text, limit) : null;
 }
 

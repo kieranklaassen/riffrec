@@ -338,24 +338,29 @@ export class StreamClient {
         this.markEnded(body && typeof body.reason === "string" ? body.reason : "session_ended");
         return "stop";
       case 400: {
-        // The endpoint refused an envelope as malformed (I3: `400 { reason, seq }`).
-        // Retrying it unchanged would block every envelope behind it, so it is
-        // replaced in place — a smaller copy first, then a same-seq filler —
-        // and only when nothing smaller is left does the rejection count as a
-        // failure, so a stream the endpoint refuses outright surfaces as
-        // buffering instead of spinning.
+        // The endpoint refused one envelope as malformed (I3: `400 { reason, seq }`).
+        // Retrying it unchanged would block every envelope behind it, so that
+        // envelope is replaced in place — a smaller copy first, then a same-seq
+        // filler. Only a contract-shaped body naming a seq in this batch is
+        // read that way: a 400 from a proxy or tunnel, or one about the body as
+        // a whole, says nothing about any single envelope and is a plain
+        // failure, so the batch stays queued and replays.
         const seq = body && typeof body.seq === "number" ? body.seq : null;
-        const targets =
-          seq !== null && envelopes.some((envelope) => envelope.seq === seq) ? [seq] : envelopes.map((envelope) => envelope.seq);
-        const reason = body && typeof body.reason === "string" ? body.reason : "invalid_envelope";
-        const t = this.options.elapsed?.() ?? 0;
-        const replaced = targets.filter((target) => this.queue.replaceRejected(target, t) !== null);
-        const label = targets.length === 1 ? `seq ${targets[0]}` : `seq ${targets.join(", ")}`;
-        if (replaced.length === 0) {
-          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting ${label} as ${reason}`));
+        const reason = body && typeof body.reason === "string" ? body.reason : null;
+        if (seq === null || !envelopes.some((envelope) => envelope.seq === seq)) {
+          this.recordFailure(new Error(`riffrec live: POST /events returned 400${reason ? ` (${reason})` : ""}`));
           return "stop";
         }
-        this.options.onError?.(new Error(`riffrec live: the endpoint rejected ${label} as ${reason}; replaced with a placeholder so the stream keeps moving`));
+        const replaced = this.queue.replaceRejected(seq, this.options.elapsed?.() ?? 0);
+        if (!replaced) {
+          // Already a filler and still refused: nothing smaller exists, so the
+          // stream the endpoint refuses outright surfaces as buffering.
+          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting seq ${seq} as ${reason ?? "invalid"}`));
+          return "stop";
+        }
+        this.options.onError?.(
+          new Error(`riffrec live: the endpoint rejected seq ${seq} as ${reason ?? "invalid"}; replaced with a placeholder so the stream keeps moving`)
+        );
         this.options.onQueueChange?.();
         return "continue";
       }

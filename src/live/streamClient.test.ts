@@ -303,6 +303,53 @@ describe("StreamClient", () => {
     client.close();
   });
 
+  it("a 400 without a seq in the batch (a proxy page, a body-level error) is a plain failure and the batch stays queued", async () => {
+    const h = harness();
+    const errors: unknown[] = [];
+    const bodies = [
+      new Response("<html>Bad Request</html>", { status: 400, headers: { "Content-Type": "text/html" } }),
+      new Response(JSON.stringify({ error: "body must be an envelope or an array of envelopes" }), { status: 400 }),
+      new Response(JSON.stringify({ reason: "invalid_payload", seq: 999 }), { status: 400 })
+    ];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/events") && init?.method === "POST") {
+        const canned = bodies.shift();
+        if (canned) return canned;
+      }
+      return h.endpoint.fetch(input, init);
+    };
+    const states: StreamClientState[] = [];
+    const client = new StreamClient({
+      endpoint: h.endpoint.baseUrl,
+      token: h.endpoint.pageToken,
+      sessionId: SESSION_ID,
+      queue: h.queue,
+      fetch: fetchImpl,
+      schedule: (callback) => queueMicrotask(callback),
+      backoffMs: [1, 1, 1],
+      onStateChange: (state) => states.push(state),
+      onError: (error) => errors.push(error)
+    });
+    client.start();
+    client.enqueue(micEnvelope(1));
+    client.enqueue(micEnvelope(2));
+
+    await vi.waitFor(() => expect(client.ackedSeq).toBe(2));
+
+    expect(states).toEqual(["streaming", "buffering", "streaming"]);
+    expect(h.endpoint.received.map((entry) => [entry.seq, entry.type])).toEqual([
+      [1, "mic"],
+      [2, "mic"]
+    ]);
+    expect(h.queue.evictions).toBe(0);
+    expect(errors.map(String)).toEqual([
+      "Error: riffrec live: POST /events returned 400",
+      "Error: riffrec live: POST /events returned 400",
+      "Error: riffrec live: POST /events returned 400 (invalid_payload)"
+    ]);
+    client.close();
+  });
+
   it("a 400 that survives the filler counts as a failure, so a stream the endpoint refuses shows as buffering", async () => {
     const h = harness();
     const fetchImpl: typeof fetch = async (input, init) => {

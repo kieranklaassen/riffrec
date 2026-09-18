@@ -12,7 +12,7 @@
 
 
 
-var _chunkDQNE5VTNcjs = require('./chunk-DQNE5VTN.cjs');
+var _chunkOGVGX2XHcjs = require('./chunk-OGVGX2XH.cjs');
 
 
 
@@ -122,12 +122,12 @@ var ZipWriter = class {
 function filterZipSessionFiles(files) {
   let recordingBytes = 0;
   for (const [filename, blob] of files) {
-    if (_chunkDQNE5VTNcjs.isRecordingFileName.call(void 0, filename)) recordingBytes += blob.size;
+    if (_chunkOGVGX2XHcjs.isRecordingFileName.call(void 0, filename)) recordingBytes += blob.size;
   }
   const dropRecordings = recordingBytes > MAX_RECORDING_IN_ZIP_BYTES;
   const filtered = /* @__PURE__ */ new Map();
   for (const [filename, blob] of files) {
-    if (dropRecordings && _chunkDQNE5VTNcjs.isRecordingFileName.call(void 0, filename)) {
+    if (dropRecordings && _chunkOGVGX2XHcjs.isRecordingFileName.call(void 0, filename)) {
       continue;
     }
     filtered.set(filename, blob);
@@ -156,10 +156,10 @@ function addLiveFiles(files, live) {
 function addRecordingFiles(files, screenBlob, segments) {
   const present = (_nullishCoalesce(segments, () => ( []))).filter((segment) => segment.size > 0);
   if (present.length > 0) {
-    present.forEach((segment, index) => files.set(_chunkDQNE5VTNcjs.segmentFileName.call(void 0, index + 1), segment));
+    present.forEach((segment, index) => files.set(_chunkOGVGX2XHcjs.segmentFileName.call(void 0, index + 1), segment));
     return;
   }
-  if (screenBlob) files.set(_chunkDQNE5VTNcjs.RECORDING_FILE_NAME, screenBlob);
+  if (screenBlob) files.set(_chunkOGVGX2XHcjs.RECORDING_FILE_NAME, screenBlob);
 }
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -258,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 var _jsxruntime = require('react/jsx-runtime');
-var LiveMount = _react.lazy.call(void 0, () => Promise.resolve().then(() => _interopRequireWildcard(require("./LiveOverlay-OURCDSW5.cjs"))));
+var LiveMount = _react.lazy.call(void 0, () => Promise.resolve().then(() => _interopRequireWildcard(require("./LiveOverlay-QDQCOEXH.cjs"))));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
@@ -423,8 +423,8 @@ function RiffrecProvider({
   const didAutoStart = _react.useRef.call(void 0, false);
   const [hasLiveBootstrap] = _react.useState.call(void 0, () => {
     if (live === void 0 || typeof window === "undefined") return false;
-    if (_chunkDQNE5VTNcjs.parseLiveFragment.call(void 0, window.location.hash).bootstrap !== null) return true;
-    return _chunkDQNE5VTNcjs.readStoredBootstrap.call(void 0, ) !== null;
+    if (_chunkOGVGX2XHcjs.parseLiveFragment.call(void 0, window.location.hash).bootstrap !== null) return true;
+    return _chunkOGVGX2XHcjs.readStoredBootstrap.call(void 0, ) !== null;
   });
   const shouldAutoStart = _nullishCoalesce(_optionalChain([live, 'optionalAccess', _4 => _4.autoStart]), () => ( hasLiveBootstrap));
   _react.useEffect.call(void 0, () => {
@@ -565,14 +565,14 @@ function RiffrecProvider({
     }
     setDownloadNoticeVisible(false);
     const sessionStart = Date.now();
-    const screen = new (0, _chunkDQNE5VTNcjs.ScreenCapture)(
+    const screen = new (0, _chunkOGVGX2XHcjs.ScreenCapture)(
       configRef.current.displayMedia,
       configRef.current.displayMediaVideo
     );
-    const voice = new (0, _chunkDQNE5VTNcjs.VoiceCapture)();
-    const eventCapture = new (0, _chunkDQNE5VTNcjs.EventCapture)();
-    const networkCapture = new (0, _chunkDQNE5VTNcjs.NetworkCapture)();
-    const consoleCapture = new (0, _chunkDQNE5VTNcjs.ConsoleCapture)();
+    const voice = new (0, _chunkOGVGX2XHcjs.VoiceCapture)();
+    const eventCapture = new (0, _chunkOGVGX2XHcjs.EventCapture)();
+    const networkCapture = new (0, _chunkOGVGX2XHcjs.NetworkCapture)();
+    const consoleCapture = new (0, _chunkOGVGX2XHcjs.ConsoleCapture)();
     const events = [];
     const onEvent = (event) => events.push(event);
     const ownsGlobalPatchMarker = !window.__RIFFREC_PATCHED__;
@@ -970,5 +970,5 @@ function useRiffrec() {
 
 
 
-exports.ALWAYS_WAKE_TRIGGERS = _chunk4XWUXLDEcjs.ALWAYS_WAKE_TRIGGERS; exports.BRIEF_MAX_CHARS = _chunk4XWUXLDEcjs.BRIEF_MAX_CHARS; exports.CHECKPOINT_TRIGGERS = _chunk4XWUXLDEcjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = _chunkDQNE5VTNcjs.DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = _chunkDQNE5VTNcjs.DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_EXECUTION_MODE = _chunk4XWUXLDEcjs.DEFAULT_EXECUTION_MODE; exports.DEFAULT_INTERVIEWER_INSTRUCTIONS = _chunk4XWUXLDEcjs.DEFAULT_INTERVIEWER_INSTRUCTIONS; exports.EXECUTION_MODES = _chunk4XWUXLDEcjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunk4XWUXLDEcjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunk4XWUXLDEcjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunk4XWUXLDEcjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunk4XWUXLDEcjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunk4XWUXLDEcjs.LIVE_TOOL_NAMES; exports.LOOK_AT_SCREEN_TOOL = _chunk4XWUXLDEcjs.LOOK_AT_SCREEN_TOOL; exports.RECORD_UNIT_TOOL = _chunk4XWUXLDEcjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunk4XWUXLDEcjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.SCREEN_CONTEXT_MARKER = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_MARKER; exports.SCREEN_CONTEXT_SECTION = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_SECTION; exports.UNIT_STATUSES = _chunk4XWUXLDEcjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunk4XWUXLDEcjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunk4XWUXLDEcjs.WITHDRAW_UNIT_TOOL; exports.buildInterviewerInstructions = _chunk4XWUXLDEcjs.buildInterviewerInstructions; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunk4XWUXLDEcjs.getLiveTool; exports.hasScreenContext = _chunk4XWUXLDEcjs.hasScreenContext; exports.inspectEnvelope = _chunk4XWUXLDEcjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunk4XWUXLDEcjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunk4XWUXLDEcjs.isLiveEventType; exports.isLiveToolName = _chunk4XWUXLDEcjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunk4XWUXLDEcjs.validateEnvelope; exports.withScreenContext = _chunk4XWUXLDEcjs.withScreenContext;
+exports.ALWAYS_WAKE_TRIGGERS = _chunk4XWUXLDEcjs.ALWAYS_WAKE_TRIGGERS; exports.BRIEF_MAX_CHARS = _chunk4XWUXLDEcjs.BRIEF_MAX_CHARS; exports.CHECKPOINT_TRIGGERS = _chunk4XWUXLDEcjs.CHECKPOINT_TRIGGERS; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = _chunkOGVGX2XHcjs.DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = _chunkOGVGX2XHcjs.DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_EXECUTION_MODE = _chunk4XWUXLDEcjs.DEFAULT_EXECUTION_MODE; exports.DEFAULT_INTERVIEWER_INSTRUCTIONS = _chunk4XWUXLDEcjs.DEFAULT_INTERVIEWER_INSTRUCTIONS; exports.EXECUTION_MODES = _chunk4XWUXLDEcjs.EXECUTION_MODES; exports.FRAME_DROP_REASONS = _chunk4XWUXLDEcjs.FRAME_DROP_REASONS; exports.LIVE_EVENTS_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = _chunk4XWUXLDEcjs.LIVE_EVENT_TYPES; exports.LIVE_FRAME_BODY_MAX_BYTES = _chunk4XWUXLDEcjs.LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_SCHEMA_VERSION = _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = _chunk4XWUXLDEcjs.LIVE_SESSION_HEADER; exports.LIVE_TOOLS = _chunk4XWUXLDEcjs.LIVE_TOOLS; exports.LIVE_TOOL_NAMES = _chunk4XWUXLDEcjs.LIVE_TOOL_NAMES; exports.LOOK_AT_SCREEN_TOOL = _chunk4XWUXLDEcjs.LOOK_AT_SCREEN_TOOL; exports.RECORD_UNIT_TOOL = _chunk4XWUXLDEcjs.RECORD_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = _chunk4XWUXLDEcjs.RELAY_ANSWER_TOOL; exports.RiffrecProvider = RiffrecProvider; exports.RiffrecRecorder = RiffrecRecorder; exports.SCREEN_CONTEXT_MARKER = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_MARKER; exports.SCREEN_CONTEXT_SECTION = _chunk4XWUXLDEcjs.SCREEN_CONTEXT_SECTION; exports.UNIT_STATUSES = _chunk4XWUXLDEcjs.UNIT_STATUSES; exports.UPDATE_UNIT_TOOL = _chunk4XWUXLDEcjs.UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = _chunk4XWUXLDEcjs.WITHDRAW_UNIT_TOOL; exports.buildInterviewerInstructions = _chunk4XWUXLDEcjs.buildInterviewerInstructions; exports.downloadSessionArchive = downloadSessionArchive; exports.getLiveTool = _chunk4XWUXLDEcjs.getLiveTool; exports.hasScreenContext = _chunk4XWUXLDEcjs.hasScreenContext; exports.inspectEnvelope = _chunk4XWUXLDEcjs.inspectEnvelope; exports.isLiveEnvelopeOfType = _chunk4XWUXLDEcjs.isLiveEnvelopeOfType; exports.isLiveEventType = _chunk4XWUXLDEcjs.isLiveEventType; exports.isLiveToolName = _chunk4XWUXLDEcjs.isLiveToolName; exports.useRiffrec = useRiffrec; exports.validateEnvelope = _chunk4XWUXLDEcjs.validateEnvelope; exports.withScreenContext = _chunk4XWUXLDEcjs.withScreenContext;
 //# sourceMappingURL=index.cjs.map
