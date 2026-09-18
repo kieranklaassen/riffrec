@@ -220,6 +220,8 @@ export function RiffrecProvider({
 }: RiffrecProviderProps): React.ReactElement {
   const [status, setStatus] = useState<RiffrecStatus>("idle");
   const [isDownloadNoticeVisible, setDownloadNoticeVisible] = useState(false);
+  /** Why a live Done fell back to the zip (R4); shown under the download notice. */
+  const [liveFallbackReason, setLiveFallbackReason] = useState<string | null>(null);
   const statusRef = useRef<RiffrecStatus>("idle");
   const activeSession = useRef<ActiveSession | null>(null);
   const configRef = useRef<RiffrecConfig>({
@@ -287,7 +289,13 @@ export function RiffrecProvider({
     setStatus(next);
   }, []);
 
-  /** Ends a live session and assembles the archive (R4): recording segments, voice, events, and the live files. */
+  /**
+   * Ends a live session and assembles the archive (R4): recording segments,
+   * voice, events, and the live files. The zip is the delivery only when the
+   * page ended the session on its own; when the endpoint confirmed the end it
+   * already holds everything, so the archive is built for `onSessionComplete`
+   * but never downloaded and the ended card stands in for the notice.
+   */
   const stopLive = useCallback(async (): Promise<SessionResult | null> => {
     if (liveStopping.current) return liveStopping.current;
     const handle = liveHandle.current;
@@ -303,16 +311,19 @@ export function RiffrecProvider({
           setStatusNow("idle");
           return null;
         }
+        const fallback = stopped.endedBy === "stop";
+        const preference = stopped.options.download ?? configRef.current.live?.download;
+        const download = fallback ? preference !== false : preference === true;
         const writer = new SessionWriter({ reactVersion: React.version });
         const result = await writer.stop(stopped.outputs, {
-          download: stopped.options.download,
+          download,
           live: stopped.live,
           recordingSegments: stopped.recordingSegments
         });
         await stopped.options.onSessionComplete?.(result);
         setStatusNow("idle");
-        // The ended card already stands in for the notice when the endpoint ended the session.
-        setDownloadNoticeVisible(stopped.options.download !== false && stopped.endedBy === "stop");
+        setLiveFallbackReason(fallback ? stopped.fallbackReason : null);
+        setDownloadNoticeVisible(download);
         return result;
       } catch (error) {
         liveActive.current = false;
@@ -404,6 +415,7 @@ export function RiffrecProvider({
 
     if (isLiveConfigured) {
       setDownloadNoticeVisible(false);
+      setLiveFallbackReason(null);
       const handle = await awaitLiveHandle();
       if (!handle || liveActive.current || liveStopping.current) return;
       handle.begin(options);
@@ -612,6 +624,11 @@ export function RiffrecProvider({
           <span style={recordingTextStyle}>
             <span style={recordingTitleStyle}>{downloadNoticeTitle}</span>
             <span style={recordingHintStyle}>{downloadNoticeMessage}</span>
+            {liveFallbackReason ? (
+              <span data-riffrec-live-fallback-reason="" style={recordingHintStyle}>
+                Live endpoint did not confirm the end: {liveFallbackReason}.
+              </span>
+            ) : null}
           </span>
           <button
             type="button"

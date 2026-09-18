@@ -285,8 +285,18 @@ describe("parseRealtimeEvent", () => {
     });
   });
 
+  it("reads the minted persona and tools out of session.created", () => {
+    expect(
+      parseRealtimeEvent(
+        { type: "session.created", session: { type: "realtime", instructions: "Be terse.", tools: [{ type: "function", name: "record_unit" }] } },
+        context
+      )
+    ).toEqual({ type: "session_created", session: { instructions: "Be terse.", tools: [{ type: "function", name: "record_unit" }] } });
+    expect(parseRealtimeEvent({ type: "session.created" }, context)).toEqual({ type: "session_created", session: { instructions: null, tools: [] } });
+  });
+
   it("ignores unknown events and reports unknown tools as errors instead of tool calls", () => {
-    expect(parseRealtimeEvent({ type: "session.created" }, context)).toBeNull();
+    expect(parseRealtimeEvent({ type: "session.updated", session: {} }, context)).toBeNull();
     expect(parseRealtimeEvent("garbage", context)).toBeNull();
     expect(parseRealtimeEvent({ type: "response.function_call_arguments.done", call_id: "c", name: "emit_checkpoint" }, context)).toEqual({
       type: "error",

@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveFrame } from "../contract";
-import { FRAME_BUFFER_CAPACITY, FrameBuffer, PERIODIC_FRAME_MS, createDisplayFrameGrabber, dataUrlToBase64 } from "./frames";
+import {
+  DEFAULT_FRAME_MAX_WIDTH,
+  FRAME_BUFFER_CAPACITY,
+  FrameBuffer,
+  PERIODIC_FRAME_MS,
+  createDisplayFrameGrabber,
+  dataUrlToBase64
+} from "./frames";
 
 function harness(overrides: Partial<ConstructorParameters<typeof FrameBuffer>[0]> = {}) {
   let clock = 1000;
@@ -143,6 +150,34 @@ describe("display grabber", () => {
     expect(dataUrlToBase64("data:image/jpeg;base64,AAAA")).toBe("AAAA");
     expect(dataUrlToBase64("data:image/png;base64,AAAA")).toBeNull();
     expect(dataUrlToBase64("data:image/jpeg;base64,")).toBeNull();
+  });
+
+  it("downscales frames wider than DEFAULT_FRAME_MAX_WIDTH and leaves narrower ones alone", async () => {
+    const drawn: Array<{ width: number; height: number }> = [];
+    const makeDocument = (videoWidth: number) =>
+      ({
+        createElement: (tag: string) => {
+          if (tag === "video") return { muted: false, playsInline: false, srcObject: null, play: async () => {}, videoWidth, videoHeight: videoWidth / 2 };
+          const canvas = {
+            width: 0,
+            height: 0,
+            getContext: () => ({ drawImage: () => drawn.push({ width: canvas.width, height: canvas.height }) }),
+            toDataURL: () => "data:image/jpeg;base64,QUJD"
+          };
+          return canvas;
+        }
+      }) as unknown as Document;
+    const stream = { getVideoTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
+
+    expect(await createDisplayFrameGrabber(stream, { document: makeDocument(2560) })()).toBe("QUJD");
+    expect(await createDisplayFrameGrabber(stream, { document: makeDocument(1024) })()).toBe("QUJD");
+    expect(await createDisplayFrameGrabber(stream, { document: makeDocument(2560), maxWidth: 0 })()).toBe("QUJD");
+
+    expect(drawn).toEqual([
+      { width: DEFAULT_FRAME_MAX_WIDTH, height: DEFAULT_FRAME_MAX_WIDTH / 2 },
+      { width: 1024, height: 512 },
+      { width: 2560, height: 1280 }
+    ]);
   });
 
   it("resolves null while the video has no decoded frame or the track has ended", async () => {

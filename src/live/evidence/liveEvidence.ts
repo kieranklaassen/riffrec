@@ -199,6 +199,20 @@ export class LiveEvidence {
     return this.frames.capture("gesture", t);
   }
 
+  /**
+   * `look_at_screen`: a frame of the view right now, falling back to the most
+   * recent buffered one when the grab yields nothing. Null while paused (R25:
+   * nothing leaves the page) or when no display source exists. A fresh grab is
+   * buffered like a gesture frame, so the unit that follows attaches to it.
+   */
+  async lookAtScreen(): Promise<{ frame: LiveFrame; fresh: boolean } | null> {
+    if (this.paused || this.disposed) return null;
+    const fresh = await this.frames.capture("gesture");
+    if (fresh) return { frame: fresh, fresh: true };
+    const latest = this.frames.latest();
+    return latest ? { frame: latest, fresh: false } : null;
+  }
+
   /** R25: stop frames and composites; the screen recording and the clip recorder keep running. */
   pause(): void {
     this.paused = true;

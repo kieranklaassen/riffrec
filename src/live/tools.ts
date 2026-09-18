@@ -1,13 +1,18 @@
 /**
- * Interviewer tool set (KTD5): four flat function tools in the `breathwork-live`
- * shape. Exported as data so the endpoint helper can copy them verbatim.
+ * Interviewer tool set (KTD5): five flat function tools in the `breathwork-live`
+ * shape. Exported as data so the endpoint helper can copy them verbatim; the
+ * page also reconciles them onto the live Realtime session after connecting
+ * (`realtime/sessionConfig.ts`), so a mint that carries an older copy still
+ * gets every tool the page can answer.
  *
  * No tool emits checkpoints or reports state: the client owns all timing, and
- * page-side facts (a completed drawing, buffering, a mute) reach the interviewer
- * as text conversation items. No tool carries image content.
+ * page-side facts (a click, a completed drawing, buffering, a mute) reach the
+ * interviewer as text conversation items. No tool *parameter* carries image
+ * content: `look_at_screen` asks the page for a screenshot, and the page
+ * attaches it as an image conversation item before the tool result.
  */
 
-export const LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer"] as const;
+export const LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"] as const;
 
 export type LiveToolName = (typeof LIVE_TOOL_NAMES)[number];
 
@@ -37,8 +42,8 @@ export interface RecordUnitArgs {
   statement: string;
   /**
    * Anchor references, as the riffer named them or as the page announced them in
-   * a conversation item ("the riffer drew on the sidebar toggle"). The client
-   * resolves them to `LiveAnchor` objects; the interviewer never sees the page.
+   * a conversation item ("the riffer clicked Button \"Export\" (anchor id: anchor_0003)").
+   * The client resolves them to `LiveAnchor` objects.
    */
   anchors: string[];
   transcript_excerpt: string;
@@ -60,11 +65,17 @@ export interface RelayAnswerArgs {
   answer_text: string;
 }
 
+export interface LookAtScreenArgs {
+  /** Why the interviewer needs to see the screen, in a few words. */
+  reason?: string;
+}
+
 export interface LiveToolArgsMap {
   record_unit: RecordUnitArgs;
   update_unit: UpdateUnitArgs;
   withdraw_unit: WithdrawUnitArgs;
   relay_answer: RelayAnswerArgs;
+  look_at_screen: LookAtScreenArgs;
 }
 
 export type LiveToolArgs<N extends LiveToolName = LiveToolName> = LiveToolArgsMap[N];
@@ -83,9 +94,10 @@ export interface LiveToolResult {
 const anchorsProperty: JsonSchemaProperty = {
   type: "array",
   description:
-    "Anchor references for the element(s) the change is about: the riffer's own words for the element " +
-    "(\"the sidebar toggle\", \"that red button\") or an anchor id the page announced in conversation. " +
-    "Empty only when the riffer named no element at all.",
+    "Anchor references for the element(s) the change is about: an anchor id from a [PAGE] note announcing what " +
+    "the riffer clicked, drew on, or pinned (\"this\"/\"here\" means the most recent one), or the riffer's own " +
+    "words for the element (\"the sidebar toggle\", \"that red button\"). Empty only when the riffer named no " +
+    "element and no anchor was announced.",
   items: { type: "string" }
 };
 
@@ -181,11 +193,33 @@ export const RELAY_ANSWER_TOOL: LiveToolDefinition<"relay_answer"> = {
   }
 };
 
+export const LOOK_AT_SCREEN_TOOL: LiveToolDefinition<"look_at_screen"> = {
+  type: "function",
+  name: "look_at_screen",
+  description:
+    "See the riffer's screen right now. The page attaches a screenshot of the current view as an image in the " +
+    "conversation, then returns this call's result with the route and how old the frame is. " +
+    "Call when the riffer refers to how something looks (\"this\", \"here\", \"that color\", \"it looks off\") and the " +
+    "clicked or drawn anchors the page announced do not settle what they mean, when they ask whether you can see " +
+    "their screen, or when they ask you to look. " +
+    "Never call more than once per riffer turn, and never call to browse: only to answer what the riffer just " +
+    "said. If the result says no frame is available, ask the riffer to describe what they see.",
+  parameters: {
+    type: "object",
+    properties: {
+      reason: { type: "string", description: "Why you need to see the screen, in a few words." }
+    },
+    required: [],
+    additionalProperties: false
+  }
+};
+
 export const LIVE_TOOLS: readonly LiveToolDefinition[] = [
   RECORD_UNIT_TOOL,
   UPDATE_UNIT_TOOL,
   WITHDRAW_UNIT_TOOL,
-  RELAY_ANSWER_TOOL
+  RELAY_ANSWER_TOOL,
+  LOOK_AT_SCREEN_TOOL
 ];
 
 export function isLiveToolName(value: unknown): value is LiveToolName {

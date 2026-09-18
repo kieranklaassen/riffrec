@@ -328,6 +328,50 @@ describe("LiveEvidence", () => {
     expect(h.session.frameMetadata().map((frame) => frame.id)).toEqual([first!.id, second!.id]);
   });
 
+  it("lookAtScreen grabs a fresh frame the next unit attaches to, and a frame shown to the interviewer leaves the page under `one`", async () => {
+    const h = harness({ profile: "default" });
+    h.advance(1000);
+    const look = await h.evidence.lookAtScreen();
+    expect(look).toEqual({ frame: expect.objectContaining({ kind: "gesture", t: 1000, route: "/settings" }), fresh: true });
+    await h.settled();
+    expect(h.wire("frame")).toEqual([]);
+
+    h.session.releaseFrame(look!.frame.id);
+    await h.settled();
+    expect(h.wire("frame").map((envelope) => envelope.payload.id)).toEqual([look!.frame.id]);
+    h.session.releaseFrame(look!.frame.id);
+    await h.settled();
+    expect(h.wire("frame")).toHaveLength(1);
+
+    h.advance(500);
+    const unit = h.evidence.recordUnit({ statement: "This", transcript_excerpt: "this", anchors: [{ ...stroke("x", 1200).anchor }] });
+    expect(unit.evidence.frame_ids).toEqual([look!.frame.id]);
+  });
+
+  it("lookAtScreen falls back to the latest buffered frame when the grab yields nothing, and to null while paused or without a display", async () => {
+    const h = harness();
+    const buffered = await h.evidence.gesture();
+    h.grabber.mockResolvedValueOnce(null as never);
+    expect(await h.evidence.lookAtScreen()).toEqual({ frame: buffered, fresh: false });
+
+    h.evidence.pause();
+    expect(await h.evidence.lookAtScreen()).toBeNull();
+    h.evidence.resume();
+
+    const dark = harness({ display: false });
+    expect(await dark.evidence.lookAtScreen()).toBeNull();
+    expect(dark.session.framesLeavePage).toBe(true);
+    expect(harness({ profile: "anchors_transcript_only" }).session.framesLeavePage).toBe(false);
+  });
+
+  it("releaseFrame under `none` posts nothing", async () => {
+    const h = harness({ profile: "anchors_transcript_only" });
+    const look = await h.evidence.lookAtScreen();
+    h.session.releaseFrame(look!.frame.id);
+    await h.settled();
+    expect(h.wire("frame")).toEqual([]);
+  });
+
   it("dispose stops gestures, composites, and clips", async () => {
     const h = harness({ mic: true });
     h.evidence.dispose();

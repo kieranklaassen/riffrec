@@ -3,13 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VoiceCapture } from "../../capture/voice";
 import { MemoryFrameStore } from "../buffer";
 import { SILENCE_CHECKPOINT_MS } from "../checkpoints";
-import { LIVE_SESSION_HEADER, type LiveAnchor, type LiveMintError, type LiveMintResponse, type LiveTranscript } from "../contract";
+import {
+  LIVE_SESSION_HEADER,
+  type LiveAnchor,
+  type LiveFrame,
+  type LiveMintError,
+  type LiveMintResponse,
+  type LiveTranscript
+} from "../contract";
 import { LiveSession } from "../session";
 import { createFakeEndpoint, type FakeEndpoint } from "../testing/fakeEndpoint";
 import { createFakeRealtime, type FakeRealtime } from "../testing/fakeRealtime";
 import { SharedMicrophone, type AudioTrackLike } from "./audioRouting";
 import {
+  CLICK_ANNOUNCE_DEDUPE_MS,
+  FRAMES_DISABLED_DETAIL,
   Interviewer,
+  NO_FRAME_DETAIL,
+  PROACTIVE_FRAME_MIN_INTERVAL_MS,
   QUESTION_SILENCE_MS,
   RESEED_MAX_CHARS,
   RESPONSE_CONFIRM_TIMEOUT_MS,
@@ -17,8 +28,11 @@ import {
   buildReseedText,
   createInterviewer,
   isNoiseTranscript,
-  type InterviewerOptions
+  isVisualReference,
+  type InterviewerOptions,
+  type ScreenLook
 } from "./interviewer";
+import { DEFAULT_INTERVIEWER_INSTRUCTIONS, SCREEN_CONTEXT_MARKER, SCREEN_CONTEXT_SECTION } from "./persona";
 
 // --- Harness ---------------------------------------------------------------
 
@@ -690,7 +704,306 @@ describe("Interviewer mute (KTD21)", () => {
   });
 });
 
+// --- Screen context: clicks, look_at_screen, proactive frames -------------
+
+interface ScreenHarness extends Harness {
+  frames: LiveFrame[];
+  lookAtScreen: ReturnType<typeof vi.fn<() => Promise<ScreenLook | null>>>;
+  frameShown: ReturnType<typeof vi.fn<(frameId: string) => void>>;
+}
+
+function screenHarness(options: { look?: ScreenLook | null; interviewer?: Partial<InterviewerOptions> } = {}): ScreenHarness {
+  const frames: LiveFrame[] = [];
+  let next = 1;
+  const lookAtScreen = vi.fn<() => Promise<ScreenLook | null>>(async () => {
+    if (options.look === null) return null;
+    if (options.look) return options.look;
+    const frame: LiveFrame = { id: `frame_${String(next++).padStart(4, "0")}`, t: Date.now() - 1_000_000, route: "/settings", kind: "gesture", jpeg_base64: "/9j/AAAA" };
+    frames.push(frame);
+    return { frame, fresh: true };
+  });
+  const frameShown = vi.fn<(frameId: string) => void>();
+  const h = harness({ interviewer: { evidence: { lookAtScreen, frameShown }, ...options.interviewer } });
+  return Object.assign(h, { frames, lookAtScreen, frameShown });
+}
+
+function clickAnchor(selector: string, t: number): LiveAnchor {
+  return { route: "/settings", selector, component: "Card", rect: { x: 10, y: 20, width: 100, height: 40 }, t };
+}
+
+describe("Interviewer click announcements", () => {
+  it("announces a click as a [PAGE] note with the element description and an anchor id, and attaches a frame", async () => {
+    const h = screenHarness();
+    await h.goLive();
+
+    const entry = h.interviewer.announceClick(clickAnchor("div.stat__value", 100), 'div with text "$48,210" in component DashboardPage (selector div.stat__value, route /)');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(entry.id).toBe("anchor_0001");
+    expect(h.realtime.sentTexts).toEqual([
+      '[PAGE] The riffer clicked div with text "$48,210" in component DashboardPage (selector div.stat__value, route /) (anchor id: anchor_0001).'
+    ]);
+    expect(h.realtime.sentImages).toHaveLength(1);
+    expect(h.realtime.sentImages[0].jpegBase64).toBe("/9j/AAAA");
+    expect(h.realtime.sentImages[0].text).toBe(
+      "[PAGE] Screenshot of the riffer's current view on /settings, attached because they just clicked there (frame id: frame_0001). The riffrec panel docked at the top right is not part of the app."
+    );
+    expect(h.frameShown).toHaveBeenCalledWith("frame_0001");
+    expect(h.interviewer.status.framesShown).toBe(1);
+  });
+
+  it("coalesces a click burst on the same element into one note and one anchor id", async () => {
+    const h = screenHarness();
+    await h.goLive();
+
+    const first = h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    vi.advanceTimersByTime(180);
+    const second = h.interviewer.announceClick(clickAnchor("div.stat__value", 280), "the revenue figure");
+    vi.advanceTimersByTime(180);
+    const third = h.interviewer.announceClick(clickAnchor("div.stat__value", 460), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(second.id).toBe(first.id);
+    expect(third.id).toBe(first.id);
+    expect(h.realtime.sentTexts).toHaveLength(1);
+    expect(h.interviewer.announcedAnchors()).toHaveLength(1);
+    expect(h.interviewer.announcedAnchors()[0].anchor.t).toBe(460);
+
+    vi.advanceTimersByTime(CLICK_ANNOUNCE_DEDUPE_MS + 1);
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 2000), "the revenue figure");
+    expect(h.realtime.sentTexts).toHaveLength(2);
+    expect(h.realtime.sentTexts[1]).toContain("(anchor id: anchor_0002)");
+  });
+
+  it("a click on another element inside the window is its own note", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    vi.advanceTimersByTime(100);
+    h.interviewer.announceClick(clickAnchor("article.card", 200), "the open tickets card");
+    expect(h.realtime.sentTexts).toEqual([
+      "[PAGE] The riffer clicked the revenue figure (anchor id: anchor_0001).",
+      "[PAGE] The riffer clicked the open tickets card (anchor id: anchor_0002)."
+    ]);
+  });
+
+  it('"this" in record_unit resolves to the most recent announced click', async () => {
+    const h = screenHarness();
+    await h.goLive();
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t1", "ik vind deze niet zo mooi", 900) });
+    await h.realtime.emit(
+      h.realtime.toolCall({
+        name: "record_unit",
+        arguments: { statement: "Make this look nicer.", anchors: ["this"], transcript_excerpt: "ik vind deze niet zo mooi" }
+      })
+    );
+    expect(h.session.allUnits()[0].anchors).toEqual([clickAnchor("div.stat__value", 100)]);
+    expect(h.realtime.toolResults.at(-1)!.output).toMatchObject({ ok: true, anchors_resolved: 1 });
+  });
+
+  it("holds click notes and their frame while a response is active and sends them once it settles", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit({ type: "response_started", response_id: "resp_1" });
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentTexts).toEqual([]);
+    expect(h.realtime.sentImages).toEqual([]);
+
+    await h.realtime.emit({ type: "response_done", response_id: "resp_1" });
+    expect(h.realtime.sentTexts).toEqual(["[PAGE] The riffer clicked the revenue figure (anchor id: anchor_0001)."]);
+    expect(h.realtime.sentImages).toHaveLength(1);
+    expect(h.realtime.actionsNamed("create_response")).toEqual([]);
+  });
+});
+
+describe("Interviewer look_at_screen", () => {
+  it("attaches the current frame as an image item, answers the call, and asks for a response", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit(h.realtime.toolCall({ name: "look_at_screen", arguments: { reason: "riffer asked if I can see" } }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const kinds = h.realtime.actions.map((action) => action.type);
+    expect(kinds).toEqual(["send_image", "send_tool_result", "create_response"]);
+    expect(h.realtime.sentImages[0].text).toMatch(/^\[PAGE\] Screenshot of the riffer's current view on \/settings, captured just now \(frame id: frame_0001\)\./);
+    expect(h.realtime.toolResults[0]).toEqual({
+      call_id: "call_0001",
+      output: { ok: true, frame_id: "frame_0001", route: "/settings", age_ms: 0, fresh: true }
+    });
+    expect(h.frameShown).toHaveBeenCalledWith("frame_0001");
+    expect(h.interviewer.status.responseActive).toBe(true);
+  });
+
+  it("defers the follow-up response until the calling response settles", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit({ type: "response_started", response_id: "resp_1" });
+    await h.realtime.emit(h.realtime.toolCall({ name: "look_at_screen", arguments: {} }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.actions.map((action) => action.type)).toEqual(["send_image", "send_tool_result"]);
+
+    await h.realtime.emit({ type: "response_done", response_id: "resp_1" });
+    expect(h.realtime.actionsNamed("create_response")).toHaveLength(1);
+    expect(h.interviewer.status.responseActive).toBe(true);
+  });
+
+  it("reports no_frame when the screen is not shared or capture is paused, still asking for a response", async () => {
+    const h = screenHarness({ look: null });
+    await h.goLive();
+    await h.realtime.emit(h.realtime.toolCall({ name: "look_at_screen", arguments: {} }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.realtime.sentImages).toEqual([]);
+    expect(h.realtime.toolResults[0].output).toEqual({ ok: false, reason: "no_frame", detail: NO_FRAME_DETAIL });
+    expect(h.realtime.actionsNamed("create_response")).toHaveLength(1);
+    expect(h.frameShown).not.toHaveBeenCalled();
+  });
+
+  it("reports frames_disabled without grabbing when the evidence profile keeps frames on the page", async () => {
+    const h = screenHarness({ interviewer: { screenFrames: false } });
+    await h.goLive();
+    await h.realtime.emit(h.realtime.toolCall({ name: "look_at_screen", arguments: {} }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.lookAtScreen).not.toHaveBeenCalled();
+    expect(h.realtime.toolResults[0].output).toEqual({ ok: false, reason: "frames_disabled", detail: FRAMES_DISABLED_DETAIL });
+    await h.realtime.emit({ type: "response_done", response_id: "resp_1" });
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toEqual([]);
+    expect(h.realtime.sentTexts).toHaveLength(1);
+  });
+
+  it("a look counts against the proactive rate limit", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit(h.realtime.toolCall({ name: "look_at_screen", arguments: {} }));
+    await vi.advanceTimersByTimeAsync(0);
+    await h.realtime.emit({ type: "response_done", response_id: "resp_1" });
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toHaveLength(1);
+  });
+});
+
+describe("Interviewer proactive frames", () => {
+  it("attaches at most one frame per interval across clicks, drawings, and visual speech", async () => {
+    const h = screenHarness();
+    await h.goLive();
+
+    h.interviewer.announceClick(clickAnchor("div.stat__value", 100), "the revenue figure");
+    await vi.advanceTimersByTimeAsync(0);
+    h.interviewer.announceDrawing({ anchor: anchor(400), description: "the save button" });
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t1", "can you make this color nicer", 900) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toHaveLength(1);
+    expect(h.lookAtScreen).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(PROACTIVE_FRAME_MIN_INTERVAL_MS);
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t2", "kijk hier, dat is lelijk", 7000) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toHaveLength(2);
+    expect(h.realtime.sentImages[1].text).toContain("attached because they referred to something on screen");
+  });
+
+  it("does not attach a frame for speech that points at nothing on screen", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    await h.realtime.emit({ type: "transcript", transcript: transcript("t1", "okay let me think about the onboarding flow", 900) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lookAtScreen).not.toHaveBeenCalled();
+    expect(h.realtime.sentImages).toEqual([]);
+  });
+
+  it("a drawing attaches a frame that names the drawing as the reason", async () => {
+    const h = screenHarness();
+    await h.goLive();
+    h.interviewer.announceDrawing({ anchor: anchor(400), description: "the save button", kind: "stroke" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.realtime.sentImages).toHaveLength(1);
+    expect(h.realtime.sentImages[0].text).toContain("attached because they just drew there");
+  });
+
+  it("runs one grab at a time and swallows a failing grabber", async () => {
+    const h = screenHarness();
+    h.lookAtScreen.mockRejectedValueOnce(new Error("no canvas"));
+    await h.goLive();
+    h.interviewer.announceClick(clickAnchor("a", 100), "a");
+    h.interviewer.announceClick(clickAnchor("b", 100), "b");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lookAtScreen).toHaveBeenCalledTimes(1);
+    expect(h.realtime.sentImages).toEqual([]);
+    expect(h.errors.some((error) => String(error).includes("no canvas"))).toBe(true);
+    expect(h.realtime.sentTexts).toHaveLength(2);
+  });
+});
+
+describe("Interviewer session config (KTD4/KTD5 reconcile)", () => {
+  it("adds the tools the mint lacked and appends the screen-context section to the endpoint's persona", async () => {
+    const h = harness();
+    await h.goLive();
+    await h.realtime.emit({
+      type: "session_created",
+      session: {
+        instructions: "You are the interviewer in a live polish session. You do not watch the screen.",
+        tools: [
+          { type: "function", name: "record_unit", description: "endpoint copy" },
+          { type: "function", name: "update_unit" },
+          { type: "function", name: "withdraw_unit" },
+          { type: "function", name: "relay_answer" }
+        ]
+      }
+    });
+
+    const updates = h.realtime.actionsNamed("update_session");
+    expect(updates).toHaveLength(1);
+    const patch = updates[0].patch as { type: string; instructions: string; tools: Array<{ name: string; description?: string }> };
+    expect(patch.type).toBe("realtime");
+    expect(patch.tools.map((tool) => tool.name)).toEqual(["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"]);
+    expect(patch.tools[0].description).toBe("endpoint copy");
+    expect(patch.instructions.startsWith("You are the interviewer in a live polish session.")).toBe(true);
+    expect(patch.instructions.endsWith(SCREEN_CONTEXT_SECTION)).toBe(true);
+  });
+
+  it("leaves a session alone that already carries every tool and the screen-context section", async () => {
+    const h = harness();
+    await h.goLive();
+    await h.realtime.emit({
+      type: "session_created",
+      session: {
+        instructions: `Endpoint persona.\n\n${SCREEN_CONTEXT_MARKER}\nEndpoint wording.`,
+        tools: ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"].map((name) => ({ type: "function", name }))
+      }
+    });
+    expect(h.realtime.actionsNamed("update_session")).toEqual([]);
+  });
+
+  it("applies the default persona and tool set to a bare session", async () => {
+    const h = harness();
+    await h.goLive();
+    await h.realtime.emit({ type: "session_created", session: { instructions: "You are a helpful assistant.", tools: [] } });
+    const [update] = h.realtime.actionsNamed("update_session");
+    expect(update.patch.instructions).toBe(DEFAULT_INTERVIEWER_INSTRUCTIONS);
+    expect((update.patch.tools as Array<{ name: string }>).map((tool) => tool.name)).toHaveLength(5);
+  });
+});
+
 // --- Pure helpers ----------------------------------------------------------
+
+describe("isVisualReference", () => {
+  it("matches deictic and visual words across the languages riffers use", () => {
+    expect(isVisualReference("make this red")).toBe(true);
+    expect(isVisualReference("Ik vind deze niet zo mooi")).toBe(true);
+    expect(isVisualReference("kannst du das sehen? schau hier")).toBe(true);
+    expect(isVisualReference("regarde ça")).toBe(true);
+    expect(isVisualReference("mira esto")).toBe(true);
+    expect(isVisualReference("let me think about the onboarding flow")).toBe(false);
+    expect(isVisualReference("")).toBe(false);
+  });
+});
 
 describe("isNoiseTranscript", () => {
   it("treats short verb-less utterances as noise and anything with a change verb or three words as a unit candidate", () => {

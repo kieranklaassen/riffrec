@@ -147,6 +147,15 @@ export interface RiffrecLiveConfig {
   drawShortcut?: string | null;
   /** Who runs the endpoint, named in the consent copy (R26). */
   endpointOwner?: string;
+  /**
+   * Default for the session's `download` option, which an auto-started session
+   * cannot pass to `start()`. A session the endpoint confirmed ended (Done
+   * acknowledged, or `session_ended`) never downloads the zip unless this is
+   * `true`: the stream delivered it. A session the page ended on its own — no
+   * endpoint, a lost endpoint, an explicit `stop()` — downloads unless this is
+   * `false` (R4). `start({ download })` overrides it per session.
+   */
+  download?: boolean;
 }
 
 /** `"disabled"` when the provider has no `live` config or is disabled in production. */

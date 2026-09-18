@@ -1,6 +1,34 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import type { RiffrecEvent } from "../types";
 import { buildElementInfo, buildFullPath, buildSelector } from "./element";
+import { EventCapture } from "./events";
+
+describe("EventCapture", () => {
+  it("records clicks, skipping targets the caller asked it to ignore", () => {
+    document.body.innerHTML = '<main><button id="host">Host</button></main><div data-riffrec-overlay=""><button id="panel">Done</button></div>';
+    const events: RiffrecEvent[] = [];
+    const capture = new EventCapture();
+    capture.start(Date.now(), (event) => events.push(event), { ignore: (target) => target.closest("[data-riffrec-overlay]") !== null });
+
+    document.querySelector<HTMLButtonElement>("#panel")!.click();
+    document.querySelector<HTMLButtonElement>("#host")!.click();
+    capture.stop();
+    document.querySelector<HTMLButtonElement>("#host")!.click();
+
+    expect(events.map((event) => event.type === "click" && event.element.id)).toEqual(["host"]);
+  });
+
+  it("records every click when nothing is ignored", () => {
+    document.body.innerHTML = '<div data-riffrec-overlay=""><button id="panel">Done</button></div>';
+    const events: RiffrecEvent[] = [];
+    const capture = new EventCapture();
+    capture.start(Date.now(), (event) => events.push(event));
+    document.querySelector<HTMLButtonElement>("#panel")!.click();
+    capture.stop();
+    expect(events).toHaveLength(1);
+  });
+});
 
 describe("event element capture", () => {
   it("builds a stable selector and element metadata", () => {
