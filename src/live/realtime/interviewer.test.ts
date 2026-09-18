@@ -197,6 +197,7 @@ describe("Interviewer connection", () => {
 
     expect(h.session.status).toBe("live_novoice");
     expect(h.interviewer.status.unavailable).toMatchObject(unavailable);
+    expect(h.session.snapshot().voiceUnavailable).toMatchObject(unavailable);
     expect(h.mintRequests).toHaveLength(1);
     expect(h.connects).toBe(0);
   });

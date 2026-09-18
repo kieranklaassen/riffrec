@@ -301,6 +301,120 @@ var ScreenCapture = class {
   }
 };
 
+// src/live/tokenBootstrap.ts
+var LIVE_FRAGMENT_TOKEN_KEY = "riffrec_live";
+var LIVE_FRAGMENT_ENDPOINT_KEY = "endpoint";
+var LIVE_BOOTSTRAP_STORAGE_KEY = "riffrec:live:bootstrap";
+var LIVE_REMEMBERED_STORAGE_KEY = "riffrec:live:link";
+var nativeReplaceState = typeof History !== "undefined" && typeof History.prototype.replaceState === "function" ? History.prototype.replaceState : null;
+function defaultStorage() {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+  } catch (e) {
+    return null;
+  }
+}
+function defaultRememberedStorage() {
+  try {
+    return typeof localStorage !== "undefined" ? localStorage : null;
+  } catch (e2) {
+    return null;
+  }
+}
+function normalizeOrigin(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch (e3) {
+    return null;
+  }
+}
+function parseLiveFragment(hash) {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!raw) return { bootstrap: null, rest: "" };
+  const params = new URLSearchParams(raw);
+  const token = params.get(LIVE_FRAGMENT_TOKEN_KEY);
+  const endpoint = params.get(LIVE_FRAGMENT_ENDPOINT_KEY);
+  if (token === null && endpoint === null) return { bootstrap: null, rest: raw };
+  params.delete(LIVE_FRAGMENT_TOKEN_KEY);
+  params.delete(LIVE_FRAGMENT_ENDPOINT_KEY);
+  const rest = params.toString();
+  if (!token || !endpoint) return { bootstrap: null, rest };
+  const origin = normalizeOrigin(endpoint);
+  if (!origin) return { bootstrap: null, rest };
+  return { bootstrap: { token, endpoint: origin }, rest };
+}
+function readStoredBootstrap(storage = defaultStorage(), key = LIVE_BOOTSTRAP_STORAGE_KEY) {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.token !== "string" || typeof parsed.endpoint !== "string") return null;
+    return { token: parsed.token, endpoint: parsed.endpoint };
+  } catch (e4) {
+    return null;
+  }
+}
+function clearStoredBootstrap(storage = defaultStorage()) {
+  try {
+    _optionalChain([storage, 'optionalAccess', _45 => _45.removeItem, 'call', _46 => _46(LIVE_BOOTSTRAP_STORAGE_KEY)]);
+  } catch (e5) {
+  }
+}
+function readRememberedBootstrap(storage = defaultRememberedStorage()) {
+  return readStoredBootstrap(storage, LIVE_REMEMBERED_STORAGE_KEY);
+}
+function forgetRememberedBootstrap(storage = defaultRememberedStorage()) {
+  try {
+    _optionalChain([storage, 'optionalAccess', _47 => _47.removeItem, 'call', _48 => _48(LIVE_REMEMBERED_STORAGE_KEY)]);
+  } catch (e6) {
+  }
+}
+function restoreRememberedBootstrap(options = {}) {
+  const session = options.session === void 0 ? defaultStorage() : options.session;
+  const remembered = readRememberedBootstrap(options.remembered === void 0 ? defaultRememberedStorage() : options.remembered);
+  if (!remembered || !session || readStoredBootstrap(session)) return false;
+  try {
+    session.setItem(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(remembered));
+    return true;
+  } catch (e7) {
+    return false;
+  }
+}
+function bootstrapLiveToken(options = {}) {
+  const location = _nullishCoalesce(options.location, () => ( (typeof window !== "undefined" ? window.location : null)));
+  const history = _nullishCoalesce(options.history, () => ( (typeof window !== "undefined" ? window.history : null)));
+  const storage = options.storage === void 0 ? defaultStorage() : options.storage;
+  const replaceState = options.replaceState === void 0 ? nativeReplaceState : options.replaceState;
+  if (!location) return readStoredBootstrap(storage);
+  const { bootstrap, rest } = parseLiveFragment(location.hash);
+  const hadLiveKeys = bootstrap !== null || rest !== (location.hash.startsWith("#") ? location.hash.slice(1) : location.hash);
+  if (hadLiveKeys && history) {
+    const cleaned = `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`;
+    try {
+      if (replaceState) {
+        replaceState.call(history, history.state, "", cleaned);
+      } else {
+        history.replaceState(history.state, "", cleaned);
+      }
+    } catch (e8) {
+    }
+  }
+  if (!bootstrap) return readStoredBootstrap(storage);
+  const remembered = options.rememberedStorage === void 0 ? defaultRememberedStorage() : options.rememberedStorage;
+  try {
+    _optionalChain([storage, 'optionalAccess', _49 => _49.setItem, 'call', _50 => _50(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap))]);
+  } catch (e9) {
+  }
+  try {
+    _optionalChain([remembered, 'optionalAccess', _51 => _51.setItem, 'call', _52 => _52(LIVE_REMEMBERED_STORAGE_KEY, JSON.stringify(bootstrap))]);
+  } catch (e10) {
+  }
+  return bootstrap;
+}
+
 // src/capture/fiber.ts
 var FiberTags = {
   FunctionComponent: 0,
@@ -381,7 +495,7 @@ function readDisplayName(type) {
   return candidate;
 }
 function getDataComponent(el) {
-  const candidate = _nullishCoalesce(_optionalChain([el, 'access', _45 => _45.closest, 'call', _46 => _46("[data-component]"), 'optionalAccess', _47 => _47.dataset, 'access', _48 => _48.component]), () => ( null));
+  const candidate = _nullishCoalesce(_optionalChain([el, 'access', _53 => _53.closest, 'call', _54 => _54("[data-component]"), 'optionalAccess', _55 => _55.dataset, 'access', _56 => _56.component]), () => ( null));
   return candidate && candidate.trim().length > 0 ? candidate : null;
 }
 function getReactFiberKey(el) {
@@ -396,15 +510,15 @@ function getComponentNameFromFiber(fiber) {
   }
   if (tag === FiberTags.ForwardRef) {
     const elementType = fiber.elementType;
-    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _49 => _49.render])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
+    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _57 => _57.render])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
   }
   if (tag === FiberTags.MemoComponent || tag === FiberTags.SimpleMemoComponent) {
     const elementType = fiber.elementType;
-    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _50 => _50.type])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
+    return _nullishCoalesce(_nullishCoalesce(readDisplayName(_optionalChain([elementType, 'optionalAccess', _58 => _58.type])), () => ( readDisplayName(elementType))), () => ( readDisplayName(fiber.type)));
   }
   if (tag === FiberTags.ContextProvider) {
     const type = fiber.type;
-    const name = _optionalChain([type, 'optionalAccess', _51 => _51._context, 'optionalAccess', _52 => _52.displayName]);
+    const name = _optionalChain([type, 'optionalAccess', _59 => _59._context, 'optionalAccess', _60 => _60.displayName]);
     return name && !isMinifiedName(name) ? `${name}.Provider` : null;
   }
   if (tag === FiberTags.ContextConsumer) {
@@ -413,7 +527,7 @@ function getComponentNameFromFiber(fiber) {
   }
   if (tag === FiberTags.LazyComponent) {
     const elementType = fiber.elementType;
-    return _optionalChain([elementType, 'optionalAccess', _53 => _53._status]) === 1 ? readDisplayName(elementType._result) : null;
+    return _optionalChain([elementType, 'optionalAccess', _61 => _61._status]) === 1 ? readDisplayName(elementType._result) : null;
   }
   if (typeof fiber.type === "string") {
     return null;
@@ -445,7 +559,7 @@ function getComponentPath(el) {
       return dataComponent ? [dataComponent] : null;
     }
     return components.reverse();
-  } catch (e) {
+  } catch (e11) {
     return null;
   }
 }
@@ -464,7 +578,7 @@ function timestamp(sessionStart) {
 }
 function isTestEnvironment() {
   const maybeProcess = globalThis;
-  const nodeEnv = _optionalChain([maybeProcess, 'access', _54 => _54.process, 'optionalAccess', _55 => _55.env, 'optionalAccess', _56 => _56.NODE_ENV]);
+  const nodeEnv = _optionalChain([maybeProcess, 'access', _62 => _62.process, 'optionalAccess', _63 => _63.env, 'optionalAccess', _64 => _64.NODE_ENV]);
   return nodeEnv === "test" || typeof globalThis !== "undefined" && "jest" in globalThis || typeof globalThis !== "undefined" && "vi" in globalThis;
 }
 function stringifyConsoleArgs(args) {
@@ -477,7 +591,7 @@ function stringifyConsoleArgs(args) {
     }
     try {
       return JSON.stringify(arg);
-    } catch (e2) {
+    } catch (e12) {
       return String(arg);
     }
   }).join(" ");
@@ -539,7 +653,7 @@ var ConsoleCapture = class {
     this.originalConsoleError = console.error;
     console.error = (...args) => {
       this.emit(stringifyConsoleArgs(args), _nullishCoalesce(args.map(readStack).find(Boolean), () => ( null)));
-      _optionalChain([this, 'access', _57 => _57.originalConsoleError, 'optionalCall', _58 => _58(...args)]);
+      _optionalChain([this, 'access', _65 => _65.originalConsoleError, 'optionalCall', _66 => _66(...args)]);
     };
   }
   patchUnhandledRejection() {
@@ -557,7 +671,7 @@ var ConsoleCapture = class {
     let sanitizedMessage = message;
     try {
       sanitizedMessage = this.sanitize ? this.sanitize(message, stack) : message;
-    } catch (e3) {
+    } catch (e13) {
       sanitizedMessage = message;
     }
     const event = {
@@ -736,7 +850,7 @@ function identifyElement(el) {
   }
   if (tag === "svg") {
     const parent = getParentElement(el);
-    if (_optionalChain([parent, 'optionalAccess', _59 => _59.tagName, 'access', _60 => _60.toLowerCase, 'call', _61 => _61()]) === "button") {
+    if (_optionalChain([parent, 'optionalAccess', _67 => _67.tagName, 'access', _68 => _68.toLowerCase, 'call', _69 => _69()]) === "button") {
       const text = safeTextContent(parent);
       return text ? `icon in "${truncate(text, 25)}" button` : "button icon";
     }
@@ -944,7 +1058,7 @@ var EventCapture = class {
       return;
     }
     const element = event.target;
-    if (_optionalChain([this, 'access', _62 => _62.ignore, 'optionalCall', _63 => _63(element)])) {
+    if (_optionalChain([this, 'access', _70 => _70.ignore, 'optionalCall', _71 => _71(element)])) {
       return;
     }
     const clickEvent = {
@@ -1018,7 +1132,7 @@ function extractRequestUrl(input) {
   return input.url;
 }
 function extractRequestMethod(input, init) {
-  if (_optionalChain([init, 'optionalAccess', _64 => _64.method])) {
+  if (_optionalChain([init, 'optionalAccess', _72 => _72.method])) {
     return init.method.toUpperCase();
   }
   if (typeof input === "object" && "method" in input && input.method) {
@@ -1040,7 +1154,7 @@ function redactUrl(value) {
       return `${url.pathname}${url.search}${url.hash}`.replace(/%5Bredacted%5D/g, "[redacted]");
     }
     return url.href.replace(/%5Bredacted%5D/g, "[redacted]");
-  } catch (e4) {
+  } catch (e14) {
     const hashIndex = value.indexOf("#");
     const withoutHash = hashIndex === -1 ? value : value.slice(0, hashIndex);
     const hash = hashIndex === -1 ? "" : redactFragment(value.slice(hashIndex));
@@ -1171,7 +1285,7 @@ function browserSupportsMediaRecorder() {
   return typeof window !== "undefined" && typeof MediaRecorder !== "undefined";
 }
 function browserSupportsVoiceCapture() {
-  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _65 => _65.mediaDevices, 'optionalAccess', _66 => _66.getUserMedia]));
+  return browserSupportsMediaRecorder() && typeof navigator !== "undefined" && Boolean(_optionalChain([navigator, 'access', _73 => _73.mediaDevices, 'optionalAccess', _74 => _74.getUserMedia]));
 }
 function chooseAudioMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
@@ -1242,14 +1356,14 @@ var VoiceCapture = class {
         resolve(null);
       };
       if (recorder.state === "inactive") {
-        _optionalChain([recorder, 'access', _67 => _67.onstop, 'optionalCall', _68 => _68(new Event("stop"))]);
+        _optionalChain([recorder, 'access', _75 => _75.onstop, 'optionalCall', _76 => _76(new Event("stop"))]);
       } else {
         recorder.stop();
       }
     });
   }
   isRecording() {
-    return _optionalChain([this, 'access', _69 => _69.recorder, 'optionalAccess', _70 => _70.state]) === "recording";
+    return _optionalChain([this, 'access', _77 => _77.recorder, 'optionalAccess', _78 => _78.state]) === "recording";
   }
   /** The stream being recorded, so a mute can be asserted against its tracks. */
   get activeStream() {
@@ -1260,92 +1374,12 @@ var VoiceCapture = class {
     this.cleanupStream();
   }
   cleanupStream() {
-    if (this.ownsStream) _optionalChain([this, 'access', _71 => _71.stream, 'optionalAccess', _72 => _72.getTracks, 'call', _73 => _73(), 'access', _74 => _74.forEach, 'call', _75 => _75((track) => track.stop())]);
+    if (this.ownsStream) _optionalChain([this, 'access', _79 => _79.stream, 'optionalAccess', _80 => _80.getTracks, 'call', _81 => _81(), 'access', _82 => _82.forEach, 'call', _83 => _83((track) => track.stop())]);
     this.stream = null;
     this.ownsStream = false;
   }
 };
 
-// src/live/tokenBootstrap.ts
-var LIVE_FRAGMENT_TOKEN_KEY = "riffrec_live";
-var LIVE_FRAGMENT_ENDPOINT_KEY = "endpoint";
-var LIVE_BOOTSTRAP_STORAGE_KEY = "riffrec:live:bootstrap";
-var nativeReplaceState = typeof History !== "undefined" && typeof History.prototype.replaceState === "function" ? History.prototype.replaceState : null;
-function defaultStorage() {
-  try {
-    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
-  } catch (e5) {
-    return null;
-  }
-}
-function normalizeOrigin(value) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return url.origin;
-  } catch (e6) {
-    return null;
-  }
-}
-function parseLiveFragment(hash) {
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (!raw) return { bootstrap: null, rest: "" };
-  const params = new URLSearchParams(raw);
-  const token = params.get(LIVE_FRAGMENT_TOKEN_KEY);
-  const endpoint = params.get(LIVE_FRAGMENT_ENDPOINT_KEY);
-  if (token === null && endpoint === null) return { bootstrap: null, rest: raw };
-  params.delete(LIVE_FRAGMENT_TOKEN_KEY);
-  params.delete(LIVE_FRAGMENT_ENDPOINT_KEY);
-  const rest = params.toString();
-  if (!token || !endpoint) return { bootstrap: null, rest };
-  const origin = normalizeOrigin(endpoint);
-  if (!origin) return { bootstrap: null, rest };
-  return { bootstrap: { token, endpoint: origin }, rest };
-}
-function readStoredBootstrap(storage = defaultStorage()) {
-  if (!storage) return null;
-  try {
-    const raw = storage.getItem(LIVE_BOOTSTRAP_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.token !== "string" || typeof parsed.endpoint !== "string") return null;
-    return { token: parsed.token, endpoint: parsed.endpoint };
-  } catch (e7) {
-    return null;
-  }
-}
-function clearStoredBootstrap(storage = defaultStorage()) {
-  try {
-    _optionalChain([storage, 'optionalAccess', _76 => _76.removeItem, 'call', _77 => _77(LIVE_BOOTSTRAP_STORAGE_KEY)]);
-  } catch (e8) {
-  }
-}
-function bootstrapLiveToken(options = {}) {
-  const location = _nullishCoalesce(options.location, () => ( (typeof window !== "undefined" ? window.location : null)));
-  const history = _nullishCoalesce(options.history, () => ( (typeof window !== "undefined" ? window.history : null)));
-  const storage = options.storage === void 0 ? defaultStorage() : options.storage;
-  const replaceState = options.replaceState === void 0 ? nativeReplaceState : options.replaceState;
-  if (!location) return readStoredBootstrap(storage);
-  const { bootstrap, rest } = parseLiveFragment(location.hash);
-  const hadLiveKeys = bootstrap !== null || rest !== (location.hash.startsWith("#") ? location.hash.slice(1) : location.hash);
-  if (hadLiveKeys && history) {
-    const cleaned = `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`;
-    try {
-      if (replaceState) {
-        replaceState.call(history, history.state, "", cleaned);
-      } else {
-        history.replaceState(history.state, "", cleaned);
-      }
-    } catch (e9) {
-    }
-  }
-  if (!bootstrap) return readStoredBootstrap(storage);
-  try {
-    _optionalChain([storage, 'optionalAccess', _78 => _78.setItem, 'call', _79 => _79(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify(bootstrap))]);
-  } catch (e10) {
-  }
-  return bootstrap;
-}
 
 
 
@@ -1364,5 +1398,7 @@ function bootstrapLiveToken(options = {}) {
 
 
 
-exports.getComponentName = getComponentName; exports.ConsoleCapture = ConsoleCapture; exports.buildSelector = buildSelector; exports.EventCapture = EventCapture; exports.NetworkCapture = NetworkCapture; exports.RECORDING_FILE_NAME = RECORDING_FILE_NAME; exports.isRecordingFileName = isRecordingFileName; exports.segmentFileName = segmentFileName; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.ScreenCapture = ScreenCapture; exports.VoiceCapture = VoiceCapture; exports.parseLiveFragment = parseLiveFragment; exports.readStoredBootstrap = readStoredBootstrap; exports.clearStoredBootstrap = clearStoredBootstrap; exports.bootstrapLiveToken = bootstrapLiveToken;
-//# sourceMappingURL=chunk-OGVGX2XH.cjs.map
+
+
+exports.getComponentName = getComponentName; exports.ConsoleCapture = ConsoleCapture; exports.buildSelector = buildSelector; exports.EventCapture = EventCapture; exports.NetworkCapture = NetworkCapture; exports.RECORDING_FILE_NAME = RECORDING_FILE_NAME; exports.isRecordingFileName = isRecordingFileName; exports.segmentFileName = segmentFileName; exports.DEFAULT_DISPLAY_MEDIA_VIDEO = DEFAULT_DISPLAY_MEDIA_VIDEO; exports.DEFAULT_DISPLAY_MEDIA_OPTIONS = DEFAULT_DISPLAY_MEDIA_OPTIONS; exports.ScreenCapture = ScreenCapture; exports.VoiceCapture = VoiceCapture; exports.parseLiveFragment = parseLiveFragment; exports.readStoredBootstrap = readStoredBootstrap; exports.clearStoredBootstrap = clearStoredBootstrap; exports.readRememberedBootstrap = readRememberedBootstrap; exports.forgetRememberedBootstrap = forgetRememberedBootstrap; exports.restoreRememberedBootstrap = restoreRememberedBootstrap; exports.bootstrapLiveToken = bootstrapLiveToken;
+//# sourceMappingURL=chunk-VTWYAC7Z.cjs.map

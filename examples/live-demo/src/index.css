@@ -82,6 +82,10 @@ a {
   gap: 12px;
 }
 
+.header__right {
+  margin-left: auto;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -101,7 +105,7 @@ a {
 .header__nav {
   display: flex;
   gap: 4px;
-  margin-left: auto;
+  margin-left: 32px;
 }
 
 .header__link {
@@ -197,16 +201,21 @@ a {
 
 .sidebar__section-title {
   font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
-  padding: 8px 10px 4px;
+  padding: 16px 10px 6px;
+}
+
+.sidebar__section-title:first-child {
+  padding-top: 4px;
 }
 
 .sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar__link {
@@ -214,20 +223,20 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
   color: var(--text);
   font-weight: 500;
-  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 /* Accent bar that slides in on the active item. */
 .sidebar__link::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
   width: 3px;
   border-radius: 3px;
   background: var(--brand);
@@ -238,17 +247,11 @@ a {
 
 .sidebar__link:hover {
   background: var(--bg);
-  transform: translateX(2px);
-}
-
-.sidebar__link:hover .sidebar__icon {
-  transform: rotate(-6deg) scale(1.06);
 }
 
 .sidebar__link.active {
-  background: linear-gradient(90deg, var(--brand-soft) 0%, transparent 100%);
+  background: var(--brand-soft);
   color: var(--brand-strong);
-  font-weight: 600;
 }
 
 .sidebar__link.active::before {
@@ -257,47 +260,51 @@ a {
 }
 
 .sidebar__icon {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
   color: var(--text-muted);
-  transition: transform 160ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: color 120ms ease;
 }
 
 .sidebar__link.active .sidebar__icon {
-  background: var(--surface);
-  border-color: color-mix(in srgb, var(--brand) 40%, transparent);
   color: var(--brand-strong);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--brand) 18%, transparent);
 }
 
 .sidebar__projects {
   list-style: none;
   margin: 0;
-  padding: 0 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   color: var(--text-muted);
 }
 
-/* Same left guide as .sidebar__link: a 28px slot for the marker, 10px gap, then the label. */
+/* Same left guide as .sidebar__link: a 20px slot for the marker, 10px gap, then the label. */
 .sidebar__projects li {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.sidebar__projects li:hover {
+  background: var(--bg);
 }
 
 .sidebar__projects .dot {
-  margin: 0 10px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, var(--bg));
+  width: 6px;
+  height: 6px;
+  margin: 0 7px;
 }
 
 .dot {
@@ -325,13 +332,74 @@ a {
 }
 
 .plan-card {
-  background: var(--brand-soft);
+  position: relative;
+  overflow: hidden;
+  /* Texture: a fine dot grid over two soft colour blooms, fading out behind the text. */
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--brand) 22%, transparent) 1px, transparent 0) 0 0 / 10px 10px,
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--brand) 26%, transparent) 0%, transparent 60%),
+    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, var(--blue) 18%, transparent) 0%, transparent 65%),
+    var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px 12px 12px;
+  min-height: 108px;
+  animation: plan-card-glow 3.2s ease-in-out infinite;
+}
+
+/* A slow sheen across the card, so the trial reads as live without shouting. */
+.plan-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: plan-card-sheen 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes plan-card-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent); }
+}
+
+@keyframes plan-card-sheen {
+  0%, 55% { transform: translateX(-120%); }
+  85%, 100% { transform: translateX(120%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card,
+  .plan-card::after {
+    animation: none;
+  }
 }
 
 .plan-card__title {
   font-weight: 600;
+}
+
+/* A small smiley that bobs gently in the card's top-right corner. */
+.plan-card__smiley {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--brand-strong);
+  animation: plan-card-smiley 2.6s ease-in-out infinite;
+}
+
+@keyframes plan-card-smiley {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card__smiley {
+    animation: none;
+  }
 }
 
 .plan-card__meta {
@@ -361,6 +429,28 @@ a {
   gap: 16px;
 }
 
+/* Dashboard only: a playful band of dots and diagonal stripes that fades out to the right. */
+.page__header--textured {
+  position: relative;
+  isolation: isolate;
+  padding: 18px 20px;
+  margin: -8px -4px 20px;
+}
+
+.page__header--textured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--brand) 28%, transparent) 1px, transparent 0) 0 0 / 12px 12px,
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--amber) 10%, transparent) 0 8px, transparent 8px 20px),
+    linear-gradient(90deg, var(--brand-soft), transparent 75%);
+  -webkit-mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35));
+  mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35));
+}
+
 .page__title {
   margin: 0;
   font-size: 22px;
@@ -380,9 +470,13 @@ a {
 /* Buttons */
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   font: inherit;
   font-weight: 500;
-  padding: 8px 14px;
+  padding: 0 14px;
   border-radius: 6px;
   border: 1px solid var(--brand);
   background: var(--brand);
@@ -410,8 +504,14 @@ a {
 }
 
 .button--small {
-  padding: 5px 10px;
+  height: 28px;
+  padding: 0 10px;
   font-size: 12px;
+}
+
+/* Header actions read as a matched pair: same height, same width. */
+.page__actions .button {
+  min-width: 112px;
 }
 
 /* Cards */
@@ -456,6 +556,43 @@ a {
 .stat--green {
   --stat-accent: var(--green);
   --stat-wash: var(--green-soft);
+}
+
+.stat__chart {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin: 6px 0 4px;
+  overflow: visible;
+}
+
+.stat__chart-area {
+  fill: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.stat__chart-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.stat__chart-dot {
+  fill: currentColor;
+}
+
+.stat--amber .stat__chart {
+  color: var(--amber);
+}
+
+.stat--brand .stat__chart {
+  color: var(--brand);
+}
+
+.stat--blue .stat__chart {
+  color: var(--blue);
 }
 
 .stat--amber {
@@ -626,9 +763,21 @@ a {
   color: var(--brand-strong);
 }
 
+/* Calm, not alarming: a neutral pill with a small red dot carries the state. */
 .pill--failed {
-  background: var(--red-soft);
-  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.pill--failed::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--red) 80%, white);
 }
 
 /* Feed */

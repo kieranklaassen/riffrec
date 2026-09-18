@@ -21,6 +21,8 @@ export type LiveSchemaVersion = typeof LIVE_SCHEMA_VERSION;
 
 /** Header carrying the page's session id on every page -> endpoint request. */
 export const LIVE_SESSION_HEADER = "X-Riffrec-Session" as const;
+/** Carries a riffer-pasted OpenAI key on `POST /mint`; the endpoint prefers it over its own. */
+export const LIVE_OPENAI_KEY_HEADER = "X-Riffrec-OpenAI-Key" as const;
 
 /** Body cap for a `POST /events` batch (I3). */
 export const LIVE_EVENTS_BODY_MAX_BYTES = 64 * 1024;
@@ -54,12 +56,13 @@ export const EXECUTION_MODES: readonly ExecutionMode[] = ["instant", "smart", "c
 
 export const DEFAULT_EXECUTION_MODE: ExecutionMode = "smart";
 
-/** R11: initial -> triaging -> accepted | needs_info, then applied | blocked; withdrawn when retracted. */
+/** R11: initial -> triaging -> accepted | needs_info -> working (the agent is editing), then applied | blocked; withdrawn when retracted. */
 export type UnitStatus =
   | "initial"
   | "triaging"
   | "accepted"
   | "needs_info"
+  | "working"
   | "applied"
   | "blocked"
   | "withdrawn";
@@ -69,6 +72,7 @@ export const UNIT_STATUSES: readonly UnitStatus[] = [
   "triaging",
   "accepted",
   "needs_info",
+  "working",
   "applied",
   "blocked",
   "withdrawn"
@@ -276,7 +280,10 @@ export type LiveEnvelopeInspection =
 // Owned by U8; typed here so page and harness code share one definition.
 // ---------------------------------------------------------------------------
 
-export type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended";
+export type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended" | "agent";
+
+/** What the agent is doing right now, as the endpoint sees it (its wait loop). */
+export type LiveAgentState = "listening" | "working" | "away";
 
 export interface LiveUnitStatusEvent {
   event: "unit_status";
@@ -303,7 +310,14 @@ export interface LiveSessionEndedEvent {
   data: { reason?: string };
 }
 
+/** Sent on connect and on every change: listening (a wait is parked), working (a batch is out), away. */
+export interface LiveAgentEvent {
+  event: "agent";
+  data: { state: LiveAgentState; since: number; checkpoint_id?: string };
+}
+
 export type LiveServerEvent =
+  | LiveAgentEvent
   | LiveUnitStatusEvent
   | LiveAppliedEvent
   | LiveAskEvent
@@ -341,6 +355,14 @@ export interface LiveMintResponse {
   /** Unix epoch seconds. */
   expires_at: number;
   model: string;
+}
+
+/** `GET /session`: whether the link's endpoint is up and can take another session. */
+export interface LiveSessionProbeResponse {
+  status: "live" | "ended";
+  session_id: string | null;
+  /** The last session ended and nothing is still held, so a new session id opens a fresh board. */
+  accepts_new_session: boolean;
 }
 
 export type LiveMintError =

@@ -31,8 +31,10 @@ export interface ConsentCopyInput {
   endpoint: string | null;
   /** Named owner of the endpoint (R26); defaults to the origin itself. */
   endpointOwner?: string;
-  /** Whether a voice interviewer can run (an endpoint exists to mint its secret). */
+  /** Whether a voice interviewer runs (an endpoint exists to mint its secret, and the riffer left voice on). */
   voice?: boolean;
+  /** Whether the microphone is asked for at all; false once the riffer turned voice off. Defaults to true. */
+  microphone?: boolean;
 }
 
 export interface ConsentDestination {
@@ -53,7 +55,7 @@ export interface ConsentCopy {
   declineLabel: string;
 }
 
-export const OPENAI_DESTINATION = "OpenAI Realtime (the voice interviewer)";
+export const OPENAI_DESTINATION = "OpenAI, for the voice interviewer";
 
 export function resolveConsentProfile(profile?: Partial<ConsentEvidenceProfile>): ConsentEvidenceProfile {
   return { ...DEFAULT_CONSENT_PROFILE, ...(profile ?? {}) };
@@ -65,14 +67,13 @@ export function describeEndpoint(endpoint: string | null, owner?: string): strin
   return endpoint ?? "no endpoint";
 }
 
-function endpointItems(profile: ConsentEvidenceProfile): string[] {
-  const items: string[] = [];
-  if (profile.transcript) items.push("the transcript of what you say");
-  items.push("units: each change you ask for, with the element it points at");
+function endpointItems(profile: ConsentEvidenceProfile, voice: boolean): string[] {
+  const items: string[] = ["each change you ask for, with the element it points at"];
+  if (profile.transcript && voice) items.push("the transcript of what you say");
   items.push("clicks, navigation, network URLs and statuses, console errors");
-  if (profile.strokes) items.push("your drawings and pins, with the element under them");
-  if (profile.frames) items.push("screenshots and annotated frames of the page");
-  if (profile.audio_clip) items.push("short audio clips of each request");
+  if (profile.strokes) items.push("your drawings and pins");
+  if (profile.frames) items.push("screenshots and annotated frames");
+  if (profile.audio_clip && voice) items.push("short audio clips of each request");
   if (profile.telemetry_window) items.push("network and console telemetry around each request");
   return items;
 }
@@ -80,42 +81,47 @@ function endpointItems(profile: ConsentEvidenceProfile): string[] {
 export function buildConsentCopy(input: ConsentCopyInput): ConsentCopy {
   const profile = resolveConsentProfile(input.profile);
   const streams = input.endpoint !== null;
-  const voice = input.voice ?? streams;
+  const microphone = input.microphone ?? true;
+  const voice = (input.voice ?? streams) && streams && microphone;
   const endpointName = describeEndpoint(input.endpoint, input.endpointOwner);
   const destinations: ConsentDestination[] = [];
 
-  if (voice && streams) {
-    const items = ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"];
-    if (profile.frames) items.push("what you click, draw on, and pin, and screenshots of the page when you point at something or ask the interviewer to look");
-    else items.push("what you click, draw on, and pin");
+  if (voice) {
+    const items = ["your microphone audio while live", "the session brief about this app", "what you click, draw and pin"];
+    if (profile.frames) items.push("screenshots when you point at something");
     destinations.push({ id: "openai", to: OPENAI_DESTINATION, items });
   }
 
   if (streams) {
-    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile) });
+    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile, voice) });
   } else {
     destinations.push({
       id: "local",
       to: "a local archive on this device",
-      items: ["screen recording and microphone audio", "clicks, navigation, network URLs and statuses, console errors", "your drawings and pins"]
+      items: [
+        microphone ? "screen recording and microphone audio" : "screen recording",
+        "clicks, navigation, network URLs and statuses, console errors",
+        "your drawings and pins"
+      ]
     });
   }
 
   return {
-    title: "Start a live session?",
+    title: "Start a live session",
     intro: streams
-      ? "While the session is live, riffrec streams what you say and do on this page as it happens."
+      ? "Talk through what you want changed and point at it. The agent picks it up as you go."
       : "No endpoint is configured, so nothing streams: the session is saved as a local archive when you stop.",
     destinations,
-    retention: streams
-      ? `${endpointName} keeps a local session log with everything listed above until you delete it.`
-      : null,
-    noExclusions:
-      "Screenshots and frames exclude nothing automatically: anything visible on the page can appear in them. You can pause frame and stream capture at any time from the live indicator.",
+    retention: streams ? `Kept in a local session log at ${endpointName} until you delete it.` : null,
+    noExclusions: profile.frames
+      ? "Screenshots don't blur anything: whatever is visible can appear. Press P any time to pause capture."
+      : "Press P any time to pause capture.",
     microphone: voice
-      ? "Accepting asks your browser for microphone access. If you decline the microphone, the session continues with drawing and the board only."
-      : "Accepting asks your browser for microphone access for the local recording. If you decline the microphone, the session continues with drawing and the board only.",
-    acceptLabel: "Accept and start",
+      ? "Your browser will ask for microphone access. Say no and the session still runs with drawing and the board; the interviewer just won't listen."
+      : microphone
+        ? "Your browser will ask for microphone access for the local recording. Say no and the session still runs with drawing and the board."
+        : "Voice is off, so no microphone needed. You'll draw and pin; the board collects what you ask for.",
+    acceptLabel: microphone ? "Allow microphone & start" : "Start session",
     declineLabel: "Not now"
   };
 }

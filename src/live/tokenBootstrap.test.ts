@@ -2,10 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIVE_BOOTSTRAP_STORAGE_KEY,
+  LIVE_REMEMBERED_STORAGE_KEY,
   bootstrapLiveToken,
   clearStoredBootstrap,
+  forgetRememberedBootstrap,
   parseLiveFragment,
+  readRememberedBootstrap,
   readStoredBootstrap,
+  restoreRememberedBootstrap,
   stripLiveFragment
 } from "./tokenBootstrap";
 
@@ -38,12 +42,14 @@ describe("parseLiveFragment", () => {
 describe("bootstrapLiveToken", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
     history.replaceState(null, "", "/settings?x=1");
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
   });
 
   it("reads the fragment, strips it before any history entry, and stores the credentials", () => {
@@ -93,5 +99,46 @@ describe("bootstrapLiveToken", () => {
 
     clearStoredBootstrap();
     expect(bootstrapLiveToken()).toBeNull();
+  });
+});
+
+describe("remembered link", () => {
+  const link = { token: "tok_link", endpoint: "http://localhost:4321" };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+    history.replaceState(null, "", "/settings");
+  });
+
+  it("remembers the fragment link past the tab's session credentials", () => {
+    history.replaceState(null, "", "/settings#riffrec_live=tok_link&endpoint=http://localhost:4321");
+
+    bootstrapLiveToken();
+    clearStoredBootstrap();
+
+    expect(readStoredBootstrap()).toBeNull();
+    expect(readRememberedBootstrap()).toEqual(link);
+    expect(JSON.parse(localStorage.getItem(LIVE_REMEMBERED_STORAGE_KEY)!)).toEqual(link);
+  });
+
+  it("restores the remembered link for the next session only when the tab holds none", () => {
+    localStorage.setItem(LIVE_REMEMBERED_STORAGE_KEY, JSON.stringify(link));
+
+    expect(restoreRememberedBootstrap()).toBe(true);
+    expect(readStoredBootstrap()).toEqual(link);
+
+    sessionStorage.setItem(LIVE_BOOTSTRAP_STORAGE_KEY, JSON.stringify({ token: "current", endpoint: "http://e.test" }));
+    expect(restoreRememberedBootstrap()).toBe(false);
+    expect(readStoredBootstrap()).toEqual({ token: "current", endpoint: "http://e.test" });
+  });
+
+  it("restores nothing once the link is forgotten", () => {
+    localStorage.setItem(LIVE_REMEMBERED_STORAGE_KEY, JSON.stringify(link));
+    forgetRememberedBootstrap();
+
+    expect(readRememberedBootstrap()).toBeNull();
+    expect(restoreRememberedBootstrap()).toBe(false);
+    expect(readStoredBootstrap()).toBeNull();
   });
 });

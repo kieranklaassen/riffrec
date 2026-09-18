@@ -6,6 +6,7 @@ import {
   isLiveEnvelopeOfType,
   type ExecutionMode,
   type LiveAnchor,
+  type LiveAgentState,
   type LiveAnnotation,
   type LiveAnswer,
   type LiveCheckpoint,
@@ -30,6 +31,7 @@ import {
   type PersistTier
 } from "./buffer";
 import { CheckpointEmitter, type PageCheckpointTrigger } from "./checkpoints";
+import type { VoiceUnavailableReason } from "./realtime/interviewer";
 import { clipFileName } from "./evidence/audioClip";
 import {
   FULL_EVIDENCE_PROFILE,
@@ -115,6 +117,10 @@ export interface LiveSessionSnapshot {
   status: LiveSessionStatus;
   phase: Phase;
   voice: LiveVoiceState;
+  /** Why the interviewer is not running, when it settled that way; `null` otherwise. */
+  voiceUnavailable: VoiceUnavailableReason | null;
+  /** The agent's live state from the endpoint; null until the endpoint has said (or when nothing streams). */
+  agent: { state: LiveAgentState; since: number } | null;
   stream: LiveStreamStatus;
   endpoint: string | null;
   mode: ExecutionMode;
@@ -226,12 +232,16 @@ interface PersistedLiveSession {
   checkpoints: LiveCheckpoint[];
   final_seq: number | null;
   pending_mode_seq: number | null;
+  /** The riffer turned screenshots off at consent; overrides the profile's `frames`. */
+  frames_off?: boolean;
   /** Set when the quota guard had to shed transcript, annotations, or frames. */
   degraded?: PersistTier;
 }
 
 /** Gesture frames kept for a later unit reference under `frames: "one"`; matches the U6 ring buffer with slack. */
 const HELD_FRAME_CAP = 24;
+/** How far back a drawing-only unit can be taken over by a spoken unit on the same element. */
+const DRAWING_MERGE_WINDOW_MS = 30_000;
 
 export const LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
 export const LIVE_SESSION_KEY_PREFIX = "riffrec:live:session:";
@@ -287,6 +297,7 @@ export class LiveSession {
 
   private phase: Phase = "idle";
   private voice: LiveVoiceState = "none";
+  private voiceReason: VoiceUnavailableReason | null = null;
   private streamStatus: LiveStreamStatus;
   private readonly token: string | null;
   private readonly endpointOrigin: string | null;
@@ -316,7 +327,7 @@ export class LiveSession {
   /** Frames the profile posts only once a unit references them (`frames: "one"`). */
   private readonly heldFrames = new Map<string, string>();
   private readonly clipBytes = new Map<string, Blob>();
-  private readonly profile: EvidenceProfile;
+  private profile: EvidenceProfile;
   /** Set on a rehydrate: the reload of unacked frame bytes the archive needs. */
   private framesRestored: Promise<void> | null = null;
   private readonly answers: LiveAnswer[] = [];
@@ -342,6 +353,7 @@ export class LiveSession {
   private readonly listeners = new Map<LiveSessionEventName, Set<Listener<LiveSessionEventName>>>();
   private readonly ackWaiters: Array<{ seq: number; resolve: (acked: boolean) => void }> = [];
   private persistOutcome: PersistOutcome = "stored";
+  private agentState: { state: LiveAgentState; since: number } | null = null;
 
   private constructor(options: LiveSessionOptions, persisted: PersistedLiveSession | null) {
     this.now = options.now ?? (() => Date.now());
@@ -371,6 +383,7 @@ export class LiveSession {
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
       this.voiceRan = persisted.voice_ran;
+      if (persisted.frames_off) this.profile = { ...this.profile, frames: "none" };
       this.muted = persisted.muted;
       this.mic = persisted.mic;
       this.nextSeq = persisted.next_seq;
@@ -648,6 +661,7 @@ export class LiveSession {
   voiceConnecting(): void {
     if (this.phase !== "running") return;
     this.voice = this.voiceRan ? "reconnecting" : "connecting";
+    this.voiceReason = null;
     this.notify();
   }
 
@@ -666,9 +680,10 @@ export class LiveSession {
   }
 
   /** Mint refused for good, mic denied, or no endpoint: a one-way move to `live_novoice`. */
-  voiceUnavailable(): void {
+  voiceUnavailable(reason: VoiceUnavailableReason | null = null): void {
     if (this.phase !== "running") return;
     this.voice = "novoice";
+    this.voiceReason = reason;
     this.notify();
   }
 
@@ -711,6 +726,16 @@ export class LiveSession {
   // ---------------------------------------------------------------------
 
   recordUnit(input: RecordUnitInput): LiveUnit {
+    const absorbed = input.transcript_excerpt ? this.absorbDrawingOnly(input) : [];
+    if (absorbed.length > 0) {
+      input = {
+        ...input,
+        evidence: {
+          ...input.evidence,
+          annotation_ids: [...new Set([...(input.evidence?.annotation_ids ?? []), ...absorbed])]
+        }
+      };
+    }
     const id = input.id ?? `unit_${pad(this.nextUnit++)}`;
     const firstAnchorT = input.anchors[0]?.t ?? this.elapsed();
     const unit: LiveUnit = {
@@ -764,10 +789,33 @@ export class LiveSession {
     return result;
   }
 
+  /**
+   * Drawing first and talking a few seconds later is one request, not two: a spoken unit on the
+   * element a still-unreleased drawing-only unit points at takes over that drawing, and the
+   * drawing-only unit is withdrawn. Returns the annotation ids taken over.
+   */
+  private absorbDrawingOnly(input: RecordUnitInput): string[] {
+    const selectors = new Set(input.anchors.map((anchor) => anchor.selector));
+    if (selectors.size === 0) return [];
+    const now = this.elapsed();
+    const taken: string[] = [];
+    for (const unit of this.units.all()) {
+      const drawingOnly = unit.transcript_excerpt === "" && unit.evidence.annotation_ids.length > 0;
+      if (!drawingOnly || unit.status !== "initial" || this.units.isReleased(unit.id)) continue;
+      if (now - unit.evidence.transcript_span.t_start > DRAWING_MERGE_WINDOW_MS) continue;
+      if (!unit.anchors.some((anchor) => selectors.has(anchor.selector))) continue;
+      if (this.withdrawUnit(unit.id, "merged into a spoken request").ok) taken.push(...unit.evidence.annotation_ids);
+    }
+    return taken;
+  }
+
   /** The riffer's answer to an endpoint question, spoken (`relay_answer`) or typed. */
   answer(unitId: string, text: string): LiveAnswer | null {
     const unit = this.units.get(unitId);
     if (!unit) return null;
+    // One answer per question: the interviewer can relay the same reply twice, and a unit the
+    // endpoint already moved on has nothing left to answer.
+    if (!this.units.openQuestions().some((question) => question.unit_id === unitId)) return null;
     this.units.answer(unitId);
     const answer: LiveAnswer = { unit_id: unitId, text };
     this.answers.push(answer);
@@ -884,6 +932,12 @@ export class LiveSession {
    */
   releaseFrame(frameId: string): void {
     this.postHeldFrame(frameId);
+  }
+
+  /** The riffer turned screenshots off at consent: no frame leaves the page for the rest of the session. */
+  disableFrames(): void {
+    this.profile = { ...this.profile, frames: "none" };
+    this.persist();
   }
 
   /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
@@ -1006,6 +1060,8 @@ export class LiveSession {
       status: this.status,
       phase: this.phase,
       voice: this.voice,
+      voiceUnavailable: this.voiceReason,
+      agent: this.agentState,
       stream: this.streamStatus,
       endpoint: this.endpointOrigin,
       mode: this.mode,
@@ -1227,6 +1283,9 @@ export class LiveSession {
         if (question && unit) this.emitEvent("ask", { unit, question });
         break;
       }
+      case "agent":
+        this.agentState = { state: event.data.state, since: event.data.since };
+        break;
       case "ack":
         break;
       case "session_ended":
@@ -1392,6 +1451,7 @@ export class LiveSession {
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
       pending_mode_seq: this.pendingModeSeq,
+      ...(this.profile.frames === "none" ? { frames_off: true } : {}),
       ...(tier === "full" ? {} : { degraded: tier })
     };
   }

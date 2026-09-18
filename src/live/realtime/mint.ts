@@ -1,4 +1,4 @@
-import { LIVE_SESSION_HEADER, type LiveMintRequest, type LiveMintResponse } from "../contract";
+import { LIVE_OPENAI_KEY_HEADER, LIVE_SESSION_HEADER, type LiveMintRequest, type LiveMintResponse } from "../contract";
 
 /**
  * `POST /mint` (I2, KTD4): the page sends `{ session_id }` with its bearer
@@ -40,6 +40,8 @@ export interface MintOptions {
   endpoint: string;
   token: string;
   sessionId: string;
+  /** A riffer-pasted OpenAI key, sent for the endpoint to use instead of its own. */
+  openaiKey?: string | null;
   fetch?: typeof fetch;
 }
 
@@ -100,6 +102,7 @@ export async function mint(options: MintOptions): Promise<MintOutcome> {
       headers: {
         Authorization: `Bearer ${options.token}`,
         [LIVE_SESSION_HEADER]: options.sessionId,
+        ...(options.openaiKey ? { [LIVE_OPENAI_KEY_HEADER]: options.openaiKey } : {}),
         "Content-Type": "application/json"
       },
       body: JSON.stringify(request)

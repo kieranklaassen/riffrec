@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { MicState } from "../contract";
+import type { VoiceUnavailableReason } from "../realtime/interviewer";
 import type { LiveSessionError, LiveSessionStatus } from "../session";
 
 /**
@@ -31,6 +32,8 @@ export interface IndicatorInput {
   expectedSchemaVersion?: string | null;
   endpoint?: string | null;
   error?: LiveSessionError | null;
+  /** Why the interviewer is not running, for the `novoice` label. */
+  voiceUnavailable?: VoiceUnavailableReason | null;
 }
 
 export interface IndicatorView {
@@ -40,11 +43,11 @@ export interface IndicatorView {
   short: string;
   color: string;
   pulse: boolean;
+  /** Longer explanation, shown as the tooltip. */
+  detail?: string;
 }
 
 export interface LiveIndicatorProps extends IndicatorInput {
-  onToggleMute?: () => void;
-  onTogglePause?: () => void;
   /** Collapsed pill form: dot and short label only. */
   compact?: boolean;
 }
@@ -55,6 +58,41 @@ function hostOf(endpoint: string | null | undefined): string | null {
     return new URL(endpoint).host;
   } catch {
     return endpoint;
+  }
+}
+
+/** Plain-language cause of a voice-less session, or `null` when riffrec cannot tell. */
+export function voiceUnavailableCause(reason: VoiceUnavailableReason | null | undefined): string | null {
+  if (!reason) return null;
+  switch (reason.kind) {
+    case "no_endpoint":
+      return "no endpoint configured";
+    case "connect_failed":
+      return "couldn't connect to OpenAI Realtime";
+    case "exhausted":
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "can't reach the /ce-polish server";
+    case "refused":
+      switch (reason.reason) {
+        case "openai_error":
+          if (reason.upstreamStatus === 401) return "OpenAI rejected the API key";
+          if (reason.upstreamStatus === 429) return "OpenAI rate limit or quota reached";
+          if (reason.upstreamStatus === undefined) return "couldn't reach OpenAI";
+          return `OpenAI returned an error (${reason.upstreamStatus})`;
+        case "no_key":
+          return "the endpoint has no OpenAI key";
+        case "brief_contains_secret":
+          return "the session brief looked like it held a secret";
+        case "unauthorized":
+          return "the endpoint rejected this page's token";
+        case "tls_required":
+          return "the endpoint requires HTTPS";
+        default:
+          return "the endpoint refused to start voice";
+      }
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
   }
 }
 
@@ -96,27 +134,6 @@ function baseIndicatorState(status: LiveSessionStatus): IndicatorState {
   }
 }
 
-function isRunning(status: LiveSessionStatus): boolean {
-  switch (status) {
-    case "connecting":
-    case "live":
-    case "live_novoice":
-    case "buffering":
-    case "reconnecting":
-    case "incompatible":
-      return true;
-    case "idle":
-    case "consenting":
-    case "ended":
-    case "error":
-      return false;
-    default: {
-      const exhaustive: never = status;
-      return exhaustive;
-    }
-  }
-}
-
 export function describeIndicator(input: IndicatorInput): IndicatorView {
   const state = deriveIndicatorState(input);
   const host = hostOf(input.endpoint);
@@ -137,14 +154,18 @@ export function describeIndicator(input: IndicatorInput): IndicatorView {
         color: "#12b76a",
         pulse: true
       };
-    case "novoice":
+    case "novoice": {
+      const cause = voiceUnavailableCause(input.voiceUnavailable);
+      const where = host ? `Clicks, drawings, and the board still stream to ${host}.` : "Clicks, drawings, and the board are saved locally.";
       return {
         state,
-        label: host ? `Live · no voice · streaming to ${host}` : "Live · no voice · saving locally",
-        short: "Live · no voice",
-        color: "#12b76a",
-        pulse: true
+        label: cause ? `Voice off · ${cause}` : host ? `Voice off · streaming to ${host}` : "Voice off · saving locally",
+        short: "Voice off",
+        color: "#f79009",
+        pulse: false,
+        detail: `The voice interviewer is not running${cause ? `: ${cause}` : ""}. ${where}`
       };
+    }
     case "buffering":
       return {
         state,
@@ -187,80 +208,32 @@ export function describeIndicator(input: IndicatorInput): IndicatorView {
 const rootStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#101828",
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 500,
+  color: "#344054",
   minWidth: 0
 };
 
 const dotStyle: CSSProperties = {
-  width: 9,
-  height: 9,
+  width: 6,
+  height: 6,
   borderRadius: "50%",
   flex: "none"
 };
 
-const iconButtonStyle: CSSProperties = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
-  background: "#ffffff",
-  color: "#344054",
-  font: "inherit",
-  fontSize: 12,
-  padding: "3px 8px",
-  cursor: "pointer"
-};
-
-const iconButtonPressedStyle: CSSProperties = {
-  ...iconButtonStyle,
-  background: "#344054",
-  borderColor: "#344054",
-  color: "#ffffff"
-};
-
-export function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input }: LiveIndicatorProps) {
+/** Dot and label for the session state; only a flowing live stream gets the halo. */
+export function LiveIndicator({ compact = false, ...input }: LiveIndicatorProps) {
   const view = describeIndicator(input);
-  const running = isRunning(input.status);
-  const micDenied = input.mic === "denied";
-  const showControls = !compact && running && (onToggleMute || onTogglePause);
-
   return (
-    <span data-riffrec-live-indicator={view.state} aria-live="polite" style={rootStyle}>
-      <span aria-hidden="true" style={{ ...dotStyle, background: view.color, boxShadow: view.pulse ? `0 0 0 3px ${view.color}33` : undefined }} />
+    <span data-riffrec-live-indicator={view.state} aria-live="polite" title={view.detail ?? view.label} style={rootStyle}>
+      <span
+        aria-hidden="true"
+        style={{ ...dotStyle, background: view.color, boxShadow: view.state === "streaming" ? `0 0 0 3px ${view.color}26` : undefined }}
+      />
       <span data-riffrec-live-indicator-label="" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {compact ? view.short : view.label}
       </span>
-      {showControls ? (
-        <span style={{ display: "inline-flex", gap: 6, marginLeft: 4 }}>
-          {onToggleMute ? (
-            <button
-              type="button"
-              data-riffrec-live-mute=""
-              aria-pressed={input.muted}
-              aria-label={input.muted ? "Unmute microphone" : "Mute microphone"}
-              disabled={micDenied}
-              title={micDenied ? "Microphone was denied" : undefined}
-              style={input.muted ? iconButtonPressedStyle : iconButtonStyle}
-              onClick={onToggleMute}
-            >
-              {input.muted ? "Unmute" : "Mute"}
-            </button>
-          ) : null}
-          {onTogglePause ? (
-            <button
-              type="button"
-              data-riffrec-live-pause=""
-              aria-pressed={input.paused ?? false}
-              aria-label={input.paused ? "Resume frame and stream capture" : "Pause frame and stream capture"}
-              style={input.paused ? iconButtonPressedStyle : iconButtonStyle}
-              onClick={onTogglePause}
-            >
-              {input.paused ? "Resume" : "Pause"}
-            </button>
-          ) : null}
-        </span>
-      ) : null}
     </span>
   );
 }

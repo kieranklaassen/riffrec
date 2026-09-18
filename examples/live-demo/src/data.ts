@@ -9,6 +9,8 @@ export type Stat = {
   trend: 'up' | 'down' | 'flat'
   icon: StatIconName
   tone: StatTone
+  /** Last 12 days, oldest first; drawn as a small chart in the card. */
+  trendline?: number[]
 }
 
 export type OrderStatus = 'paid' | 'pending' | 'refunded' | 'failed'
@@ -31,8 +33,9 @@ export type ActivityEvent = {
 }
 
 export const stats: Stat[] = [
-  { label: 'Revenue', value: '$48,210', delta: '+12.4%', trend: 'up', icon: 'revenue', tone: 'brand' },
-  { label: 'Open tickets', value: '27', delta: '0', trend: 'flat', icon: 'tickets', tone: 'amber' },
+  { label: 'Revenue', value: '$48,210', delta: '+12.4%', trend: 'up', icon: 'revenue', tone: 'brand', trendline: [38.2, 39.0, 40.4, 39.8, 41.6, 42.3, 43.1, 42.7, 44.9, 46.0, 47.2, 48.2] },
+  { label: 'Churn', value: '2.1%', delta: '-0.4 pts', trend: 'down', icon: 'churn', tone: 'blue', trendline: [2.9, 2.8, 2.8, 2.6, 2.7, 2.5, 2.4, 2.5, 2.3, 2.2, 2.2, 2.1] },
+  { label: 'Open tickets', value: '27', delta: '0', trend: 'flat', icon: 'tickets', tone: 'amber', trendline: [24, 29, 31, 26, 22, 25, 30, 33, 28, 24, 26, 27] },
 ]
 
 export const orders: Order[] = [

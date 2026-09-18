@@ -46,7 +46,7 @@ describe("EndedCard", () => {
 
   it("counts units by final status", () => {
     const counts = countByStatus(UNITS);
-    expect(counts).toEqual({ initial: 0, triaging: 0, accepted: 0, needs_info: 1, applied: 2, blocked: 1, withdrawn: 1 });
+    expect(counts).toEqual({ initial: 0, triaging: 0, accepted: 0, needs_info: 1, working: 0, applied: 2, blocked: 1, withdrawn: 1 });
     expect(residualCount(counts)).toBe(2);
   });
 
@@ -74,5 +74,21 @@ describe("EndedCard", () => {
     expect(container.textContent).toMatch(/No units were recorded/);
     await act(async () => container.querySelector<HTMLButtonElement>("[data-riffrec-ended-dismiss]")!.click());
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers another session when the link can take one, and waits while the agent drains", async () => {
+    const onStartNext = vi.fn();
+    await render({ next: "draining", onStartNext });
+    const button = () => container.querySelector<HTMLButtonElement>("[data-riffrec-ended-start-next]")!;
+    expect(button().disabled).toBe(true);
+    expect(button().textContent).toBe("Agent wrapping up…");
+
+    await render({ next: "ready", onStartNext });
+    expect(button().disabled).toBe(false);
+    await act(async () => button().click());
+    expect(onStartNext).toHaveBeenCalledTimes(1);
+
+    await render({ next: null, onStartNext });
+    expect(container.querySelector("[data-riffrec-ended-start-next]")).toBeNull();
   });
 });

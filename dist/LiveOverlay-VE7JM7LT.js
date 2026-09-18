@@ -7,14 +7,18 @@ import {
   bootstrapLiveToken,
   buildSelector,
   clearStoredBootstrap,
+  forgetRememberedBootstrap,
   getComponentName,
-  readStoredBootstrap
-} from "./chunk-CBFDNQ3P.js";
+  readRememberedBootstrap,
+  readStoredBootstrap,
+  restoreRememberedBootstrap
+} from "./chunk-4HQNLXIU.js";
 import {
   DEFAULT_EXECUTION_MODE,
   DEFAULT_INTERVIEWER_INSTRUCTIONS,
   EXECUTION_MODES,
   LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_OPENAI_KEY_HEADER,
   LIVE_SCHEMA_VERSION,
   LIVE_SESSION_HEADER,
   LIVE_TOOLS,
@@ -23,10 +27,35 @@ import {
   isLiveEnvelopeOfType,
   isLiveToolName,
   withScreenContext
-} from "./chunk-Z57RQNC3.js";
+} from "./chunk-6AB4AQYG.js";
 
 // src/live/LiveOverlay.tsx
-import { useCallback as useCallback3, useEffect as useEffect4, useRef as useRef6, useState as useState7 } from "react";
+import { useCallback as useCallback3, useEffect as useEffect6, useRef as useRef7, useState as useState8 } from "react";
+
+// src/live/endpointProbe.ts
+async function probeEndpoint(bootstrap, fetchImpl = (input, init) => fetch(input, init)) {
+  let response;
+  try {
+    response = await fetchImpl(`${bootstrap.endpoint}/session`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${bootstrap.token}` }
+    });
+  } catch {
+    return "unreachable";
+  }
+  if (response.status === 401 || response.status === 403) return "rejected";
+  if (!response.ok) return "unreachable";
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return "unreachable";
+  }
+  if (body?.accepts_new_session === true) return "ready";
+  if (body?.status === "live") return body.session_id ? "busy" : "ready";
+  if (body?.status === "ended") return "draining";
+  return "unreachable";
+}
 
 // src/output/segmentStores.ts
 var DB_NAME = "riffrec-recording-segments";
@@ -566,7 +595,7 @@ function anchorStroke(points, options) {
 // src/live/overlay/Pin.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
 var SNIPPET_LIMIT = 80;
-var PIN_RADIUS = 11;
+var PIN_PATH = "M2 0 L11 0 A11 11 0 0 0 22 -11 A11 11 0 0 0 11 -22 A11 11 0 0 0 0 -11 L0 -2 A2 2 0 0 0 2 0 Z";
 function truncate(value, limit) {
   return value.length > limit ? `${value.slice(0, limit - 1)}\u2026` : value;
 }
@@ -618,7 +647,7 @@ function getAccessibleName(element) {
 }
 var markerStyle = {
   fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
   userSelect: "none"
 };
@@ -633,8 +662,8 @@ function Pin({ annotation, index }) {
       "aria-label": annotation.text ? `Pin ${index}: ${annotation.text}` : `Pin ${index}`,
       children: [
         /* @__PURE__ */ jsx("title", { children: annotation.text ?? `Pin ${index}` }),
-        /* @__PURE__ */ jsx("circle", { r: PIN_RADIUS, fill: "#d92d20", stroke: "#ffffff", strokeWidth: 2 }),
-        /* @__PURE__ */ jsx("text", { textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
+        /* @__PURE__ */ jsx("path", { d: PIN_PATH, fill: "#d92d20", style: { filter: "drop-shadow(0 1px 2px rgba(16, 24, 40, 0.2))" } }),
+        /* @__PURE__ */ jsx("text", { x: 11, y: -11, textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
       ]
     }
   );
@@ -644,9 +673,9 @@ var composerStyle = {
   width: 280,
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.24)",
+  border: "1px solid #eaecf0",
+  borderRadius: 10,
+  boxShadow: "0 4px 16px rgba(16, 24, 40, 0.08)",
   padding: 12,
   display: "grid",
   gap: 8,
@@ -666,8 +695,8 @@ var textareaStyle = {
   width: "100%",
   minHeight: 64,
   resize: "vertical",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: 8,
   font: "inherit",
   boxSizing: "border-box"
@@ -678,19 +707,21 @@ var buttonRowStyle = {
   gap: 8
 };
 var buttonStyle = {
-  border: "1px solid #344054",
-  borderRadius: 6,
-  padding: "6px 12px",
+  border: "1px solid #101828",
+  borderRadius: 7,
+  padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
   cursor: "pointer"
 };
 var secondaryButtonStyle = {
   ...buttonStyle,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 function composerPosition(point) {
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : Infinity;
@@ -800,6 +831,9 @@ function isEditableTarget(target) {
   if (!(target instanceof Element)) return false;
   const tag = target.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
+}
+function isPlainKey(event) {
+  return !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditableTarget(event.target);
 }
 function createDrawToggle(options) {
   let active = options.initialActive ?? false;
@@ -916,8 +950,12 @@ var tintStyle = {
   position: "absolute",
   inset: 0,
   pointerEvents: "none",
-  boxShadow: "inset 0 0 0 3px rgba(217, 45, 32, 0.85)"
+  boxShadow: "inset 0 0 0 2px rgba(217, 45, 32, 0.5)"
 };
+var FADE_MS = 600;
+function fadeStyle(fading) {
+  return { opacity: fading ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` };
+}
 var toggleStyle = {
   position: "absolute",
   right: 16,
@@ -956,6 +994,8 @@ function DrawingLayer({
   createId = defaultCreateId,
   showToggle = true,
   pinOnTap = true,
+  tool,
+  fadingIds,
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }) {
@@ -1024,22 +1064,28 @@ function DrawingLayer({
     },
     [anchorOptions, createId, onAnnotation]
   );
-  const completePin = useCallback(
-    (comment) => {
-      if (!pendingPin) return;
+  const emitPin = useCallback(
+    (pin, comment) => {
       const options = anchorOptions();
-      const bbox = { x: pendingPin.point.x, y: pendingPin.point.y, width: 0, height: 0 };
+      const bbox = { x: pin.point.x, y: pin.point.y, width: 0, height: 0 };
       onAnnotation({
         id: createId(),
         kind: "pin",
-        points: [pendingPin.point],
+        points: [pin.point],
         bbox,
-        anchor: pendingPin.target ? buildAnchor(pendingPin.target, options) : buildFallbackAnchor(bbox, options),
-        text: comment
+        anchor: pin.target ? buildAnchor(pin.target, options) : buildFallbackAnchor(bbox, options),
+        ...comment ? { text: comment } : {}
       });
+    },
+    [anchorOptions, createId, onAnnotation]
+  );
+  const completePin = useCallback(
+    (comment) => {
+      if (!pendingPin) return;
+      emitPin(pendingPin, comment);
       setPendingPin(null);
     },
-    [anchorOptions, createId, onAnnotation, pendingPin]
+    [emitPin, pendingPin]
   );
   const onPointerDown = (event) => {
     if (!active || event.button !== 0 || pointerIdRef.current !== null) return;
@@ -1057,11 +1103,12 @@ function DrawingLayer({
     }
     const point = pointFromEvent(event);
     draftRef.current = [point];
-    setDraft([point]);
+    if (tool !== "pin") setDraft([point]);
   };
   const onPointerMove = (event) => {
     if (pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
+    if (tool === "pin") return;
     const next = [...draftRef.current, pointFromEvent(event)];
     draftRef.current = next;
     setDraft(next);
@@ -1072,9 +1119,13 @@ function DrawingLayer({
     const points = [...draftRef.current, pointFromEvent(event)];
     resetDraft();
     const start = points[0];
+    if (tool === "pin") {
+      emitPin({ point: start, target: resolvePointTarget(start) });
+      return;
+    }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);
     if (!travelled) {
-      if (pinOnTap) {
+      if (pinOnTap && tool !== "draw") {
         setPendingPin({ point: start, target: resolvePointTarget(start) });
       }
       return;
@@ -1105,7 +1156,7 @@ function DrawingLayer({
             style: {
               ...surfaceStyle,
               pointerEvents: active ? "auto" : "none",
-              cursor: active ? "crosshair" : "default"
+              cursor: active ? tool === "pin" ? "cell" : "crosshair" : "default"
             },
             onPointerDown,
             onPointerMove,
@@ -1119,10 +1170,11 @@ function DrawingLayer({
                     "data-riffrec-stroke": annotation.id,
                     d: strokePath(annotation.points, true),
                     fill: strokeColor,
-                    fillOpacity: 0.9
+                    fillOpacity: 0.9,
+                    style: fadeStyle(fadingIds?.has(annotation.id))
                   },
                   annotation.id
-                ) : /* @__PURE__ */ jsx2(Pin, { annotation, index: pins.indexOf(annotation) + 1 }, annotation.id)
+                ) : /* @__PURE__ */ jsx2("g", { style: fadeStyle(fadingIds?.has(annotation.id)), children: /* @__PURE__ */ jsx2(Pin, { annotation, index: pins.indexOf(annotation) + 1 }) }, annotation.id)
               ),
               draftPath ? /* @__PURE__ */ jsx2("path", { "data-riffrec-stroke-draft": "", d: draftPath, fill: strokeColor, fillOpacity: 0.9 }) : null
             ]
@@ -1235,36 +1287,36 @@ function createCanvasCompositeDrawer(options = {}) {
     const canvas = doc.createElement("canvas");
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(image, 0, 0);
+    const context2 = canvas.getContext("2d");
+    if (!context2) return null;
+    context2.drawImage(image, 0, 0);
     const { width, height } = viewport();
     const scaleX = width > 0 ? canvas.width / width : 1;
     const scaleY = height > 0 ? canvas.height / height : 1;
-    context.save();
-    context.scale(scaleX, scaleY);
+    context2.save();
+    context2.scale(scaleX, scaleY);
     for (const annotation of annotations) {
       switch (annotation.kind) {
         case "stroke": {
-          context.fillStyle = COMPOSITE_STROKE_COLOR;
-          context.fill(new Path2D(strokePath(annotation.points, true)));
+          context2.fillStyle = COMPOSITE_STROKE_COLOR;
+          context2.fill(new Path2D(strokePath(annotation.points, true)));
           break;
         }
         case "pin": {
           const point = annotation.points[0];
           if (!point) break;
-          context.fillStyle = COMPOSITE_PIN_COLOR;
-          context.beginPath();
-          context.arc(point.x, point.y, 9, 0, Math.PI * 2);
-          context.fill();
+          context2.fillStyle = COMPOSITE_PIN_COLOR;
+          context2.beginPath();
+          context2.arc(point.x, point.y, 9, 0, Math.PI * 2);
+          context2.fill();
           if (annotation.text) {
-            context.font = "14px system-ui, sans-serif";
-            context.fillStyle = "#ffffff";
+            context2.font = "14px system-ui, sans-serif";
+            context2.fillStyle = "#ffffff";
             const label = annotation.text.length > 60 ? `${annotation.text.slice(0, 57)}...` : annotation.text;
-            const metrics = context.measureText(label);
-            context.fillRect(point.x + 14, point.y - 12, metrics.width + 12, 24);
-            context.fillStyle = COMPOSITE_PIN_COLOR;
-            context.fillText(label, point.x + 20, point.y + 5);
+            const metrics = context2.measureText(label);
+            context2.fillRect(point.x + 14, point.y - 12, metrics.width + 12, 24);
+            context2.fillStyle = COMPOSITE_PIN_COLOR;
+            context2.fillText(label, point.x + 20, point.y + 5);
           }
           break;
         }
@@ -1274,7 +1326,7 @@ function createCanvasCompositeDrawer(options = {}) {
         }
       }
     }
-    context.restore();
+    context2.restore();
     const dataUrl = canvas.toDataURL("image/jpeg", quality);
     const comma = dataUrl.indexOf(",");
     return comma === -1 ? null : dataUrl.slice(comma + 1);
@@ -1426,9 +1478,9 @@ function createDisplayFrameGrabber(stream, options = {}) {
     const scale = maxWidth > 0 && width > maxWidth ? maxWidth / width : 1;
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const context2 = canvas.getContext("2d");
+    if (!context2) return null;
+    context2.drawImage(video, 0, 0, canvas.width, canvas.height);
     return dataUrlToBase64(canvas.toDataURL("image/jpeg", quality));
   };
 }
@@ -1770,9 +1822,9 @@ function applyEvidenceProfile(unit, profile, frameKind = () => null) {
 }
 
 // src/live/realtime/audioRouting.ts
-function routeRemoteAudio(context, stream) {
-  const source = context.createMediaStreamSource(stream);
-  const gain = context.createGain();
+function routeRemoteAudio(context2, stream) {
+  const source = context2.createMediaStreamSource(stream);
+  const gain = context2.createGain();
   const edges = /* @__PURE__ */ new Map();
   const link = (from, to) => {
     from.connect(to);
@@ -1781,16 +1833,16 @@ function routeRemoteAudio(context, stream) {
     edges.set(from, set);
   };
   link(source, gain);
-  link(gain, context.destination);
-  if (context.state === "suspended" && typeof context.resume === "function") {
-    void context.resume().catch(() => {
+  link(gain, context2.destination);
+  if (context2.state === "suspended" && typeof context2.resume === "function") {
+    void context2.resume().catch(() => {
     });
   }
   let disposed = false;
   return {
     source,
     gain,
-    isReachable: () => !disposed && reaches(edges, source, context.destination),
+    isReachable: () => !disposed && reaches(edges, source, context2.destination),
     setVolume: (volume) => {
       gain.gain.value = Math.max(0, Math.min(1, volume));
     },
@@ -1928,26 +1980,26 @@ function parseToolArgs(value) {
   }
 }
 var UTTERANCE_SPAN_LIMIT = 64;
-function parseRealtimeEvent(raw, context) {
+function parseRealtimeEvent(raw, context2) {
   const message = asRecord(raw);
   const type = asString(message.type);
   switch (type) {
     case "session.created":
       return { type: "session_created", session: readSessionConfig(message.session) };
     case "input_audio_buffer.speech_started":
-      return { type: "speech_started", t: context.t };
+      return { type: "speech_started", t: context2.t };
     case "input_audio_buffer.speech_stopped":
-      return { type: "speech_stopped", t: context.t };
+      return { type: "speech_stopped", t: context2.t };
     case "conversation.item.input_audio_transcription.completed": {
       const text = asString(message.transcript).trim();
       const itemId = asString(message.item_id);
-      const span = itemId ? context.spans?.get(itemId) : void 0;
-      const tStart = span?.start ?? context.utteranceStart ?? context.t;
-      const tEnd = span ? span.end ?? Math.max(tStart, context.t) : context.utteranceEnd ?? context.t;
+      const span = itemId ? context2.spans?.get(itemId) : void 0;
+      const tStart = span?.start ?? context2.utteranceStart ?? context2.t;
+      const tEnd = span ? span.end ?? Math.max(tStart, context2.t) : context2.utteranceEnd ?? context2.t;
       return {
         type: "transcript",
         transcript: {
-          id: itemId || `riffer_${context.t}`,
+          id: itemId || `riffer_${context2.t}`,
           role: "riffer",
           text,
           t_start: tStart,
@@ -1959,10 +2011,10 @@ function parseRealtimeEvent(raw, context) {
     case "response.output_audio_transcript.done":
     case "response.audio_transcript.done": {
       const text = asString(message.transcript).trim();
-      const id = asString(message.item_id) || asString(message.response_id) || `interviewer_${context.t}`;
+      const id = asString(message.item_id) || asString(message.response_id) || `interviewer_${context2.t}`;
       return {
         type: "transcript",
-        transcript: { id, role: "interviewer", text, t_start: context.t, t_end: context.t, final: true }
+        transcript: { id, role: "interviewer", text, t_start: context2.t, t_end: context2.t, final: true }
       };
     }
     case "response.created":
@@ -2285,7 +2337,7 @@ var RealtimeClient = class {
   }
 };
 function createRealtimeConnector(options) {
-  const audioContext = options.audioContext === void 0 ? createDefaultAudioContext() : options.audioContext;
+  const audioContext2 = options.audioContext === void 0 ? createDefaultAudioContext() : options.audioContext;
   let route = null;
   let client = null;
   const disposeRoute = () => {
@@ -2303,7 +2355,7 @@ function createRealtimeConnector(options) {
         micStream,
         onRemoteTrack: (stream) => {
           disposeRoute();
-          if (audioContext) route = routeRemoteAudio(audioContext, stream);
+          if (audioContext2) route = routeRemoteAudio(audioContext2, stream);
         },
         deps: { ...options.deps, elapsed: options.elapsed }
       });
@@ -2379,6 +2431,7 @@ async function mint(options) {
       headers: {
         Authorization: `Bearer ${options.token}`,
         [LIVE_SESSION_HEADER]: options.sessionId,
+        ...options.openaiKey ? { [LIVE_OPENAI_KEY_HEADER]: options.openaiKey } : {},
         "Content-Type": "application/json"
       },
       body: JSON.stringify(request)
@@ -2432,6 +2485,28 @@ async function mintWithRetry(options) {
     await new Promise((resolve) => {
       schedule(resolve, outcome.retryAfterMs);
     });
+  }
+}
+
+// src/live/realtime/openaiKey.ts
+var OPENAI_KEY_STORAGE_KEY = "riffrec:openai_key";
+function readStoredOpenAIKey() {
+  try {
+    return window.localStorage.getItem(OPENAI_KEY_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+function storeOpenAIKey(key) {
+  try {
+    window.localStorage.setItem(OPENAI_KEY_STORAGE_KEY, key);
+  } catch {
+  }
+}
+function clearStoredOpenAIKey() {
+  try {
+    window.localStorage.removeItem(OPENAI_KEY_STORAGE_KEY);
+  } catch {
   }
 }
 
@@ -2916,7 +2991,7 @@ var Interviewer = class {
     const token = this.session.pageToken;
     if (!endpoint || !token) {
       this.unavailable = { kind: "no_endpoint" };
-      this.session.voiceUnavailable();
+      this.session.voiceUnavailable(this.unavailable);
       this.emitStatus();
       return;
     }
@@ -2952,7 +3027,7 @@ var Interviewer = class {
           this.onError(error);
           if (attempt === CONNECT_MAX_ATTEMPTS) {
             this.unavailable = { kind: "connect_failed", message: error instanceof Error ? error.message : String(error) };
-            this.session.voiceUnavailable();
+            this.session.voiceUnavailable(this.unavailable);
             return;
           }
         }
@@ -2967,6 +3042,7 @@ var Interviewer = class {
       endpoint: this.session.endpoint,
       token: this.session.pageToken,
       sessionId: this.session.id,
+      openaiKey: readStoredOpenAIKey(),
       fetch: this.fetchImpl,
       setTimeout: this.schedule,
       clearTimeout: this.cancel,
@@ -2996,7 +3072,7 @@ var Interviewer = class {
         return exhaustive;
       }
     }
-    this.session.voiceUnavailable();
+    this.session.voiceUnavailable(this.unavailable);
   }
   becomeConnected(transport, reconnect) {
     this.transport = transport;
@@ -3962,7 +4038,7 @@ var CheckpointEmitter = class {
 var DEFAULT_FAILURE_THRESHOLD = 3;
 var DEFAULT_BACKOFF_MS = [1e3, 2e3, 4e3, 8e3, 16e3, 3e4];
 var DEFAULT_POST_TIMEOUT_MS = 2e4;
-var SERVER_EVENT_NAMES = ["unit_status", "applied", "ask", "ack", "session_ended"];
+var SERVER_EVENT_NAMES = ["unit_status", "applied", "ask", "ack", "session_ended", "agent"];
 function defaultSchedule(callback) {
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(() => callback());
@@ -4337,6 +4413,7 @@ var StreamClient = class {
       case "unit_status":
       case "applied":
       case "ask":
+      case "agent":
         break;
       default: {
         const exhaustive = event;
@@ -4536,6 +4613,7 @@ var UnitStore = class _UnitStore {
 
 // src/live/session.ts
 var HELD_FRAME_CAP = 24;
+var DRAWING_MERGE_WINDOW_MS = 3e4;
 var LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
 var LIVE_SESSION_KEY_PREFIX = "riffrec:live:session:";
 function liveSessionStorageKey(sessionId) {
@@ -4578,6 +4656,7 @@ var LiveSession = class _LiveSession {
   constructor(options, persisted) {
     this.phase = "idle";
     this.voice = "none";
+    this.voiceReason = null;
     this.pendingMode = null;
     this.pendingModeSeq = null;
     this.voiceRan = false;
@@ -4611,6 +4690,7 @@ var LiveSession = class _LiveSession {
     this.listeners = /* @__PURE__ */ new Map();
     this.ackWaiters = [];
     this.persistOutcome = "stored";
+    this.agentState = null;
     this.now = options.now ?? (() => Date.now());
     this.route = options.route ?? currentRoute2;
     this.storage = options.storage === void 0 ? defaultStorage() : options.storage;
@@ -4632,6 +4712,7 @@ var LiveSession = class _LiveSession {
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
       this.voiceRan = persisted.voice_ran;
+      if (persisted.frames_off) this.profile = { ...this.profile, frames: "none" };
       this.muted = persisted.muted;
       this.mic = persisted.mic;
       this.nextSeq = persisted.next_seq;
@@ -4879,6 +4960,7 @@ var LiveSession = class _LiveSession {
   voiceConnecting() {
     if (this.phase !== "running") return;
     this.voice = this.voiceRan ? "reconnecting" : "connecting";
+    this.voiceReason = null;
     this.notify();
   }
   voiceConnected() {
@@ -4894,9 +4976,10 @@ var LiveSession = class _LiveSession {
     this.notify();
   }
   /** Mint refused for good, mic denied, or no endpoint: a one-way move to `live_novoice`. */
-  voiceUnavailable() {
+  voiceUnavailable(reason = null) {
     if (this.phase !== "running") return;
     this.voice = "novoice";
+    this.voiceReason = reason;
     this.notify();
   }
   speechStarted() {
@@ -4931,6 +5014,16 @@ var LiveSession = class _LiveSession {
   // Units (tool intake and board actions)
   // ---------------------------------------------------------------------
   recordUnit(input) {
+    const absorbed = input.transcript_excerpt ? this.absorbDrawingOnly(input) : [];
+    if (absorbed.length > 0) {
+      input = {
+        ...input,
+        evidence: {
+          ...input.evidence,
+          annotation_ids: [.../* @__PURE__ */ new Set([...input.evidence?.annotation_ids ?? [], ...absorbed])]
+        }
+      };
+    }
     const id = input.id ?? `unit_${pad(this.nextUnit++)}`;
     const firstAnchorT = input.anchors[0]?.t ?? this.elapsed();
     const unit = {
@@ -4979,10 +5072,30 @@ var LiveSession = class _LiveSession {
     }
     return result;
   }
+  /**
+   * Drawing first and talking a few seconds later is one request, not two: a spoken unit on the
+   * element a still-unreleased drawing-only unit points at takes over that drawing, and the
+   * drawing-only unit is withdrawn. Returns the annotation ids taken over.
+   */
+  absorbDrawingOnly(input) {
+    const selectors = new Set(input.anchors.map((anchor) => anchor.selector));
+    if (selectors.size === 0) return [];
+    const now = this.elapsed();
+    const taken = [];
+    for (const unit of this.units.all()) {
+      const drawingOnly = unit.transcript_excerpt === "" && unit.evidence.annotation_ids.length > 0;
+      if (!drawingOnly || unit.status !== "initial" || this.units.isReleased(unit.id)) continue;
+      if (now - unit.evidence.transcript_span.t_start > DRAWING_MERGE_WINDOW_MS) continue;
+      if (!unit.anchors.some((anchor) => selectors.has(anchor.selector))) continue;
+      if (this.withdrawUnit(unit.id, "merged into a spoken request").ok) taken.push(...unit.evidence.annotation_ids);
+    }
+    return taken;
+  }
   /** The riffer's answer to an endpoint question, spoken (`relay_answer`) or typed. */
   answer(unitId, text) {
     const unit = this.units.get(unitId);
     if (!unit) return null;
+    if (!this.units.openQuestions().some((question) => question.unit_id === unitId)) return null;
     this.units.answer(unitId);
     const answer = { unit_id: unitId, text };
     this.answers.push(answer);
@@ -5082,6 +5195,11 @@ var LiveSession = class _LiveSession {
    */
   releaseFrame(frameId) {
     this.postHeldFrame(frameId);
+  }
+  /** The riffer turned screenshots off at consent: no frame leaves the page for the rest of the session. */
+  disableFrames() {
+    this.profile = { ...this.profile, frames: "none" };
+    this.persist();
   }
   /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
   get framesLeavePage() {
@@ -5185,6 +5303,8 @@ var LiveSession = class _LiveSession {
       status: this.status,
       phase: this.phase,
       voice: this.voice,
+      voiceUnavailable: this.voiceReason,
+      agent: this.agentState,
       stream: this.streamStatus,
       endpoint: this.endpointOrigin,
       mode: this.mode,
@@ -5388,6 +5508,9 @@ var LiveSession = class _LiveSession {
         if (question && unit) this.emitEvent("ask", { unit, question });
         break;
       }
+      case "agent":
+        this.agentState = { state: event.data.state, since: event.data.since };
+        break;
       case "ack":
         break;
       case "session_ended":
@@ -5543,6 +5666,7 @@ var LiveSession = class _LiveSession {
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
       pending_mode_seq: this.pendingModeSeq,
+      ...this.profile.frames === "none" ? { frames_off: true } : {},
       ...tier === "full" ? {} : { degraded: tier }
     };
   }
@@ -5680,7 +5804,9 @@ var LiveRuntime = class {
   /** Riffer or host asked to go live: the overlay shows the consent step. */
   begin(options = {}) {
     if (this.suspended) return;
-    if (this.current.status === "ended" || this.current.status === "error") {
+    const spent = this.current.status === "ended" || this.current.status === "error";
+    const restored = (spent || this.current.status === "idle" && this.current.pageToken === null) && restoreRememberedBootstrap();
+    if (spent || restored) {
       this.current = LiveSession.create(this.sessionOptions());
       this.attachSession(this.current);
     }
@@ -5709,6 +5835,10 @@ var LiveRuntime = class {
   }
   setMode(mode) {
     this.current.setMode(mode);
+  }
+  /** Re-mints after a settled refusal, e.g. once the riffer pasted an OpenAI key. */
+  retryVoice() {
+    void this.active?.interviewer?.retryVoice().catch((error) => this.callbacks.onError(toError(error)));
   }
   setMuted(muted) {
     const active = this.active;
@@ -5957,16 +6087,17 @@ var LiveRuntime = class {
 };
 
 // src/live/overlay/LiveOverlay.tsx
-import { useCallback as useCallback2, useEffect as useEffect3, useMemo, useRef as useRef5, useState as useState6 } from "react";
+import { useCallback as useCallback2, useEffect as useEffect5, useMemo, useRef as useRef6, useState as useState7 } from "react";
 
 // src/live/overlay/Board.tsx
-import { useState as useState3 } from "react";
+import { useEffect as useEffect3, useRef as useRef3, useState as useState3 } from "react";
 import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 var STATUS_LABELS = {
   initial: "Heard",
   triaging: "Triaging",
   accepted: "Accepted",
   needs_info: "Needs info",
+  working: "Working",
   applied: "Applied",
   blocked: "Blocked",
   withdrawn: "Withdrawn"
@@ -5976,6 +6107,7 @@ var STATUS_COLORS = {
   triaging: "#b54708",
   accepted: "#175cd3",
   needs_info: "#c11574",
+  working: "#6941c6",
   applied: "#027a48",
   blocked: "#b42318",
   withdrawn: "#98a2b3"
@@ -5994,14 +6126,14 @@ var listStyle = {
 };
 var itemStyle = {
   border: "1px solid #eaecf0",
-  borderRadius: 6,
+  borderRadius: 8,
   padding: "8px 10px",
   background: "#ffffff"
 };
 var badgeStyle = {
   display: "inline-block",
   fontSize: 11,
-  fontWeight: 600,
+  fontWeight: 500,
   padding: "1px 6px",
   borderRadius: 4,
   color: "#ffffff",
@@ -6009,8 +6141,8 @@ var badgeStyle = {
   verticalAlign: "middle"
 };
 var smallButtonStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -6021,14 +6153,15 @@ var smallButtonStyle = {
 var primaryButtonStyle = {
   ...smallButtonStyle,
   background: "#101828",
-  borderColor: "#344054",
-  color: "#ffffff"
+  borderColor: "#101828",
+  color: "#ffffff",
+  fontWeight: 500
 };
 var inputStyle = {
   flex: 1,
   minWidth: 0,
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: "4px 8px",
   font: "inherit",
   fontSize: 12
@@ -6041,9 +6174,44 @@ var noteStyle = {
 var emptyStyle = {
   ...itemStyle,
   color: "#667085",
-  fontStyle: "italic",
+  borderStyle: "dashed",
+  fontSize: 12,
   textAlign: "center"
 };
+var FOLDED_STATUSES = ["applied", "withdrawn"];
+var SETTLE_MS = 4e3;
+var foldedToggleStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  width: "100%",
+  padding: "6px 10px",
+  border: "1px dashed #e4e7ec",
+  borderRadius: 8,
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer"
+};
+function useSettled(units) {
+  const finishedAt = useRef3(null);
+  const [now, setNow] = useState3(() => Date.now());
+  const map = finishedAt.current ?? (finishedAt.current = new Map(units.filter((unit) => FOLDED_STATUSES.includes(unit.status)).map((unit) => [unit.id, 0])));
+  for (const unit of units) {
+    if (FOLDED_STATUSES.includes(unit.status)) {
+      if (!map.has(unit.id)) map.set(unit.id, Date.now());
+    } else map.delete(unit.id);
+  }
+  const pending = [...map.values()].filter((at) => now - at < SETTLE_MS);
+  const next = pending.length > 0 ? Math.min(...pending) + SETTLE_MS - now : null;
+  useEffect3(() => {
+    if (next === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, next) + 20);
+    return () => clearTimeout(timer);
+  }, [next]);
+  return new Set([...map].filter(([, at]) => now - at >= SETTLE_MS).map(([id]) => id));
+}
 function describeAnchor2(unit) {
   const anchor = unit.anchors[0];
   if (!anchor) return null;
@@ -6086,11 +6254,14 @@ function Board({
   onAnswer
 }) {
   const openQuestion = (unitId) => questions.find((question) => question.unit_id === unitId && !question.answered) ?? null;
+  const settled = useSettled(units);
+  const [showFolded, setShowFolded] = useState3(false);
   if (units.length === 0) {
     return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: /* @__PURE__ */ jsx3("li", { "data-riffrec-board-empty": "", style: emptyStyle, children: "Say what should change, or draw on the page." }) });
   }
-  return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: units.map((unit) => {
+  const row = (unit, compact) => {
     const withdrawn = unit.status === "withdrawn";
+    const collapsed = compact;
     const question = openQuestion(unit.id);
     const guess = guesses[unit.id];
     const note = notes[unit.id];
@@ -6099,7 +6270,17 @@ function Board({
     return /* @__PURE__ */ jsxs3("li", { "data-riffrec-unit": unit.id, "data-riffrec-unit-status": unit.status, style: itemStyle, children: [
       /* @__PURE__ */ jsxs3("div", { style: { display: "flex", alignItems: "flex-start", gap: 6 }, children: [
         /* @__PURE__ */ jsxs3("span", { style: { flex: 1, minWidth: 0 }, children: [
-          /* @__PURE__ */ jsx3("span", { style: { ...badgeStyle, background: STATUS_COLORS[unit.status] }, children: STATUS_LABELS[unit.status] }),
+          /* @__PURE__ */ jsx3(
+            "span",
+            {
+              style: {
+                ...badgeStyle,
+                background: STATUS_COLORS[unit.status],
+                ...unit.status === "working" || unit.status === "triaging" ? { animation: "riffrec-live-pulse 1.4s ease-in-out infinite" } : {}
+              },
+              children: STATUS_LABELS[unit.status]
+            }
+          ),
           /* @__PURE__ */ jsx3(
             "span",
             {
@@ -6121,13 +6302,13 @@ function Board({
           }
         ) : null
       ] }),
-      anchor && !withdrawn ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
-      guess ? /* @__PURE__ */ jsxs3("p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
+      anchor && !withdrawn && !collapsed ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
+      guess && !collapsed ? /* @__PURE__ */ jsxs3("p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
         /* @__PURE__ */ jsx3("strong", { children: "Guess:" }),
         " ",
         guess
       ] }) : null,
-      note ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
+      note && !collapsed ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
       question ? /* @__PURE__ */ jsxs3("div", { "data-riffrec-unit-question": "", style: { marginTop: 6 }, children: [
         /* @__PURE__ */ jsxs3("p", { style: { ...noteStyle, margin: 0, color: "#c11574" }, children: [
           /* @__PURE__ */ jsx3("strong", { children: "Agent asks:" }),
@@ -6137,7 +6318,31 @@ function Board({
         onAnswer ? /* @__PURE__ */ jsx3(ReplyField, { unitId: unit.id, primary: !voice, onAnswer }) : null
       ] }) : null
     ] }, unit.id);
-  }) });
+  };
+  const active = units.filter((unit) => !settled.has(unit.id));
+  const folded = units.filter((unit) => settled.has(unit.id));
+  const foldedSummary = FOLDED_STATUSES.map((status) => {
+    const count = folded.filter((unit) => unit.status === status).length;
+    return count > 0 ? `${count} ${STATUS_LABELS[status].toLowerCase()}` : null;
+  }).filter(Boolean).join(" \xB7 ");
+  return /* @__PURE__ */ jsxs3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: [
+    active.map((unit) => row(unit, false)),
+    folded.length > 0 ? /* @__PURE__ */ jsx3("li", { style: { listStyle: "none" }, children: /* @__PURE__ */ jsxs3(
+      "button",
+      {
+        type: "button",
+        "data-riffrec-board-folded": folded.length,
+        "aria-expanded": showFolded,
+        style: foldedToggleStyle,
+        onClick: () => setShowFolded((open) => !open),
+        children: [
+          /* @__PURE__ */ jsx3("span", { children: foldedSummary }),
+          /* @__PURE__ */ jsx3("span", { "aria-hidden": "true", style: { fontSize: 10 }, children: showFolded ? "\u25BE" : "\u25B8" })
+        ]
+      }
+    ) }) : null,
+    showFolded ? folded.map((unit) => row(unit, true)) : null
+  ] });
 }
 function defaultConfirmation(unit) {
   return unit.confirmed ?? { element: true, change: true };
@@ -6154,7 +6359,7 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
     onComplete(confirmations);
   };
   return /* @__PURE__ */ jsxs3("div", { "data-riffrec-confirmation": "", style: { fontFamily: FONT, fontSize: 13, color: "#101828" }, children: [
-    /* @__PURE__ */ jsx3("p", { style: { margin: "0 0 8px", fontWeight: 600 }, children: "Before you go: did we get each one right?" }),
+    /* @__PURE__ */ jsx3("p", { style: { margin: "0 0 8px", fontWeight: 500 }, children: "Before you go: did we get each one right?" }),
     units.length === 0 ? /* @__PURE__ */ jsx3("p", { style: { ...noteStyle, marginBottom: 8 }, children: "No units this session. Finishing releases anything the agent still holds." }) : /* @__PURE__ */ jsx3("ul", { style: listStyle, children: units.map((unit) => {
       const confirmation = confirmationFor(unit);
       const anchor = describeAnchor2(unit);
@@ -6206,8 +6411,159 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
   ] });
 }
 
+// src/live/overlay/chime.ts
+var context = null;
+function audioContext() {
+  if (typeof window === "undefined") return null;
+  const Ctor = window.AudioContext ?? window.webkitAudioContext;
+  if (!Ctor) return null;
+  context ?? (context = new Ctor());
+  if (context.state === "suspended") void context.resume();
+  return context;
+}
+function strike(ctx, output, at, frequency, level) {
+  const partials = [
+    [1, 1, 1.4],
+    [2.76, 0.32, 0.7],
+    [5.4, 0.12, 0.35]
+  ];
+  for (const [ratio, gain, decay] of partials) {
+    const osc = ctx.createOscillator();
+    const env = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = frequency * ratio;
+    env.gain.setValueAtTime(1e-4, at);
+    env.gain.exponentialRampToValueAtTime(level * gain, at + 6e-3);
+    env.gain.exponentialRampToValueAtTime(1e-4, at + decay);
+    osc.connect(env).connect(output);
+    osc.start(at);
+    osc.stop(at + decay + 0.05);
+  }
+}
+function playAppliedChime() {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const master = ctx.createGain();
+  master.gain.value = 0.16;
+  master.connect(ctx.destination);
+  const now = ctx.currentTime + 0.01;
+  strike(ctx, master, now, 1318.5, 0.9);
+  strike(ctx, master, now + 0.11, 1975.5, 0.6);
+}
+
 // src/live/overlay/ConsentDialog.tsx
-import { useRef as useRef3, useState as useState4 } from "react";
+import { useEffect as useEffect4, useRef as useRef4, useState as useState4 } from "react";
+
+// src/live/overlay/Kbd.tsx
+import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
+var kbdStyle = {
+  display: "inline-block",
+  fontFamily: "inherit",
+  fontSize: 10,
+  fontWeight: 400,
+  lineHeight: 1,
+  padding: "2px 5px",
+  borderRadius: 4,
+  border: "1px solid #e4e7ec",
+  color: "#667085",
+  background: "#ffffff",
+  flex: "none"
+};
+var kbdDarkStyle = {
+  ...kbdStyle,
+  border: "none",
+  padding: "3px 6px",
+  background: "rgba(255, 255, 255, 0.14)",
+  color: "#e4e7ec"
+};
+function Kbd({ children, dark = false }) {
+  return /* @__PURE__ */ jsx4("kbd", { "aria-hidden": "true", style: dark ? kbdDarkStyle : kbdStyle, children });
+}
+function Wordmark() {
+  return /* @__PURE__ */ jsxs4("span", { style: { fontSize: 13, letterSpacing: "-0.01em", color: "#101828", whiteSpace: "nowrap" }, children: [
+    /* @__PURE__ */ jsx4("span", { style: { fontWeight: 600 }, children: "/ce-polish" }),
+    " ",
+    /* @__PURE__ */ jsx4("span", { style: { fontWeight: 400, color: "#667085" }, children: "live" })
+  ] });
+}
+
+// src/live/overlay/ModeSwitch.tsx
+import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
+var MODE_LABELS = {
+  instant: "Instant",
+  smart: "Smart",
+  collect: "Collect"
+};
+var MODE_DESCRIPTIONS = {
+  instant: "Applies everything it can at each checkpoint, guessing on ambiguous units and noting the guess.",
+  smart: "Applies clear bounded edits, asks about ambiguous ones, sends anything larger to the residual list.",
+  collect: "Applies nothing during the riff; the accepted batch lands as one pass when you say done."
+};
+var MODE_SUMMARIES = {
+  instant: "Applies everything it can at each checkpoint, noting its guesses.",
+  smart: "Applies clear edits, asks about ambiguous ones, lists bigger ones.",
+  collect: "Applies nothing live. One pass when you say done."
+};
+var PENDING_MODE_HINT = "Pending until next checkpoint";
+var groupStyle = {
+  display: "inline-flex",
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  overflow: "hidden",
+  background: "#ffffff"
+};
+var optionStyle = {
+  border: "none",
+  borderRight: "1px solid #e4e7ec",
+  background: "#ffffff",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 10px",
+  cursor: "pointer"
+};
+var optionSelectedStyle = {
+  ...optionStyle,
+  background: "#101828",
+  color: "#ffffff"
+};
+var hintStyle = {
+  display: "block",
+  marginTop: 4,
+  fontSize: 11,
+  color: "#b54708"
+};
+function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
+  return /* @__PURE__ */ jsxs5("div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
+    /* @__PURE__ */ jsx5("div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: EXECUTION_MODES.map((option, index) => {
+      const selected = option === mode;
+      const last = index === EXECUTION_MODES.length - 1;
+      return /* @__PURE__ */ jsx5(
+        "button",
+        {
+          type: "button",
+          role: "radio",
+          "aria-checked": selected,
+          "data-riffrec-mode-option": option,
+          title: MODE_DESCRIPTIONS[option],
+          disabled,
+          style: { ...selected ? optionSelectedStyle : optionStyle, ...last ? { borderRight: "none" } : {} },
+          onClick: () => {
+            if (!selected) onChange(option);
+          },
+          children: MODE_LABELS[option]
+        },
+        option
+      );
+    }) }),
+    pendingMode !== null ? /* @__PURE__ */ jsxs5("span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
+      MODE_LABELS[pendingMode],
+      ": ",
+      PENDING_MODE_HINT.toLowerCase()
+    ] }) : null
+  ] });
+}
 
 // src/live/overlay/consentCopy.ts
 var DEFAULT_CONSENT_PROFILE = {
@@ -6217,7 +6573,7 @@ var DEFAULT_CONSENT_PROFILE = {
   audio_clip: false,
   telemetry_window: false
 };
-var OPENAI_DESTINATION = "OpenAI Realtime (the voice interviewer)";
+var OPENAI_DESTINATION = "OpenAI, for the voice interviewer";
 function resolveConsentProfile(profile) {
   return { ...DEFAULT_CONSENT_PROFILE, ...profile ?? {} };
 }
@@ -6226,52 +6582,55 @@ function describeEndpoint(endpoint, owner) {
   if (owner) return owner;
   return endpoint ?? "no endpoint";
 }
-function endpointItems(profile) {
-  const items = [];
-  if (profile.transcript) items.push("the transcript of what you say");
-  items.push("units: each change you ask for, with the element it points at");
+function endpointItems(profile, voice) {
+  const items = ["each change you ask for, with the element it points at"];
+  if (profile.transcript && voice) items.push("the transcript of what you say");
   items.push("clicks, navigation, network URLs and statuses, console errors");
-  if (profile.strokes) items.push("your drawings and pins, with the element under them");
-  if (profile.frames) items.push("screenshots and annotated frames of the page");
-  if (profile.audio_clip) items.push("short audio clips of each request");
+  if (profile.strokes) items.push("your drawings and pins");
+  if (profile.frames) items.push("screenshots and annotated frames");
+  if (profile.audio_clip && voice) items.push("short audio clips of each request");
   if (profile.telemetry_window) items.push("network and console telemetry around each request");
   return items;
 }
 function buildConsentCopy(input) {
   const profile = resolveConsentProfile(input.profile);
   const streams = input.endpoint !== null;
-  const voice = input.voice ?? streams;
+  const microphone = input.microphone ?? true;
+  const voice = (input.voice ?? streams) && streams && microphone;
   const endpointName = describeEndpoint(input.endpoint, input.endpointOwner);
   const destinations = [];
-  if (voice && streams) {
-    const items = ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"];
-    if (profile.frames) items.push("what you click, draw on, and pin, and screenshots of the page when you point at something or ask the interviewer to look");
-    else items.push("what you click, draw on, and pin");
+  if (voice) {
+    const items = ["your microphone audio while live", "the session brief about this app", "what you click, draw and pin"];
+    if (profile.frames) items.push("screenshots when you point at something");
     destinations.push({ id: "openai", to: OPENAI_DESTINATION, items });
   }
   if (streams) {
-    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile) });
+    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile, voice) });
   } else {
     destinations.push({
       id: "local",
       to: "a local archive on this device",
-      items: ["screen recording and microphone audio", "clicks, navigation, network URLs and statuses, console errors", "your drawings and pins"]
+      items: [
+        microphone ? "screen recording and microphone audio" : "screen recording",
+        "clicks, navigation, network URLs and statuses, console errors",
+        "your drawings and pins"
+      ]
     });
   }
   return {
-    title: "Start a live session?",
-    intro: streams ? "While the session is live, riffrec streams what you say and do on this page as it happens." : "No endpoint is configured, so nothing streams: the session is saved as a local archive when you stop.",
+    title: "Start a live session",
+    intro: streams ? "Talk through what you want changed and point at it. The agent picks it up as you go." : "No endpoint is configured, so nothing streams: the session is saved as a local archive when you stop.",
     destinations,
-    retention: streams ? `${endpointName} keeps a local session log with everything listed above until you delete it.` : null,
-    noExclusions: "Screenshots and frames exclude nothing automatically: anything visible on the page can appear in them. You can pause frame and stream capture at any time from the live indicator.",
-    microphone: voice ? "Accepting asks your browser for microphone access. If you decline the microphone, the session continues with drawing and the board only." : "Accepting asks your browser for microphone access for the local recording. If you decline the microphone, the session continues with drawing and the board only.",
-    acceptLabel: "Accept and start",
+    retention: streams ? `Kept in a local session log at ${endpointName} until you delete it.` : null,
+    noExclusions: profile.frames ? "Screenshots don't blur anything: whatever is visible can appear. Press P any time to pause capture." : "Press P any time to pause capture.",
+    microphone: voice ? "Your browser will ask for microphone access. Say no and the session still runs with drawing and the board; the interviewer just won't listen." : microphone ? "Your browser will ask for microphone access for the local recording. Say no and the session still runs with drawing and the board." : "Voice is off, so no microphone needed. You'll draw and pin; the board collects what you ask for.",
+    acceptLabel: microphone ? "Allow microphone & start" : "Start session",
     declineLabel: "Not now"
   };
 }
 
 // src/live/overlay/ConsentDialog.tsx
-import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
+import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
 var FONT2 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var backdropStyle = {
   position: "fixed",
@@ -6279,51 +6638,116 @@ var backdropStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(12, 18, 28, 0.56)",
+  background: "rgba(16, 24, 40, 0.28)",
   padding: 16
 };
 var dialogStyle = {
-  width: "min(560px, 100%)",
-  maxHeight: "calc(100vh - 32px)",
-  overflowY: "auto",
+  width: "min(520px, 100%)",
+  maxHeight: "calc(100% - 32px)",
+  display: "flex",
+  flexDirection: "column",
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 24px 80px rgba(16, 24, 40, 0.28)",
-  padding: 24,
+  border: "1px solid #eaecf0",
+  borderRadius: 14,
+  boxShadow: "0 12px 32px rgba(16, 24, 40, 0.12)",
   fontFamily: FONT2,
-  fontSize: 14,
-  lineHeight: 1.5
+  fontSize: 13,
+  lineHeight: 1.5,
+  outline: "none",
+  overflow: "hidden"
 };
-var buttonStyle2 = {
-  border: "1px solid #344054",
+var closeButtonStyle = {
+  width: 26,
+  height: 26,
+  border: 0,
   borderRadius: 6,
-  padding: "9px 14px",
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 15,
+  lineHeight: 1,
+  cursor: "pointer"
+};
+var sectionLabelStyle = {
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#667085"
+};
+var rowButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #e4e7ec",
+  borderRadius: 8,
+  background: "#ffffff",
+  color: "#101828",
+  font: "inherit",
+  textAlign: "left",
+  cursor: "pointer"
+};
+var boxStyle = {
+  padding: "12px 14px",
+  border: "1px solid #eaecf0",
+  borderRadius: 8
+};
+var chipStyle = {
+  fontSize: 11,
+  color: "#667085",
+  padding: "2px 8px",
+  borderRadius: 999,
+  background: "#f2f4f7"
+};
+var ghostButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  border: 0,
+  background: "transparent",
+  padding: "6px 8px",
+  marginLeft: -8,
+  borderRadius: 6,
+  color: "#475467",
+  font: "inherit",
+  fontSize: 13,
+  cursor: "pointer"
+};
+var primaryButtonStyle2 = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  height: 36,
+  padding: "0 10px 0 14px",
+  border: "1px solid #101828",
+  borderRadius: 8,
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
-  cursor: "pointer"
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
 };
-var secondaryButtonStyle2 = {
-  ...buttonStyle2,
-  background: "#ffffff",
-  color: "#344054",
-  borderColor: "#d0d5dd"
+var primaryBlockedStyle = {
+  ...primaryButtonStyle2,
+  background: "#f2f4f7",
+  color: "#98a2b3",
+  borderColor: "#e4e7ec",
+  cursor: "not-allowed"
 };
-var disabledButtonStyle = {
-  ...buttonStyle2,
-  cursor: "not-allowed",
-  opacity: 0.56
-};
-var noticeStyle = {
-  marginTop: 16,
-  padding: "10px 12px",
-  borderRadius: 6,
-  background: "#fffaeb",
-  border: "1px solid #fedf89",
-  color: "#7a2e0e"
-};
+var shortcutLegend = [
+  ["D", "Draw tool"],
+  ["N", "Pin tool"],
+  ["V", "Cursor (use the page normally)"],
+  ["M", "Mute mic"],
+  ["P", "Pause capture"],
+  ["S", "Send to agent"],
+  ["C", "Collapse panel"],
+  ["E", "End session"]
+];
 function defaultGetUserMedia2(constraints) {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error("Microphone access is not available in this browser."));
@@ -6335,94 +6759,510 @@ function errorMessage(error) {
   const message = error.message;
   return typeof message === "string" && message.length > 0 ? message : null;
 }
+function Switch({ on }) {
+  return /* @__PURE__ */ jsx6(
+    "span",
+    {
+      "aria-hidden": "true",
+      style: {
+        position: "relative",
+        flex: "none",
+        width: 30,
+        height: 18,
+        borderRadius: 999,
+        background: on ? "#101828" : "#e4e7ec",
+        transition: "background 120ms"
+      },
+      children: /* @__PURE__ */ jsx6(
+        "span",
+        {
+          style: {
+            position: "absolute",
+            top: 2,
+            left: on ? 14 : 2,
+            width: 14,
+            height: 14,
+            borderRadius: 999,
+            background: "#ffffff",
+            boxShadow: "0 1px 2px rgba(16, 24, 40, 0.15)",
+            transition: "left 120ms"
+          }
+        }
+      )
+    }
+  );
+}
+function SwitchRow({
+  on,
+  onToggle,
+  name,
+  shortcut,
+  children,
+  attribute
+}) {
+  return /* @__PURE__ */ jsxs6("button", { type: "button", role: "switch", "aria-checked": on, ...{ [attribute]: on ? "on" : "off" }, style: rowButtonStyle, onClick: onToggle, children: [
+    /* @__PURE__ */ jsxs6("span", { style: { flex: 1, minWidth: 0 }, children: [
+      /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }, children: [
+        name,
+        /* @__PURE__ */ jsx6(Kbd, { children: shortcut })
+      ] }),
+      /* @__PURE__ */ jsx6("span", { style: { display: "block", fontSize: 12, color: "#475467" }, children })
+    ] }),
+    /* @__PURE__ */ jsx6(Switch, { on })
+  ] });
+}
+function Stepper({ step, voice }) {
+  const steps = [1, 2, 3];
+  const names = { 1: "Set up", 2: "What's shared", 3: voice ? "Microphone" : "Ready" };
+  return /* @__PURE__ */ jsx6(
+    "ol",
+    {
+      "aria-label": "Steps",
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        margin: 0,
+        padding: "16px 20px",
+        listStyle: "none",
+        borderBottom: "1px solid #f2f4f7",
+        fontSize: 12
+      },
+      children: steps.map((item) => {
+        const done = item < step;
+        const active = item === step;
+        return /* @__PURE__ */ jsxs6("li", { "aria-current": active ? "step" : void 0, style: { display: "contents" }, children: [
+          item > 1 ? /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { flex: 1, minWidth: 12, height: 1, background: "#eaecf0" } }) : null,
+          /* @__PURE__ */ jsxs6("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ jsx6(
+              "span",
+              {
+                "aria-hidden": "true",
+                style: {
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 20,
+                  height: 20,
+                  boxSizing: "border-box",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  ...active ? { background: "#101828", color: "#ffffff" } : done ? { background: "#ecfdf3", color: "#067647", border: "1px solid #abefc6" } : { background: "#ffffff", color: "#98a2b3", border: "1px solid #e4e7ec" }
+                },
+                children: done ? "\u2713" : item
+              }
+            ),
+            /* @__PURE__ */ jsx6("span", { style: active ? { color: "#101828", fontWeight: 500 } : { color: done ? "#475467" : "#98a2b3" }, children: names[item] })
+          ] })
+        ] }, item);
+      })
+    }
+  );
+}
 function ConsentDialog({
   onAccept,
   onDecline,
+  mode: initialMode = "smart",
   getUserMedia = defaultGetUserMedia2,
   zIndex = 2147483647,
   ...copyInput
 }) {
-  const copy = buildConsentCopy(copyInput);
-  const [checked, setChecked] = useState4(false);
-  const [stage, setStage] = useState4("reading");
+  const [step, setStep] = useState4(1);
+  const [mode, setMode] = useState4(initialMode);
+  const [voiceOn, setVoiceOn] = useState4(true);
+  const [framesOn, setFramesOn] = useState4(() => resolveConsentProfile(copyInput.profile).frames);
+  const [agreed, setAgreed] = useState4(false);
+  const [mic, setMic] = useState4("idle");
   const [denialReason, setDenialReason] = useState4(null);
-  const requestInFlight = useRef3(false);
-  const accept = async () => {
+  const dialogRef = useRef4(null);
+  const copy = buildConsentCopy({
+    ...copyInput,
+    profile: { ...copyInput.profile, frames: framesOn },
+    microphone: voiceOn
+  });
+  useEffect4(() => {
+    dialogRef.current?.focus();
+  }, []);
+  const requestInFlight = useRef4(false);
+  const requestMic = async () => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
-    setStage("requesting");
+    setMic("asking");
     try {
       const stream = await getUserMedia({ audio: true });
-      onAccept({ stream, mic: "granted" });
+      onAccept({ stream, mic: "granted", mode, frames: framesOn });
     } catch (error) {
       setDenialReason(errorMessage(error) ?? "Microphone access was denied.");
-      setStage("denied");
+      setMic("denied");
     } finally {
       requestInFlight.current = false;
     }
   };
-  const busy = stage === "requesting";
-  return /* @__PURE__ */ jsx4("div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ jsxs4("div", { role: "dialog", "aria-modal": "true", "aria-label": copy.title, style: dialogStyle, children: [
-    /* @__PURE__ */ jsx4("h2", { style: { margin: "0 0 12px", fontSize: 20, lineHeight: 1.2 }, children: copy.title }),
-    /* @__PURE__ */ jsx4("p", { style: { margin: "0 0 12px" }, children: copy.intro }),
-    copy.destinations.map((destination) => /* @__PURE__ */ jsxs4("div", { "data-riffrec-consent-destination": destination.id, style: { marginBottom: 12 }, children: [
-      /* @__PURE__ */ jsxs4("p", { style: { margin: "0 0 4px", fontWeight: 600 }, children: [
-        "To ",
-        destination.to,
-        ":"
-      ] }),
-      /* @__PURE__ */ jsx4("ul", { style: { margin: 0, paddingLeft: 20 }, children: destination.items.map((item) => /* @__PURE__ */ jsx4("li", { children: item }, item)) })
-    ] }, destination.id)),
-    copy.retention ? /* @__PURE__ */ jsx4("p", { "data-riffrec-consent-retention": "", style: { margin: "0 0 12px" }, children: copy.retention }) : null,
-    /* @__PURE__ */ jsx4("p", { style: { margin: "0 0 12px" }, children: copy.noExclusions }),
-    /* @__PURE__ */ jsx4("p", { style: { margin: 0 }, children: copy.microphone }),
-    stage === "denied" ? /* @__PURE__ */ jsxs4("div", { role: "status", "data-riffrec-consent-mic-denied": "", style: noticeStyle, children: [
-      /* @__PURE__ */ jsx4("strong", { children: "Microphone unavailable." }),
-      " ",
-      denialReason,
-      " You can continue with drawing and the board; the interviewer will not run."
-    ] }) : null,
-    /* @__PURE__ */ jsxs4("label", { style: { display: "flex", gap: 10, alignItems: "flex-start", marginTop: 18 }, children: [
-      /* @__PURE__ */ jsx4(
-        "input",
-        {
-          type: "checkbox",
-          checked,
-          disabled: busy,
-          onChange: (event) => setChecked(event.currentTarget.checked)
-        }
-      ),
-      /* @__PURE__ */ jsx4("span", { children: "I understand what is streamed and to whom, and I consent to this live session." })
-    ] }),
-    /* @__PURE__ */ jsxs4("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }, children: [
-      /* @__PURE__ */ jsx4("button", { type: "button", "data-riffrec-consent-decline": "", style: secondaryButtonStyle2, disabled: busy, onClick: onDecline, children: copy.declineLabel }),
-      stage === "denied" ? /* @__PURE__ */ jsx4(
+  const withoutVoice = !voiceOn || mic === "denied";
+  const blocked = step === 2 && !agreed;
+  const next = () => {
+    if (step === 1) setStep(2);
+    else if (step === 2) {
+      if (agreed) setStep(3);
+    } else if (withoutVoice) {
+      onAccept({ stream: null, mic: "denied", mode, frames: framesOn });
+    } else if (mic !== "asking") {
+      void requestMic();
+    }
+  };
+  const back = () => {
+    if (mic === "asking") return;
+    if (step === 1) {
+      onDecline();
+      return;
+    }
+    setStep((current) => current - 1);
+    setMic("idle");
+  };
+  const change = () => {
+    if (mic === "asking") return;
+    setStep(1);
+    setMic("idle");
+  };
+  const actions = useRef4({ next, back, setMode, setVoiceOn, setFramesOn, setAgreed, step });
+  actions.current = { next, back, setMode, setVoiceOn, setFramesOn, setAgreed, step };
+  useEffect4(() => {
+    const onKeyDown = (event) => {
+      if (!isPlainKey(event)) return;
+      const key = event.key.toLowerCase();
+      const onControl = event.target instanceof HTMLButtonElement;
+      if (onControl && (key === "enter" || key === " ")) return;
+      const current = actions.current;
+      let handled = true;
+      if (key === "enter") current.next();
+      else if (key === "escape") current.back();
+      else if (current.step === 1 && (key === "1" || key === "2" || key === "3")) current.setMode(EXECUTION_MODES[Number(key) - 1]);
+      else if (current.step === 1 && key === "v") current.setVoiceOn((on) => !on);
+      else if (current.step === 1 && key === "f") current.setFramesOn((on) => !on);
+      else if (current.step === 2 && key === " ") current.setAgreed((on) => !on);
+      else handled = false;
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+  const primaryLabel = step < 3 ? "Continue" : !voiceOn ? "Start session" : mic === "denied" ? "Start without voice" : mic === "asking" ? "Waiting\u2026" : copy.acceptLabel;
+  const primaryAttribute = step < 3 ? "data-riffrec-consent-next" : withoutVoice ? "data-riffrec-consent-continue-novoice" : "data-riffrec-consent-accept";
+  return /* @__PURE__ */ jsx6("div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ jsxs6("div", { ref: dialogRef, role: "dialog", "aria-modal": "true", "aria-label": copy.title, tabIndex: -1, style: dialogStyle, children: [
+    /* @__PURE__ */ jsxs6("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 12px 0 20px" }, children: [
+      /* @__PURE__ */ jsx6(Wordmark, {}),
+      /* @__PURE__ */ jsx6(
         "button",
         {
           type: "button",
-          "data-riffrec-consent-continue-novoice": "",
-          style: checked ? buttonStyle2 : disabledButtonStyle,
-          disabled: !checked,
-          onClick: () => onAccept({ stream: null, mic: "denied" }),
-          children: "Continue without microphone"
-        }
-      ) : /* @__PURE__ */ jsx4(
-        "button",
-        {
-          type: "button",
-          "data-riffrec-consent-accept": "",
-          style: !checked || busy ? disabledButtonStyle : buttonStyle2,
-          disabled: !checked || busy,
-          onClick: accept,
-          children: busy ? "Requesting microphone\u2026" : copy.acceptLabel
+          "data-riffrec-consent-close": "",
+          "aria-label": "Not now",
+          title: "Not now (Esc)",
+          disabled: mic === "asking",
+          style: closeButtonStyle,
+          onClick: onDecline,
+          children: "\u2715"
         }
       )
-    ] })
+    ] }),
+    /* @__PURE__ */ jsxs6("div", { style: { padding: "10px 20px 0" }, children: [
+      /* @__PURE__ */ jsx6("h2", { style: { margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.25 }, children: copy.title }),
+      /* @__PURE__ */ jsx6("p", { style: { margin: "4px 0 0", color: "#475467" }, children: copy.intro })
+    ] }),
+    /* @__PURE__ */ jsx6(Stepper, { step, voice: voiceOn }),
+    /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-step": step, style: { padding: "16px 20px", overflowY: "auto", minHeight: 0 }, children: [
+      step === 1 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+        /* @__PURE__ */ jsx6("span", { style: sectionLabelStyle, children: "When the agent applies changes" }),
+        /* @__PURE__ */ jsx6("div", { role: "radiogroup", "aria-label": "Execution mode", style: { display: "flex", gap: 8 }, children: EXECUTION_MODES.map((option, index) => {
+          const selected = option === mode;
+          return /* @__PURE__ */ jsxs6(
+            "button",
+            {
+              type: "button",
+              role: "radio",
+              "aria-checked": selected,
+              "data-riffrec-consent-mode": option,
+              style: {
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: selected ? "1.5px solid #101828" : "1px solid #e4e7ec",
+                background: "#ffffff",
+                color: "#101828",
+                font: "inherit",
+                textAlign: "left",
+                cursor: "pointer"
+              },
+              onClick: () => setMode(option),
+              children: [
+                /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontWeight: 500 }, children: [
+                  MODE_LABELS[option],
+                  /* @__PURE__ */ jsx6(Kbd, { children: index + 1 })
+                ] }),
+                /* @__PURE__ */ jsx6("span", { style: { fontSize: 11, lineHeight: 1.4, color: "#475467" }, children: MODE_SUMMARIES[option] })
+              ]
+            },
+            option
+          );
+        }) }),
+        /* @__PURE__ */ jsx6("span", { style: { fontSize: 11, color: "#667085" }, children: "You can change this later from the panel footer." }),
+        /* @__PURE__ */ jsx6("span", { style: { ...sectionLabelStyle, marginTop: 8 }, children: "Capture" }),
+        /* @__PURE__ */ jsx6(
+          SwitchRow,
+          {
+            on: voiceOn,
+            onToggle: () => setVoiceOn((on) => !on),
+            name: "Voice interviewer",
+            shortcut: "V",
+            attribute: "data-riffrec-consent-voice",
+            children: "Talk instead of type. It listens and asks follow-ups. Needs your microphone."
+          }
+        ),
+        /* @__PURE__ */ jsx6(
+          SwitchRow,
+          {
+            on: framesOn,
+            onToggle: () => setFramesOn((on) => !on),
+            name: "Screenshots of the page",
+            shortcut: "F",
+            attribute: "data-riffrec-consent-frames",
+            children: "Taken when you point at something, so the agent sees what you see."
+          }
+        )
+      ] }) : null,
+      step === 2 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
+        copy.destinations.map((destination) => /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-destination": destination.id, style: boxStyle, children: [
+          /* @__PURE__ */ jsxs6("p", { style: { margin: "0 0 6px", fontWeight: 500 }, children: [
+            "To ",
+            destination.to
+          ] }),
+          /* @__PURE__ */ jsx6("ul", { style: { margin: 0, paddingLeft: 18, color: "#475467" }, children: destination.items.map((item) => /* @__PURE__ */ jsx6("li", { style: { margin: "0 0 3px" }, children: item }, item)) }),
+          destination.id === "endpoint" && copy.retention ? /* @__PURE__ */ jsx6("p", { "data-riffrec-consent-retention": "", style: { margin: "8px 0 0", fontSize: 12, color: "#667085" }, children: copy.retention }) : null
+        ] }, destination.id)),
+        /* @__PURE__ */ jsx6("p", { style: { margin: 0, fontSize: 12, color: "#475467" }, children: copy.noExclusions }),
+        /* @__PURE__ */ jsxs6(
+          "button",
+          {
+            type: "button",
+            role: "checkbox",
+            "aria-checked": agreed,
+            "data-riffrec-consent-agree": agreed ? "on" : "off",
+            style: { ...rowButtonStyle, gap: 10, alignItems: "flex-start", borderColor: agreed ? "#101828" : "#e4e7ec" },
+            onClick: () => setAgreed((on) => !on),
+            children: [
+              /* @__PURE__ */ jsx6(
+                "span",
+                {
+                  "aria-hidden": "true",
+                  style: {
+                    flex: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 16,
+                    height: 16,
+                    marginTop: 2,
+                    boxSizing: "border-box",
+                    borderRadius: 4,
+                    background: agreed ? "#101828" : "#ffffff",
+                    border: agreed ? "none" : "1px solid #d0d5dd",
+                    color: "#ffffff",
+                    fontSize: 11
+                  },
+                  children: agreed ? "\u2713" : null
+                }
+              ),
+              /* @__PURE__ */ jsx6("span", { style: { flex: 1 }, children: "I understand what is shared and with whom, and I consent to this live session." }),
+              /* @__PURE__ */ jsx6(Kbd, { children: "Space" })
+            ]
+          }
+        )
+      ] }) : null,
+      step === 3 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 12 }, children: [
+        mic === "asking" ? /* @__PURE__ */ jsxs6("div", { style: { ...boxStyle, display: "flex", alignItems: "center", gap: 8 }, children: [
+          /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { width: 7, height: 7, borderRadius: 999, background: "#f79009" } }),
+          "Waiting for your browser's microphone prompt\u2026"
+        ] }) : mic === "denied" ? /* @__PURE__ */ jsxs6(
+          "div",
+          {
+            role: "status",
+            "data-riffrec-consent-mic-denied": "",
+            style: { ...boxStyle, background: "#fffaeb", borderColor: "#fedf89", color: "#7a2e0e" },
+            children: [
+              /* @__PURE__ */ jsx6("strong", { style: { fontWeight: 600 }, children: "Microphone unavailable." }),
+              " ",
+              denialReason,
+              " You can still start with drawing and the board. The voice interviewer won't run."
+            ]
+          }
+        ) : /* @__PURE__ */ jsx6("p", { style: { margin: 0 }, children: copy.microphone }),
+        /* @__PURE__ */ jsxs6("div", { style: { padding: "12px 14px", borderRadius: 8, background: "#f9fafb" }, children: [
+          /* @__PURE__ */ jsx6("span", { style: sectionLabelStyle, children: "Once you're live" }),
+          /* @__PURE__ */ jsx6(
+            "div",
+            {
+              style: {
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px 16px",
+                marginTop: 8,
+                fontSize: 12,
+                color: "#344054"
+              },
+              children: shortcutLegend.map(([key, label]) => /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                /* @__PURE__ */ jsx6(Kbd, { children: key }),
+                label
+              ] }, key))
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-summary": "", style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }, children: [
+          /* @__PURE__ */ jsxs6("span", { style: chipStyle, children: [
+            MODE_LABELS[mode],
+            " mode"
+          ] }),
+          /* @__PURE__ */ jsx6("span", { style: chipStyle, children: !voiceOn ? "Voice off" : mic === "denied" ? "Voice unavailable" : "Voice on" }),
+          /* @__PURE__ */ jsx6("span", { style: chipStyle, children: framesOn ? "Screenshots on" : "Screenshots off" }),
+          /* @__PURE__ */ jsx6(
+            "button",
+            {
+              type: "button",
+              "data-riffrec-consent-change": "",
+              disabled: mic === "asking",
+              style: {
+                border: 0,
+                background: "transparent",
+                padding: "2px 4px",
+                color: "#475467",
+                font: "inherit",
+                fontSize: 11,
+                textDecoration: "underline",
+                cursor: "pointer"
+              },
+              onClick: change,
+              children: "Change"
+            }
+          )
+        ] })
+      ] }) : null
+    ] }),
+    /* @__PURE__ */ jsxs6(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "12px 16px 12px 20px",
+          borderTop: "1px solid #f2f4f7"
+        },
+        children: [
+          step === 1 ? /* @__PURE__ */ jsxs6("button", { type: "button", "data-riffrec-consent-decline": "", style: ghostButtonStyle, onClick: onDecline, children: [
+            copy.declineLabel,
+            /* @__PURE__ */ jsx6(Kbd, { children: "Esc" })
+          ] }) : /* @__PURE__ */ jsxs6("button", { type: "button", "data-riffrec-consent-back": "", disabled: mic === "asking", style: ghostButtonStyle, onClick: back, children: [
+            "\u2190 Back",
+            /* @__PURE__ */ jsx6(Kbd, { children: "Esc" })
+          ] }),
+          /* @__PURE__ */ jsxs6(
+            "button",
+            {
+              type: "button",
+              ...{ [primaryAttribute]: "" },
+              disabled: blocked || mic === "asking",
+              title: blocked ? "Tick the consent box first" : void 0,
+              style: blocked ? primaryBlockedStyle : primaryButtonStyle2,
+              onClick: next,
+              children: [
+                primaryLabel,
+                blocked ? null : /* @__PURE__ */ jsx6(Kbd, { dark: true, children: "\u21B5" })
+              ]
+            }
+          )
+        ]
+      }
+    )
   ] }) });
 }
 
+// src/live/overlay/NextSessionLauncher.tsx
+import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
+var FONT3 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var pillStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "6px 6px 6px 12px",
+  background: "#ffffff",
+  color: "#101828",
+  border: "1px solid #eaecf0",
+  borderRadius: 999,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT3,
+  fontSize: 13
+};
+var dotStyle = (color) => ({
+  width: 6,
+  height: 6,
+  borderRadius: 999,
+  background: color,
+  flex: "none"
+});
+var startButtonStyle = {
+  border: "1px solid #101828",
+  borderRadius: 999,
+  background: "#101828",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 12px",
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var startButtonDisabledStyle = {
+  ...startButtonStyle,
+  borderColor: "#e4e7ec",
+  background: "#f2f4f7",
+  color: "#667085",
+  cursor: "default"
+};
+function endpointHost(endpoint) {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint;
+  }
+}
+function NextSessionLauncher({ next, onStart }) {
+  const ready = next.state === "ready";
+  return /* @__PURE__ */ jsxs7("div", { role: "status", "aria-live": "polite", "data-riffrec-next-session": next.state, style: pillStyle, children: [
+    /* @__PURE__ */ jsx7("span", { "aria-hidden": "true", style: dotStyle(ready ? "#12b76a" : "#f79009") }),
+    /* @__PURE__ */ jsxs7("span", { style: { display: "flex", flexDirection: "column", lineHeight: 1.25 }, children: [
+      /* @__PURE__ */ jsx7("span", { style: { fontWeight: 500 }, children: ready ? "Endpoint ready" : "Agent is wrapping up" }),
+      /* @__PURE__ */ jsx7("span", { style: { fontSize: 11, color: "#667085" }, children: endpointHost(next.endpoint) })
+    ] }),
+    /* @__PURE__ */ jsx7(
+      "button",
+      {
+        type: "button",
+        "data-riffrec-next-session-start": "",
+        disabled: !ready,
+        style: ready ? startButtonStyle : startButtonDisabledStyle,
+        onClick: onStart,
+        children: "Start live session"
+      }
+    )
+  ] });
+}
+
 // src/live/overlay/EndedCard.tsx
-import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
+import { jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
 var RESIDUAL_STATUSES = ["needs_info", "blocked"];
 function countByStatus(units) {
   const counts = Object.fromEntries(UNIT_STATUSES.map((status) => [status, 0]));
@@ -6432,15 +7272,15 @@ function countByStatus(units) {
 function residualCount(counts) {
   return RESIDUAL_STATUSES.reduce((total, status) => total + counts[status], 0);
 }
-var FONT3 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var FONT4 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var cardStyle = {
-  fontFamily: FONT3,
+  fontFamily: FONT4,
   fontSize: 13,
   color: "#101828",
   background: "#ffffff",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.18)",
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
   padding: 16,
   width: 300
 };
@@ -6453,9 +7293,9 @@ var countsStyle = {
   rowGap: 4,
   columnGap: 12
 };
-var buttonStyle3 = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+var buttonStyle2 = {
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -6463,34 +7303,166 @@ var buttonStyle3 = {
   padding: "5px 10px",
   cursor: "pointer"
 };
-function EndedCard({ units, reason, residualHint, onDismiss }) {
+function EndedCard({ units, reason, residualHint, onDismiss, next, onStartNext }) {
   const counts = countByStatus(units);
   const residuals = residualCount(counts);
   const shown = UNIT_STATUSES.filter((status) => counts[status] > 0);
-  return /* @__PURE__ */ jsxs5("div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
-    /* @__PURE__ */ jsx5("p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
-    /* @__PURE__ */ jsx5("p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
-    shown.length > 0 ? /* @__PURE__ */ jsx5("ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ jsxs5("li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
-      /* @__PURE__ */ jsx5("span", { children: STATUS_LABELS[status] }),
-      /* @__PURE__ */ jsx5("span", { style: { fontWeight: 600, textAlign: "right" }, children: counts[status] })
+  return /* @__PURE__ */ jsxs8("div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
+    /* @__PURE__ */ jsx8("p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
+    /* @__PURE__ */ jsx8("p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
+    shown.length > 0 ? /* @__PURE__ */ jsx8("ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ jsxs8("li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
+      /* @__PURE__ */ jsx8("span", { children: STATUS_LABELS[status] }),
+      /* @__PURE__ */ jsx8("span", { style: { fontWeight: 500, textAlign: "right" }, children: counts[status] })
     ] }, status)) }) : null,
-    /* @__PURE__ */ jsx5("p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${residualHint ?? "Your agent's residual list has them, ready to hand to planning."}` : residualHint ?? "Anything beyond this session is in your agent's residual list." }),
-    reason && reason !== "riffer_done" ? /* @__PURE__ */ jsxs5("p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
+    /* @__PURE__ */ jsx8("p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${residualHint ?? "Your agent's residual list has them, ready to hand to planning."}` : residualHint ?? "Anything beyond this session is in your agent's residual list." }),
+    reason && reason !== "riffer_done" ? /* @__PURE__ */ jsxs8("p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
       "Ended by the endpoint: ",
       reason
     ] }) : null,
-    onDismiss ? /* @__PURE__ */ jsx5("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 12 }, children: /* @__PURE__ */ jsx5("button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle3, onClick: onDismiss, children: "Close" }) }) : null
+    onDismiss || next && onStartNext ? /* @__PURE__ */ jsxs8("div", { style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 12 }, children: [
+      next && onStartNext ? /* @__PURE__ */ jsx8(
+        "button",
+        {
+          type: "button",
+          "data-riffrec-ended-start-next": next,
+          disabled: next !== "ready",
+          title: next === "ready" ? void 0 : "The agent is still finishing this session",
+          style: next === "ready" ? startButtonStyle : startButtonDisabledStyle,
+          onClick: onStartNext,
+          children: next === "ready" ? "Start another session" : "Agent wrapping up\u2026"
+        }
+      ) : null,
+      onDismiss ? /* @__PURE__ */ jsx8("button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle2, onClick: onDismiss, children: "Close" }) : null
+    ] }) : null
+  ] });
+}
+
+// src/live/overlay/KeyPrompt.tsx
+import { useState as useState5 } from "react";
+import { jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
+function needsOpenAIKey(reason) {
+  if (reason?.kind !== "refused") return false;
+  return reason.reason === "no_key" || reason.reason === "openai_error" && reason.upstreamStatus === 401;
+}
+var wrapStyle = {
+  margin: "0 0 12px",
+  padding: 10,
+  border: "1px solid #fedf89",
+  borderRadius: 8,
+  background: "#fffaeb",
+  color: "#101828"
+};
+var inputStyle2 = {
+  flex: 1,
+  minWidth: 0,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  padding: "5px 8px",
+  font: "inherit",
+  fontSize: 12
+};
+var buttonStyle3 = {
+  border: "1px solid #101828",
+  borderRadius: 7,
+  background: "#101828",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 10px",
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var linkButtonStyle = {
+  border: 0,
+  background: "none",
+  padding: 0,
+  color: "#475467",
+  font: "inherit",
+  fontSize: 11,
+  textDecoration: "underline",
+  cursor: "pointer"
+};
+function KeyPrompt({ reason, onRetry }) {
+  const [value, setValue] = useState5("");
+  const [stored, setStored] = useState5(() => readStoredOpenAIKey() !== null);
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const key = value.trim();
+    if (!key) return;
+    storeOpenAIKey(key);
+    setStored(true);
+    setValue("");
+    onRetry();
+  };
+  const handleForget = () => {
+    clearStoredOpenAIKey();
+    setStored(false);
+  };
+  return /* @__PURE__ */ jsxs9("form", { "data-riffrec-live-key-prompt": "", style: wrapStyle, onSubmit: handleSubmit, children: [
+    /* @__PURE__ */ jsx9("p", { style: { margin: "0 0 8px", fontSize: 12, lineHeight: 1.4 }, children: stored && reason?.kind === "refused" && reason.reason === "openai_error" ? "OpenAI rejected the saved key. Paste a different one to turn voice on." : "Paste an OpenAI API key to turn voice on. It is kept in this browser and sent only to the endpoint." }),
+    /* @__PURE__ */ jsxs9("div", { style: { display: "flex", gap: 6 }, children: [
+      /* @__PURE__ */ jsx9(
+        "input",
+        {
+          type: "password",
+          "data-riffrec-live-key-input": "",
+          "aria-label": "OpenAI API key",
+          placeholder: "sk-...",
+          autoComplete: "off",
+          spellCheck: false,
+          value,
+          onChange: (event) => setValue(event.target.value),
+          style: inputStyle2
+        }
+      ),
+      /* @__PURE__ */ jsx9("button", { type: "submit", "data-riffrec-live-key-save": "", disabled: !value.trim(), style: buttonStyle3, children: "Save and retry" })
+    ] }),
+    stored ? /* @__PURE__ */ jsx9("button", { type: "button", "data-riffrec-live-key-forget": "", style: { ...linkButtonStyle, marginTop: 6 }, onClick: handleForget, children: "Forget saved key" }) : null
   ] });
 }
 
 // src/live/overlay/LiveIndicator.tsx
-import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
+import { jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
 function hostOf(endpoint) {
   if (!endpoint) return null;
   try {
     return new URL(endpoint).host;
   } catch {
     return endpoint;
+  }
+}
+function voiceUnavailableCause(reason) {
+  if (!reason) return null;
+  switch (reason.kind) {
+    case "no_endpoint":
+      return "no endpoint configured";
+    case "connect_failed":
+      return "couldn't connect to OpenAI Realtime";
+    case "exhausted":
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "can't reach the /ce-polish server";
+    case "refused":
+      switch (reason.reason) {
+        case "openai_error":
+          if (reason.upstreamStatus === 401) return "OpenAI rejected the API key";
+          if (reason.upstreamStatus === 429) return "OpenAI rate limit or quota reached";
+          if (reason.upstreamStatus === void 0) return "couldn't reach OpenAI";
+          return `OpenAI returned an error (${reason.upstreamStatus})`;
+        case "no_key":
+          return "the endpoint has no OpenAI key";
+        case "brief_contains_secret":
+          return "the session brief looked like it held a secret";
+        case "unauthorized":
+          return "the endpoint rejected this page's token";
+        case "tls_required":
+          return "the endpoint requires HTTPS";
+        default:
+          return "the endpoint refused to start voice";
+      }
+    default: {
+      const exhaustive = reason;
+      return exhaustive;
+    }
   }
 }
 function deriveIndicatorState(input) {
@@ -6528,26 +7500,6 @@ function baseIndicatorState(status) {
     }
   }
 }
-function isRunning(status) {
-  switch (status) {
-    case "connecting":
-    case "live":
-    case "live_novoice":
-    case "buffering":
-    case "reconnecting":
-    case "incompatible":
-      return true;
-    case "idle":
-    case "consenting":
-    case "ended":
-    case "error":
-      return false;
-    default: {
-      const exhaustive = status;
-      return exhaustive;
-    }
-  }
-}
 function describeIndicator(input) {
   const state = deriveIndicatorState(input);
   const host = hostOf(input.endpoint);
@@ -6568,14 +7520,18 @@ function describeIndicator(input) {
         color: "#12b76a",
         pulse: true
       };
-    case "novoice":
+    case "novoice": {
+      const cause = voiceUnavailableCause(input.voiceUnavailable);
+      const where = host ? `Clicks, drawings, and the board still stream to ${host}.` : "Clicks, drawings, and the board are saved locally.";
       return {
         state,
-        label: host ? `Live \xB7 no voice \xB7 streaming to ${host}` : "Live \xB7 no voice \xB7 saving locally",
-        short: "Live \xB7 no voice",
-        color: "#12b76a",
-        pulse: true
+        label: cause ? `Voice off \xB7 ${cause}` : host ? `Voice off \xB7 streaming to ${host}` : "Voice off \xB7 saving locally",
+        short: "Voice off",
+        color: "#f79009",
+        pulse: false,
+        detail: `The voice interviewer is not running${cause ? `: ${cause}` : ""}. ${where}`
       };
+    }
     case "buffering":
       return {
         state,
@@ -6615,166 +7571,52 @@ function describeIndicator(input) {
 var rootStyle2 = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#101828",
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 500,
+  color: "#344054",
   minWidth: 0
 };
-var dotStyle = {
-  width: 9,
-  height: 9,
+var dotStyle2 = {
+  width: 6,
+  height: 6,
   borderRadius: "50%",
   flex: "none"
 };
-var iconButtonStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
-  background: "#ffffff",
-  color: "#344054",
-  font: "inherit",
-  fontSize: 12,
-  padding: "3px 8px",
-  cursor: "pointer"
-};
-var iconButtonPressedStyle = {
-  ...iconButtonStyle,
-  background: "#344054",
-  borderColor: "#344054",
-  color: "#ffffff"
-};
-function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input }) {
+function LiveIndicator({ compact = false, ...input }) {
   const view = describeIndicator(input);
-  const running = isRunning(input.status);
-  const micDenied = input.mic === "denied";
-  const showControls = !compact && running && (onToggleMute || onTogglePause);
-  return /* @__PURE__ */ jsxs6("span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", style: rootStyle2, children: [
-    /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { ...dotStyle, background: view.color, boxShadow: view.pulse ? `0 0 0 3px ${view.color}33` : void 0 } }),
-    /* @__PURE__ */ jsx6("span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label }),
-    showControls ? /* @__PURE__ */ jsxs6("span", { style: { display: "inline-flex", gap: 6, marginLeft: 4 }, children: [
-      onToggleMute ? /* @__PURE__ */ jsx6(
-        "button",
-        {
-          type: "button",
-          "data-riffrec-live-mute": "",
-          "aria-pressed": input.muted,
-          "aria-label": input.muted ? "Unmute microphone" : "Mute microphone",
-          disabled: micDenied,
-          title: micDenied ? "Microphone was denied" : void 0,
-          style: input.muted ? iconButtonPressedStyle : iconButtonStyle,
-          onClick: onToggleMute,
-          children: input.muted ? "Unmute" : "Mute"
-        }
-      ) : null,
-      onTogglePause ? /* @__PURE__ */ jsx6(
-        "button",
-        {
-          type: "button",
-          "data-riffrec-live-pause": "",
-          "aria-pressed": input.paused ?? false,
-          "aria-label": input.paused ? "Resume frame and stream capture" : "Pause frame and stream capture",
-          style: input.paused ? iconButtonPressedStyle : iconButtonStyle,
-          onClick: onTogglePause,
-          children: input.paused ? "Resume" : "Pause"
-        }
-      ) : null
-    ] }) : null
-  ] });
-}
-
-// src/live/overlay/ModeSwitch.tsx
-import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
-var MODE_LABELS = {
-  instant: "Instant",
-  smart: "Smart",
-  collect: "Collect"
-};
-var MODE_DESCRIPTIONS = {
-  instant: "Applies everything it can at each checkpoint, guessing on ambiguous units and noting the guess.",
-  smart: "Applies clear bounded edits, asks about ambiguous ones, sends anything larger to the residual list.",
-  collect: "Applies nothing during the riff; the accepted batch lands as one pass when you say done."
-};
-var PENDING_MODE_HINT = "Pending until next checkpoint";
-var groupStyle = {
-  display: "inline-flex",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
-  overflow: "hidden",
-  background: "#ffffff"
-};
-var optionStyle = {
-  border: "none",
-  borderRight: "1px solid #d0d5dd",
-  background: "#ffffff",
-  color: "#344054",
-  font: "inherit",
-  fontSize: 12,
-  fontWeight: 600,
-  padding: "5px 10px",
-  cursor: "pointer"
-};
-var optionSelectedStyle = {
-  ...optionStyle,
-  background: "#101828",
-  color: "#ffffff"
-};
-var hintStyle = {
-  display: "block",
-  marginTop: 4,
-  fontSize: 11,
-  color: "#b54708"
-};
-function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
-  return /* @__PURE__ */ jsxs7("div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
-    /* @__PURE__ */ jsx7("div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: EXECUTION_MODES.map((option, index) => {
-      const selected = option === mode;
-      const last = index === EXECUTION_MODES.length - 1;
-      return /* @__PURE__ */ jsx7(
-        "button",
-        {
-          type: "button",
-          role: "radio",
-          "aria-checked": selected,
-          "data-riffrec-mode-option": option,
-          title: MODE_DESCRIPTIONS[option],
-          disabled,
-          style: { ...selected ? optionSelectedStyle : optionStyle, ...last ? { borderRight: "none" } : {} },
-          onClick: () => {
-            if (!selected) onChange(option);
-          },
-          children: MODE_LABELS[option]
-        },
-        option
-      );
-    }) }),
-    pendingMode !== null ? /* @__PURE__ */ jsxs7("span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
-      MODE_LABELS[pendingMode],
-      ": ",
-      PENDING_MODE_HINT.toLowerCase()
-    ] }) : null
+  return /* @__PURE__ */ jsxs10("span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", title: view.detail ?? view.label, style: rootStyle2, children: [
+    /* @__PURE__ */ jsx10(
+      "span",
+      {
+        "aria-hidden": "true",
+        style: { ...dotStyle2, background: view.color, boxShadow: view.state === "streaming" ? `0 0 0 3px ${view.color}26` : void 0 }
+      }
+    ),
+    /* @__PURE__ */ jsx10("span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label })
   ] });
 }
 
 // src/live/overlay/SendControl.tsx
-import { useRef as useRef4, useState as useState5 } from "react";
-import { jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
+import { useRef as useRef5, useState as useState6 } from "react";
+import { jsx as jsx11, jsxs as jsxs11 } from "react/jsx-runtime";
 var buttonStyle4 = {
-  border: "1px solid #344054",
-  borderRadius: 6,
+  border: "1px solid #101828",
+  borderRadius: 7,
   padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 500,
   cursor: "pointer",
   whiteSpace: "nowrap"
 };
-var secondaryButtonStyle3 = {
+var secondaryButtonStyle2 = {
   ...buttonStyle4,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 var disabledStyle = {
   cursor: "not-allowed",
@@ -6786,9 +7628,9 @@ var noteStyle2 = {
   marginLeft: 6
 };
 function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact = false }) {
-  const [sending, setSending] = useState5(false);
-  const [lastSend, setLastSend] = useState5(null);
-  const sendInFlight = useRef4(false);
+  const [sending, setSending] = useState6(false);
+  const [lastSend, setLastSend] = useState6(null);
+  const sendInFlight = useRef5(false);
   const send = async () => {
     if (sendInFlight.current) return;
     sendInFlight.current = true;
@@ -6803,8 +7645,8 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
     }
   };
   const busy = disabled || sending;
-  return /* @__PURE__ */ jsxs8("span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
-    /* @__PURE__ */ jsx8(
+  return /* @__PURE__ */ jsxs11("span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+    /* @__PURE__ */ jsx11(
       "button",
       {
         type: "button",
@@ -6817,34 +7659,37 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
         children: sending ? "Sending\u2026" : heldCount > 0 ? `Send (${heldCount})` : "Send"
       }
     ),
-    !compact ? /* @__PURE__ */ jsx8(
+    !compact && onDone ? /* @__PURE__ */ jsx11(
       "button",
       {
         type: "button",
         "data-riffrec-done": "",
         title: "Confirm each unit, then end the session",
         disabled,
-        style: disabled ? { ...secondaryButtonStyle3, ...disabledStyle } : secondaryButtonStyle3,
+        style: disabled ? { ...secondaryButtonStyle2, ...disabledStyle } : secondaryButtonStyle2,
         onClick: onDone,
         children: "Done"
       }
     ) : null,
-    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ jsx8("span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
+    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ jsx11("span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
   ] });
 }
 
 // src/live/overlay/LiveOverlay.tsx
-import { Fragment, jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx12, jsxs as jsxs12 } from "react/jsx-runtime";
 function useLiveSnapshot(session) {
-  const [snapshot, setSnapshot] = useState6(() => session.snapshot());
-  useEffect3(() => {
+  const [snapshot, setSnapshot] = useState7(() => session.snapshot());
+  useEffect5(() => {
     setSnapshot(session.snapshot());
     return session.subscribe(setSnapshot);
   }, [session]);
   return snapshot;
 }
 var PANEL_WIDTH = 320;
-var FONT4 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var TOAST_MS = 900;
+var MARK_HOLD_MS = 2e3;
+var MARK_FADE_MS = 600;
+var FONT5 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var panelStyle = {
   position: "fixed",
   top: 16,
@@ -6853,30 +7698,30 @@ var panelStyle = {
   maxHeight: "calc(100vh - 32px)",
   display: "flex",
   flexDirection: "column",
-  background: "#f9fafb",
+  background: "#fcfcfd",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 10,
-  boxShadow: "0 16px 48px rgba(16, 24, 40, 0.22)",
-  fontFamily: FONT4,
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT5,
   fontSize: 13,
   pointerEvents: "auto",
   overflow: "hidden"
 };
-var pillStyle = {
+var pillStyle2 = {
   position: "fixed",
   top: 16,
   right: 16,
   display: "inline-flex",
   alignItems: "center",
   gap: 10,
-  padding: "6px 8px 6px 12px",
+  padding: "6px 6px 6px 12px",
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
+  border: "1px solid #eaecf0",
   borderRadius: 999,
-  boxShadow: "0 8px 24px rgba(16, 24, 40, 0.18)",
-  fontFamily: FONT4,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT5,
   fontSize: 13,
   pointerEvents: "auto"
 };
@@ -6885,51 +7730,106 @@ var headerStyle = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 8,
-  padding: "10px 12px",
-  borderBottom: "1px solid #eaecf0",
+  padding: "10px 8px 10px 14px",
   background: "#ffffff"
 };
-var toolbarStyle = {
+var headerButtonStyle = {
+  width: 26,
+  height: 26,
+  border: 0,
+  borderRadius: 6,
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 12,
+  lineHeight: 1,
+  cursor: "pointer"
+};
+var voiceRowStyle = {
   display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 8,
-  padding: "8px 12px",
-  borderBottom: "1px solid #eaecf0",
-  flexWrap: "wrap"
+  gap: 6,
+  padding: "2px 12px 12px",
+  background: "#ffffff",
+  borderBottom: "1px solid #f2f4f7"
+};
+var rowButtonStyle2 = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  height: 32,
+  padding: "0 10px",
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var sectionLabelStyle2 = {
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#667085"
 };
 var bodyStyle = {
-  padding: 12,
+  padding: "8px 12px 12px",
   overflowY: "auto",
   flex: 1,
   minHeight: 0
+};
+var settingsStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: "10px 12px",
+  borderTop: "1px solid #f2f4f7",
+  background: "#f9fafb"
 };
 var footerStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 8,
-  padding: "10px 12px",
-  borderTop: "1px solid #eaecf0",
+  padding: "8px 8px 8px 12px",
+  borderTop: "1px solid #f2f4f7",
   background: "#ffffff"
 };
-var iconButtonStyle2 = {
-  border: "1px solid #d0d5dd",
+var settingsToggleStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  border: 0,
+  background: "transparent",
+  padding: "4px 6px",
+  marginLeft: -6,
   borderRadius: 6,
-  background: "#ffffff",
-  color: "#344054",
+  color: "#667085",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
-  padding: "4px 8px",
-  cursor: "pointer",
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
+  cursor: "pointer"
 };
-var iconButtonPressedStyle2 = {
-  ...iconButtonStyle2,
-  background: "#d92d20",
-  borderColor: "#d92d20",
-  color: "#ffffff"
+var legendStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "4px 10px",
+  marginTop: 4,
+  paddingTop: 8,
+  borderTop: "1px solid #eaecf0",
+  fontSize: 11,
+  color: "#667085"
+};
+var hintRowStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  marginBottom: 6,
+  fontFamily: FONT5,
+  fontSize: 11,
+  color: "#667085"
 };
 var endedWrapStyle = {
   position: "fixed",
@@ -6937,6 +7837,100 @@ var endedWrapStyle = {
   right: 16,
   pointerEvents: "auto"
 };
+var toolbarWrapStyle = {
+  position: "fixed",
+  left: "50%",
+  bottom: 20,
+  transform: "translateX(-50%)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 8,
+  fontFamily: FONT5,
+  pointerEvents: "none"
+};
+var toolbarStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 2,
+  padding: 4,
+  background: "#ffffff",
+  border: "1px solid #d0d5dd",
+  borderRadius: 12,
+  boxShadow: "0 4px 16px rgba(16, 24, 40, 0.08)",
+  pointerEvents: "auto"
+};
+var toolButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  height: 34,
+  padding: "0 8px 0 10px",
+  border: 0,
+  borderRadius: 8,
+  background: "transparent",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer"
+};
+var captionStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  whiteSpace: "nowrap"
+};
+var toastStyle = {
+  position: "fixed",
+  left: "50%",
+  bottom: 120,
+  transform: "translateX(-50%)",
+  padding: "6px 12px",
+  borderRadius: 999,
+  background: "#101828",
+  color: "#ffffff",
+  fontFamily: FONT5,
+  fontSize: 12,
+  pointerEvents: "none"
+};
+var dot = (color, halo = false) => ({
+  width: 6,
+  height: 6,
+  borderRadius: "50%",
+  background: color,
+  flex: "none",
+  boxShadow: halo ? "0 0 0 3px rgba(18, 183, 106, 0.15)" : void 0
+});
+var TOOLS = [
+  { tool: "cursor", icon: "\u2196", label: "Cursor", key: "V", title: "Cursor: use the page normally (V)" },
+  { tool: "draw", icon: "\u270E", label: "Draw", key: "D", title: "Draw: mark up the page (D)" },
+  { tool: "pin", icon: "\u2316", label: "Pin", key: "N", title: "Pin: drop a numbered pin (N)" }
+];
+var TOOL_HINTS = {
+  draw: ["Draw mode", "drag to circle or underline \xB7 Esc for cursor"],
+  pin: ["Pin mode", "click to drop a pin, then say what it is about \xB7 Esc for cursor"]
+};
+var LEGEND = [
+  ["V", "cursor"],
+  ["D", "draw"],
+  ["N", "pin"],
+  ["M", "mute"],
+  ["S", "send"],
+  ["C", "collapse"],
+  ["E", "end"],
+  ["K", "compound"]
+];
+var BUSY_STATUSES = /* @__PURE__ */ new Set(["triaging", "accepted", "working"]);
+var OVERLAY_KEYFRAMES = `
+@keyframes riffrec-live-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@keyframes riffrec-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes riffrec-live-ring { 0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.9; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+@keyframes riffrec-live-rise { 0% { transform: translate(-50%, 0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(-50%, -36px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { [data-riffrec-live-busy] * { animation: none !important; } }
+`;
 function agentNotes(snapshot, session) {
   const guesses = {};
   const notes = {};
@@ -6947,6 +7941,158 @@ function agentNotes(snapshot, session) {
     if (note) notes[unit.id] = note;
   }
   return { guesses, notes };
+}
+function voiceRunning(snapshot) {
+  return snapshot.voice === "live" || snapshot.voice === "connecting" || snapshot.voice === "reconnecting";
+}
+function streamStatus(snapshot, paused) {
+  if (paused) return { label: "Paused", color: "#98a2b3", halo: false };
+  switch (snapshot.status) {
+    case "incompatible":
+      return { label: "Incompatible", color: "#d92d20", halo: false };
+    case "error":
+      return { label: "Error", color: "#d92d20", halo: false };
+    case "buffering":
+      return { label: "Buffering", color: "#f79009", halo: false };
+    default:
+      return { label: "Live", color: "#12b76a", halo: true };
+  }
+}
+function AskedHighlight({ unit, zIndex }) {
+  const anchor = unit.anchors[0];
+  const [rect, setRect] = useState7(null);
+  useEffect5(() => {
+    if (!anchor || typeof document === "undefined") return;
+    let frame = 0;
+    const measure = () => {
+      let element = null;
+      try {
+        element = document.querySelector(anchor.selector);
+      } catch {
+        element = null;
+      }
+      const box = element?.getBoundingClientRect();
+      setRect(box && box.width > 0 ? { x: box.left, y: box.top, width: box.width, height: box.height } : anchor.rect);
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    return () => cancelAnimationFrame(frame);
+  }, [anchor]);
+  if (!anchor || !rect) return null;
+  return /* @__PURE__ */ jsx12(
+    "div",
+    {
+      "data-riffrec-asked-highlight": unit.id,
+      "aria-hidden": "true",
+      style: {
+        position: "fixed",
+        left: rect.x - 4,
+        top: rect.y - 4,
+        width: rect.width + 8,
+        height: rect.height + 8,
+        border: "2px dashed #c11574",
+        borderRadius: 8,
+        background: "rgba(193, 21, 116, 0.05)",
+        pointerEvents: "none",
+        zIndex,
+        animation: "riffrec-live-pulse 1.6s ease-in-out infinite"
+      },
+      children: /* @__PURE__ */ jsx12(
+        "span",
+        {
+          style: {
+            position: "absolute",
+            left: 0,
+            top: -22,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: "#c11574",
+            color: "#ffffff",
+            fontFamily: FONT5,
+            fontSize: 11,
+            whiteSpace: "nowrap"
+          },
+          children: "Agent asks about this"
+        }
+      )
+    }
+  );
+}
+var COMPOUND_STATEMENT = "/ce-compound: capture the decisions and learnings from this session";
+var COMPOUND_MS = 1800;
+function CompoundBurst({ zIndex }) {
+  const steps = [1, 2, 4, 8, 16];
+  return /* @__PURE__ */ jsxs12("div", { "data-riffrec-compound-burst": "", "aria-hidden": "true", style: { position: "fixed", left: "50%", top: "50%", zIndex, pointerEvents: "none" }, children: [
+    steps.map((step, index) => /* @__PURE__ */ jsx12(
+      "span",
+      {
+        style: {
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 40 * step ** 0.75,
+          height: 40 * step ** 0.75,
+          borderRadius: "50%",
+          border: `${Math.max(1, 3 - index / 2)}px solid rgba(105, 65, 198, ${0.7 - index * 0.1})`,
+          animation: `riffrec-live-ring 1.1s cubic-bezier(.2,.7,.3,1) ${index * 0.14}s both`
+        }
+      },
+      step
+    )),
+    steps.map((step, index) => /* @__PURE__ */ jsx12(
+      "span",
+      {
+        style: {
+          position: "absolute",
+          left: 0,
+          top: -10,
+          fontFamily: FONT5,
+          fontSize: 12 + index * 3,
+          fontWeight: 600,
+          color: "#6941c6",
+          animation: `riffrec-live-rise 0.7s ease-out ${index * 0.18}s both`
+        },
+        children: index === steps.length - 1 ? "\xD716 compounded" : `\xD7${step}`
+      },
+      `n${step}`
+    ))
+  ] });
+}
+function useElapsed(since) {
+  const [now, setNow] = useState7(() => Date.now());
+  useEffect5(() => {
+    if (since === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 1e3);
+    return () => clearInterval(timer);
+  }, [since]);
+  return since === null ? null : Math.max(0, Math.round((now - since) / 1e3));
+}
+function AgentStatus({ state, since, working, queued }) {
+  const elapsed = useElapsed(state === "working" ? since : null);
+  const view = state === "working" ? {
+    color: "#6941c6",
+    text: `Agent working${working > 0 ? ` on ${working}` : queued > 0 ? ` on ${queued}` : ""}${elapsed !== null ? ` \xB7 ${elapsed}s` : ""}`,
+    pulse: true
+  } : state === "listening" ? { color: "#12b76a", text: "Agent listening \xB7 picks up when you pause", pulse: false } : { color: "#98a2b3", text: "Agent not connected \xB7 run /ce-polish to pick these up", pulse: false };
+  return /* @__PURE__ */ jsxs12(
+    "div",
+    {
+      "data-riffrec-live-agent": state,
+      role: "status",
+      "aria-live": "polite",
+      style: { display: "flex", alignItems: "center", gap: 6, padding: "4px 14px 0", fontSize: 11, color: view.color },
+      children: [
+        /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { ...dot(view.color), ...view.pulse ? { animation: "riffrec-live-pulse 1.4s ease-in-out infinite" } : {} } }),
+        view.text
+      ]
+    }
+  );
+}
+function KeyHint({ k, children }) {
+  return /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "center", gap: 4 }, children: [
+    /* @__PURE__ */ jsx12(Kbd, { children: k }),
+    children
+  ] });
 }
 function LiveOverlay({
   session,
@@ -6961,40 +8107,67 @@ function LiveOverlay({
   onFinished,
   paused: controlledPaused,
   onPauseChange,
+  onRetryVoice,
   residualHint,
+  nextSession,
+  onStartNext,
   zIndex = 2147483e3,
   defaultCollapsed = false,
   now
 }) {
   const snapshot = useLiveSnapshot(session);
-  const [collapsed, setCollapsed] = useState6(defaultCollapsed);
-  const [drawing, setDrawing] = useState6(false);
-  const [view, setView] = useState6("board");
-  const [finishing, setFinishing] = useState6(false);
-  const [finished, setFinished] = useState6(false);
-  const [uncontrolledPaused, setUncontrolledPaused] = useState6(false);
-  const [endedReason, setEndedReason] = useState6(null);
-  const [dismissed, setDismissed] = useState6(false);
+  const [collapsed, setCollapsed] = useState7(defaultCollapsed);
+  const [tool, setTool] = useState7("cursor");
+  const [settingsOpen, setSettingsOpen] = useState7(false);
+  const [cleared, setCleared] = useState7(() => /* @__PURE__ */ new Set());
+  const [toast, setToast] = useState7(null);
+  const [view, setView] = useState7("board");
+  const [finishing, setFinishing] = useState7(false);
+  const [finished, setFinished] = useState7(false);
+  const [uncontrolledPaused, setUncontrolledPaused] = useState7(false);
+  const [endedReason, setEndedReason] = useState7(null);
+  const [dismissed, setDismissed] = useState7(false);
   const paused = controlledPaused ?? uncontrolledPaused;
-  const onPauseChangeRef = useRef5(onPauseChange);
+  const panelRef = useRef6(null);
+  const onPauseChangeRef = useRef6(onPauseChange);
   onPauseChangeRef.current = onPauseChange;
-  const uncontrolledPausedRef = useRef5(uncontrolledPaused);
+  const uncontrolledPausedRef = useRef6(uncontrolledPaused);
   uncontrolledPausedRef.current = uncontrolledPaused;
-  useEffect3(() => {
+  useEffect5(() => {
     setView("board");
-    setDrawing(false);
+    setTool("cursor");
+    setSettingsOpen(false);
+    setCleared(/* @__PURE__ */ new Set());
+    setFading(/* @__PURE__ */ new Set());
     setFinished(false);
     setEndedReason(null);
     setDismissed(false);
     if (uncontrolledPausedRef.current) onPauseChangeRef.current?.(false);
     setUncontrolledPaused(false);
   }, [session]);
-  useEffect3(() => {
+  useEffect5(() => {
     return session.on("ended", ({ reason }) => setEndedReason(reason ?? "ended"));
   }, [session]);
+  useEffect5(() => {
+    if (paused) setTool("cursor");
+  }, [paused]);
+  const toastTimer = useRef6(null);
+  const flash = useCallback2((text) => {
+    setToast(text);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  }, []);
+  useEffect5(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    []
+  );
   const sessionNow = useMemo(() => now ?? (() => Math.max(0, Date.now() - session.startedAt)), [now, session]);
   const handleConsent = useCallback2(
     (result) => {
+      if (!result.frames) session.disableFrames();
+      if (result.mode !== session.snapshot().mode) session.setMode(result.mode);
       if (result.mic === "granted") session.micGranted();
       else session.micDenied();
       session.start();
@@ -7006,23 +8179,75 @@ function LiveOverlay({
     session.declineConsent();
     onDecline?.();
   }, [session, onDecline]);
+  const [fading, setFading] = useState7(() => /* @__PURE__ */ new Set());
+  const seenMarks = useRef6(/* @__PURE__ */ new Set());
+  const markTimers = useRef6([]);
+  useEffect5(() => {
+    for (const annotation of snapshot.annotations) {
+      if (seenMarks.current.has(annotation.id)) continue;
+      seenMarks.current.add(annotation.id);
+      const id = annotation.id;
+      markTimers.current.push(
+        setTimeout(() => setFading((current) => new Set(current).add(id)), MARK_HOLD_MS),
+        setTimeout(() => setCleared((current) => new Set(current).add(id)), MARK_HOLD_MS + MARK_FADE_MS)
+      );
+    }
+  }, [snapshot.annotations]);
+  useEffect5(
+    () => () => {
+      for (const timer of markTimers.current) clearTimeout(timer);
+    },
+    []
+  );
+  const appliedSeen = useRef6(null);
+  useEffect5(() => {
+    const applied = snapshot.units.filter((unit) => unit.status === "applied").map((unit) => unit.id);
+    if (appliedSeen.current === null) {
+      appliedSeen.current = new Set(applied);
+      return;
+    }
+    const fresh = applied.filter((id) => !appliedSeen.current.has(id));
+    for (const id of fresh) appliedSeen.current.add(id);
+    if (fresh.length > 0) playAppliedChime();
+  }, [snapshot.units]);
+  const askedUnits = useMemo(() => {
+    const open = new Set(snapshot.openQuestions.filter((question) => !question.answered).map((question) => question.unit_id));
+    return snapshot.units.filter((unit) => open.has(unit.id));
+  }, [snapshot.openQuestions, snapshot.units]);
+  const recalled = useMemo(() => new Set(askedUnits.flatMap((unit) => unit.evidence.annotation_ids)), [askedUnits]);
+  const visibleAnnotations = useMemo(
+    () => snapshot.annotations.filter((annotation) => !cleared.has(annotation.id) || recalled.has(annotation.id)),
+    [snapshot.annotations, cleared, recalled]
+  );
+  const fadingNow = useMemo(() => new Set([...fading].filter((id) => !recalled.has(id))), [fading, recalled]);
   const handleAnnotation = useCallback2(
     (annotation) => {
       if (onAnnotation) onAnnotation(annotation);
       else session.addAnnotation(annotation);
+      if (annotation.kind === "pin") {
+        const pins = snapshot.annotations.filter((mark) => mark.kind === "pin").length + 1;
+        flash(`Pin ${pins} added`);
+      }
     },
-    [session, onAnnotation]
+    [session, onAnnotation, snapshot.annotations, flash]
   );
+  const clearMarks = useCallback2(() => {
+    setCleared(new Set(snapshot.annotations.map((annotation) => annotation.id)));
+  }, [snapshot.annotations]);
   const togglePause = useCallback2(() => {
     const next = !paused;
     if (controlledPaused === void 0) setUncontrolledPaused(next);
     onPauseChangeRef.current?.(next);
   }, [paused, controlledPaused]);
   const handleMode = useCallback2((mode) => session.setMode(mode), [session]);
-  const handleSend = useCallback2(() => session.send(), [session]);
+  const handleSend = useCallback2(async () => {
+    const emitted = await session.send();
+    flash(emitted ? "Sent" : "Nothing held to send");
+    return emitted;
+  }, [session, flash]);
   const handleWithdraw = useCallback2((unitId) => void session.withdrawUnit(unitId, "riffer"), [session]);
   const handleAnswer = useCallback2((unitId, text) => void session.answer(unitId, text), [session]);
-  const finishInFlight = useRef5(false);
+  const finishInFlight = useRef6(false);
   const handleConfirmations = useCallback2(
     async (confirmations) => {
       if (finishInFlight.current || finished) return;
@@ -7044,14 +8269,74 @@ function LiveOverlay({
     [session, onFinished, finished]
   );
   const running = snapshot.phase === "running" && !finished;
+  const toolsOn = running && !paused && view === "board";
+  const activeTool = toolsOn ? tool : "cursor";
+  const canMute = running && voiceRunning(snapshot) && snapshot.mic !== "denied";
+  const endedCardShown = snapshot.phase === "ended" && endedReason !== "stopped" && !dismissed;
+  const [compounding, setCompounding] = useState7(false);
+  const compound = useCallback2(() => {
+    session.recordUnit({ statement: COMPOUND_STATEMENT, transcript_excerpt: "", anchors: [] });
+    void session.send();
+    setCompounding(true);
+    setTimeout(() => setCompounding(false), COMPOUND_MS);
+    flash("Compounding what you decided");
+  }, [session, flash]);
+  const pickTool = useCallback2((next) => setTool((current) => current === next ? "cursor" : next), []);
+  const endSession = useCallback2(() => {
+    setTool("cursor");
+    setCollapsed(false);
+    setView("confirming");
+  }, []);
+  const onKey = useRef6(() => void 0);
+  onKey.current = (event) => {
+    if (!isPlainKey(event) || event.repeat) return;
+    const key = event.key.toLowerCase();
+    if (event.target instanceof HTMLButtonElement && (key === "enter" || key === " ")) return;
+    let act;
+    if (snapshot.phase === "ended") {
+      if (key === "escape" && endedCardShown) act = () => setDismissed(true);
+    } else if (snapshot.phase === "running" && view === "confirming") {
+      if (key === "escape" && !finishing) act = () => setView("board");
+      if (key === "enter") act = () => panelRef.current?.querySelector("[data-riffrec-confirm-finish]")?.click();
+    } else if (running) {
+      const keys = {
+        v: () => setTool("cursor"),
+        backspace: clearMarks,
+        p: togglePause,
+        s: () => void handleSend(),
+        c: () => setCollapsed((current) => !current),
+        e: endSession,
+        k: compound,
+        "1": () => handleMode("instant"),
+        "2": () => handleMode("smart"),
+        "3": () => handleMode("collect")
+      };
+      if (toolsOn) {
+        keys.d = () => pickTool("draw");
+        keys.n = () => pickTool("pin");
+      }
+      if (canMute) keys.m = () => session.setMuted(!snapshot.muted);
+      act = keys[key];
+    }
+    if (!act) return;
+    event.preventDefault();
+    act();
+  };
+  useEffect5(() => {
+    if (typeof window === "undefined") return;
+    const listener = (event) => onKey.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
   if (snapshot.phase === "consenting") {
-    return /* @__PURE__ */ jsx9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ jsx9(
+    return /* @__PURE__ */ jsx12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ jsx12(
       ConsentDialog,
       {
         profile,
         endpoint: snapshot.endpoint,
         endpointOwner,
         voice: session.hasEndpoint,
+        mode: snapshot.mode,
         getUserMedia,
         onAccept: handleConsent,
         onDecline: handleDecline,
@@ -7059,133 +8344,470 @@ function LiveOverlay({
       }
     ) });
   }
+  const launcher = nextSession && onStartNext ? /* @__PURE__ */ jsx12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "next", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ jsx12(NextSessionLauncher, { next: nextSession, onStart: onStartNext }) }) : null;
   if (snapshot.phase === "ended") {
-    if (endedReason === "stopped" || dismissed) return null;
-    return /* @__PURE__ */ jsx9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ jsx9(EndedCard, { units: snapshot.units, reason: endedReason, residualHint, onDismiss: () => setDismissed(true) }) });
+    if (!endedCardShown) return launcher;
+    return /* @__PURE__ */ jsxs12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: [
+      /* @__PURE__ */ jsx12(
+        EndedCard,
+        {
+          units: snapshot.units,
+          reason: endedReason,
+          residualHint,
+          onDismiss: () => setDismissed(true),
+          next: onStartNext ? nextSession?.state : null,
+          onStartNext
+        }
+      ),
+      /* @__PURE__ */ jsx12("div", { style: { ...hintRowStyle, marginTop: 6, marginBottom: 0 }, children: /* @__PURE__ */ jsx12(KeyHint, { k: "Esc", children: "close" }) })
+    ] });
   }
-  if (snapshot.phase === "idle") return null;
+  if (snapshot.phase === "idle") return launcher;
   const { guesses, notes } = agentNotes(snapshot, session);
+  const working = snapshot.units.filter((unit) => unit.status === "working").length;
+  const queued = snapshot.units.filter((unit) => BUSY_STATUSES.has(unit.status)).length;
+  const agentState = snapshot.agent?.state ?? (queued > 0 ? "working" : null);
+  const busy = agentState === "working";
   const held = session.heldUnits().length;
   const confirmable = snapshot.units.filter((unit) => unit.status !== "withdrawn");
   const errored = snapshot.phase === "error";
-  const indicator = (compact) => /* @__PURE__ */ jsx9(
-    LiveIndicator,
-    {
-      status: snapshot.status,
-      muted: snapshot.muted,
-      mic: snapshot.mic,
-      paused,
-      expectedSchemaVersion: snapshot.expectedSchemaVersion,
-      endpoint: snapshot.endpoint,
-      error: snapshot.error,
-      compact,
-      onToggleMute: running ? () => session.setMuted(!snapshot.muted) : void 0,
-      onTogglePause: running ? togglePause : void 0
-    }
-  );
-  return /* @__PURE__ */ jsxs9("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded", children: [
-    /* @__PURE__ */ jsx9(
-      DrawingLayer,
-      {
-        annotations: snapshot.annotations,
-        onAnnotation: handleAnnotation,
-        active: drawing && running,
-        onActiveChange: setDrawing,
-        shortcut: drawShortcut,
-        route,
-        now: sessionNow,
-        showToggle: false,
-        zIndex
-      }
-    ),
-    collapsed && view === "board" ? /* @__PURE__ */ jsxs9("div", { "data-riffrec-live-pill": "", style: { ...pillStyle, zIndex: zIndex + 1 }, children: [
-      indicator(true),
-      running ? /* @__PURE__ */ jsx9(SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), compact: true }) : null,
-      /* @__PURE__ */ jsx9(
+  const status = streamStatus(snapshot, paused);
+  const indicatorInput = {
+    status: snapshot.status,
+    muted: snapshot.muted,
+    mic: snapshot.mic,
+    paused,
+    expectedSchemaVersion: snapshot.expectedSchemaVersion,
+    endpoint: snapshot.endpoint,
+    error: snapshot.error,
+    voiceUnavailable: snapshot.voiceUnavailable
+  };
+  const indicatorLabel = describeIndicator(indicatorInput).label;
+  const micButton = () => {
+    if (!voiceRunning(snapshot)) {
+      const cause = voiceUnavailableCause(snapshot.voiceUnavailable) ?? (snapshot.mic === "denied" ? "no microphone" : "not running");
+      return /* @__PURE__ */ jsxs12(
         "button",
         {
           type: "button",
-          "data-riffrec-live-expand": "",
-          "aria-label": "Expand live panel",
-          "aria-expanded": false,
-          style: iconButtonStyle2,
-          onClick: () => setCollapsed(false),
-          children: "\u25B8"
+          "data-riffrec-live-mute": "off",
+          disabled: true,
+          title: `The voice interviewer isn't running: ${cause}. Clicks and drawings still stream.`,
+          style: { ...rowButtonStyle2, flex: 1, minWidth: 0, border: "1px dashed #e4e7ec", color: "#667085", cursor: "default" },
+          children: [
+            /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot("#f79009") }),
+            /* @__PURE__ */ jsxs12("span", { style: { flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }, children: [
+              "Voice off \xB7 ",
+              cause
+            ] })
+          ]
         }
-      )
-    ] }) : /* @__PURE__ */ jsxs9("div", { "data-riffrec-live-panel": "", role: "region", "aria-label": "Riffrec live", style: { ...panelStyle, zIndex: zIndex + 1 }, children: [
-      /* @__PURE__ */ jsxs9("div", { style: headerStyle, children: [
-        indicator(false),
-        view === "board" ? /* @__PURE__ */ jsx9(
+      );
+    }
+    const muted = snapshot.muted;
+    const connecting = snapshot.voice !== "live";
+    const label = muted ? "Mic muted" : !connecting ? "Listening" : snapshot.voice === "reconnecting" ? "Reconnecting voice\u2026" : "Connecting voice\u2026";
+    return /* @__PURE__ */ jsxs12(
+      "button",
+      {
+        type: "button",
+        "data-riffrec-live-mute": muted ? "muted" : connecting ? "connecting" : "listening",
+        "aria-pressed": muted,
+        "aria-label": muted ? "Unmute microphone" : "Mute microphone",
+        title: muted ? "Unmute your mic (M)" : "Mute your mic. The session keeps streaming. (M)",
+        disabled: !canMute,
+        style: { ...rowButtonStyle2, flex: 1, minWidth: 0, background: muted ? "#f2f4f7" : "#ffffff" },
+        onClick: () => session.setMuted(!muted),
+        children: [
+          /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot(muted ? "#98a2b3" : connecting ? "#f79009" : "#12b76a") }),
+          /* @__PURE__ */ jsx12("span", { style: { flex: 1, textAlign: "left" }, children: label }),
+          /* @__PURE__ */ jsx12("span", { style: muted ? { color: "#344054", fontWeight: 500 } : { color: "#667085" }, children: muted ? "Unmute" : "Mute" }),
+          /* @__PURE__ */ jsx12(Kbd, { children: "M" })
+        ]
+      }
+    );
+  };
+  const toolbar = view === "board" && running ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-page-tools": "", style: { ...toolbarWrapStyle, zIndex: zIndex + 1 }, children: [
+    activeTool === "cursor" ? /* @__PURE__ */ jsxs12(
+      "span",
+      {
+        "data-riffrec-tool-caption": "cursor",
+        style: { ...captionStyle, background: "#ffffff", border: "1px solid #eaecf0", color: "#475467" },
+        children: [
+          /* @__PURE__ */ jsx12("b", { style: { fontWeight: 600, color: "#101828" }, children: "Cursor" }),
+          " \xB7",
+          " ",
+          paused ? "capture is paused" : "the page works as normal"
+        ]
+      }
+    ) : /* @__PURE__ */ jsxs12("span", { "data-riffrec-tool-caption": activeTool, style: { ...captionStyle, background: "#d92d20", color: "#ffffff" }, children: [
+      /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot("#ffffff") }),
+      /* @__PURE__ */ jsx12("b", { style: { fontWeight: 600 }, children: TOOL_HINTS[activeTool][0] }),
+      " \xB7 ",
+      TOOL_HINTS[activeTool][1]
+    ] }),
+    /* @__PURE__ */ jsxs12("div", { "data-riffrec-toolbar": "", role: "toolbar", "aria-label": "Page tools", style: toolbarStyle, children: [
+      TOOLS.map((item) => {
+        const selected = activeTool === item.tool;
+        const disabled = item.tool !== "cursor" && !toolsOn;
+        const selectedStyle = selected ? { background: item.tool === "cursor" ? "#101828" : "#d92d20", color: "#ffffff", fontWeight: 500 } : {};
+        return /* @__PURE__ */ jsxs12(
           "button",
           {
             type: "button",
-            "data-riffrec-live-collapse": "",
-            "aria-label": "Collapse live panel",
-            "aria-expanded": true,
-            style: iconButtonStyle2,
-            onClick: () => setCollapsed(true),
-            children: "\u25BE"
+            "data-riffrec-tool": item.tool,
+            "aria-pressed": selected,
+            title: item.title,
+            disabled,
+            style: { ...toolButtonStyle, ...selectedStyle, ...disabled ? { opacity: 0.5, cursor: "default" } : {} },
+            onClick: () => item.tool === "cursor" ? setTool("cursor") : pickTool(item.tool),
+            children: [
+              /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { fontSize: 14, lineHeight: 1 }, children: item.icon }),
+              item.label,
+              /* @__PURE__ */ jsx12(Kbd, { dark: selected, children: item.key })
+            ]
+          },
+          item.tool
+        );
+      }),
+      /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { width: 1, height: 20, background: "#eaecf0", margin: "0 4px" } }),
+      /* @__PURE__ */ jsxs12(
+        "button",
+        {
+          type: "button",
+          "data-riffrec-tool-clear": "",
+          title: "Clear drawings and pins (\u232B)",
+          style: { ...toolButtonStyle, padding: "0 8px", color: "#667085" },
+          onClick: clearMarks,
+          children: [
+            "Clear",
+            /* @__PURE__ */ jsx12(Kbd, { children: "\u232B" })
+          ]
+        }
+      )
+    ] })
+  ] }) : null;
+  return /* @__PURE__ */ jsxs12(
+    "div",
+    {
+      ...{ [OVERLAY_ATTRIBUTE]: "" },
+      "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded",
+      "data-riffrec-live-tool": activeTool,
+      children: [
+        /* @__PURE__ */ jsx12("style", { children: OVERLAY_KEYFRAMES }),
+        /* @__PURE__ */ jsx12(
+          DrawingLayer,
+          {
+            annotations: visibleAnnotations,
+            fadingIds: fadingNow,
+            onAnnotation: handleAnnotation,
+            active: activeTool !== "cursor",
+            tool: activeTool === "pin" ? "pin" : "draw",
+            onActiveChange: (on) => {
+              if (!on) setTool("cursor");
+              else if (toolsOn) setTool((current) => current === "pin" ? "pin" : "draw");
+            },
+            shortcut: drawShortcut,
+            route,
+            now: sessionNow,
+            showToggle: false,
+            zIndex
           }
-        ) : null
-      ] }),
-      view === "board" ? /* @__PURE__ */ jsxs9(Fragment, { children: [
-        /* @__PURE__ */ jsxs9("div", { style: toolbarStyle, children: [
-          /* @__PURE__ */ jsx9(ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
-          /* @__PURE__ */ jsxs9(
+        ),
+        collapsed && view === "board" ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-live-pill": "", style: { ...pillStyle2, zIndex: zIndex + 1 }, children: [
+          /* @__PURE__ */ jsx12(Wordmark, {}),
+          /* @__PURE__ */ jsx12(LiveIndicator, { ...indicatorInput, compact: true }),
+          agentState === "working" ? /* @__PURE__ */ jsxs12(
+            "span",
+            {
+              "data-riffrec-live-pill-working": working || queued,
+              title: "The agent is working on these now",
+              style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#6941c6", whiteSpace: "nowrap" },
+              children: [
+                /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { ...dot("#7f56d9"), animation: "riffrec-live-pulse 1.4s ease-in-out infinite" } }),
+                working || queued,
+                " working"
+              ]
+            }
+          ) : null,
+          voiceRunning(snapshot) ? /* @__PURE__ */ jsxs12(
             "button",
             {
               type: "button",
-              "data-riffrec-draw-toggle": "",
-              "aria-pressed": drawing && running,
-              "aria-label": drawing ? "Stop drawing" : "Draw on the page",
-              title: drawShortcut ? `Draw (${drawShortcut})` : "Draw",
-              disabled: !running,
-              style: drawing && running ? iconButtonPressedStyle2 : iconButtonStyle2,
-              onClick: () => setDrawing((current) => !current),
+              "data-riffrec-live-pill-mute": snapshot.muted ? "muted" : "live",
+              "aria-pressed": snapshot.muted,
+              "aria-label": snapshot.muted ? "Unmute microphone" : "Mute microphone",
+              title: snapshot.muted ? "Mic muted: click to unmute (M)" : "Mic on: click to mute (M)",
+              disabled: !canMute,
+              style: {
+                ...rowButtonStyle2,
+                height: 26,
+                padding: "0 8px",
+                gap: 5,
+                borderRadius: 999,
+                ...snapshot.muted ? { background: "#fef3f2", borderColor: "#fecdca", color: "#b42318" } : {}
+              },
+              onClick: () => session.setMuted(!snapshot.muted),
               children: [
-                "\u270E ",
-                drawing && running ? "Drawing" : "Draw"
+                /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot(snapshot.muted ? "#f04438" : "#12b76a") }),
+                snapshot.muted ? "Muted" : "Mic on"
               ]
             }
-          )
-        ] }),
-        /* @__PURE__ */ jsxs9("div", { style: bodyStyle, children: [
-          errored && snapshot.error ? /* @__PURE__ */ jsx9("p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
-          /* @__PURE__ */ jsx9(
-            Board,
+          ) : null,
+          running && held > 0 ? /* @__PURE__ */ jsx12(SendControl, { onSend: handleSend, heldCount: held, compact: true }) : null,
+          /* @__PURE__ */ jsx12(
+            "button",
             {
-              units: snapshot.units,
-              questions: snapshot.openQuestions,
-              guesses,
-              notes,
-              isReleased: (id) => session.isReleased(id),
-              mode: snapshot.mode,
-              voice: snapshot.voice === "live" || snapshot.voice === "connecting" || snapshot.voice === "reconnecting",
-              onWithdraw: running ? handleWithdraw : void 0,
-              onAnswer: running ? handleAnswer : void 0
+              type: "button",
+              "data-riffrec-live-expand": "",
+              "aria-label": "Expand live panel",
+              "aria-expanded": false,
+              title: "Expand (C)",
+              style: headerButtonStyle,
+              onClick: () => setCollapsed(false),
+              children: "\u25B8"
             }
           )
-        ] }),
-        /* @__PURE__ */ jsxs9("div", { style: footerStyle, children: [
-          /* @__PURE__ */ jsx9("span", { style: { fontSize: 11, color: "#667085" }, children: held > 0 ? `${held} held for the next checkpoint` : "Nothing held" }),
-          /* @__PURE__ */ jsx9(SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), disabled: !running })
-        ] })
-      ] }) : /* @__PURE__ */ jsx9("div", { style: bodyStyle, children: /* @__PURE__ */ jsx9(
-        ConfirmationPass,
-        {
-          units: confirmable,
-          busy: finishing,
-          onCancel: () => setView("board"),
-          onComplete: handleConfirmations
-        }
-      ) })
-    ] })
-  ] });
+        ] }) : /* @__PURE__ */ jsxs12(
+          "div",
+          {
+            ref: panelRef,
+            "data-riffrec-live-panel": "",
+            role: "region",
+            "aria-label": "/ce-polish live",
+            style: { ...panelStyle, zIndex: zIndex + 1 },
+            children: [
+              /* @__PURE__ */ jsxs12("div", { style: headerStyle, children: [
+                /* @__PURE__ */ jsxs12(
+                  "span",
+                  {
+                    "data-riffrec-live-status": status.label.toLowerCase(),
+                    "data-riffrec-live-indicator": deriveIndicatorState(indicatorInput),
+                    title: indicatorLabel,
+                    style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
+                    children: [
+                      /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot(status.color, status.halo) }),
+                      /* @__PURE__ */ jsx12(Wordmark, {}),
+                      status.label === "Live" ? null : /* @__PURE__ */ jsx12("span", { style: { fontSize: 11, color: "#667085", whiteSpace: "nowrap" }, children: status.label })
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxs12("span", { style: { display: "flex", gap: 2, flex: "none" }, children: [
+                  view === "board" ? /* @__PURE__ */ jsx12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-collapse": "",
+                      "aria-label": "Collapse live panel",
+                      "aria-expanded": true,
+                      title: "Collapse (C)",
+                      style: headerButtonStyle,
+                      onClick: () => setCollapsed(true),
+                      children: "\u25BE"
+                    }
+                  ) : null,
+                  /* @__PURE__ */ jsx12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-end": "",
+                      "aria-label": "End session",
+                      title: "End session (E)",
+                      disabled: !running || view === "confirming",
+                      style: { ...headerButtonStyle, fontSize: 15 },
+                      onClick: endSession,
+                      children: "\u2715"
+                    }
+                  )
+                ] })
+              ] }),
+              view === "board" ? /* @__PURE__ */ jsxs12(Fragment, { children: [
+                /* @__PURE__ */ jsx12("div", { "data-riffrec-voice": "", style: voiceRowStyle, children: micButton() }),
+                /* @__PURE__ */ jsxs12("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "10px 14px 0" }, children: [
+                  /* @__PURE__ */ jsx12("span", { style: sectionLabelStyle2, children: "What you've asked for" }),
+                  /* @__PURE__ */ jsx12("span", { "data-riffrec-live-count": "", style: { fontSize: 11, color: "#98a2b3" }, children: confirmable.length })
+                ] }),
+                agentState ? /* @__PURE__ */ jsx12(AgentStatus, { state: agentState, since: snapshot.agent?.since ?? null, working, queued }) : null,
+                busy ? /* @__PURE__ */ jsx12(
+                  "div",
+                  {
+                    "data-riffrec-live-busy": "",
+                    role: "progressbar",
+                    "aria-label": "Agent working",
+                    style: { position: "relative", height: 2, margin: "6px 14px 0", borderRadius: 2, background: "#f4ebff", overflow: "hidden" },
+                    children: /* @__PURE__ */ jsx12(
+                      "span",
+                      {
+                        style: {
+                          position: "absolute",
+                          top: 0,
+                          bottom: 0,
+                          width: "40%",
+                          borderRadius: 2,
+                          background: "linear-gradient(90deg, transparent, #7f56d9, transparent)",
+                          animation: "riffrec-live-progress 1.3s ease-in-out infinite"
+                        }
+                      }
+                    )
+                  }
+                ) : null,
+                /* @__PURE__ */ jsxs12("div", { style: bodyStyle, children: [
+                  errored && snapshot.error ? /* @__PURE__ */ jsx12("p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
+                  snapshot.status === "buffering" || snapshot.voiceUnavailable?.kind === "exhausted" ? /* @__PURE__ */ jsxs12(
+                    "p",
+                    {
+                      role: "alert",
+                      "data-riffrec-live-unreachable": "",
+                      style: {
+                        margin: "0 0 10px",
+                        padding: "8px 10px",
+                        border: "1px solid #fedf89",
+                        borderRadius: 8,
+                        background: "#fffaeb",
+                        color: "#7a2e0e",
+                        fontSize: 12
+                      },
+                      children: [
+                        /* @__PURE__ */ jsx12("strong", { style: { fontWeight: 600 }, children: "Can't reach the /ce-polish server." }),
+                        " If it was restarted, run /ce-polish again and open the new link it gives you. What you do here is held until then."
+                      ]
+                    }
+                  ) : null,
+                  snapshot.status === "incompatible" ? /* @__PURE__ */ jsx12("p", { role: "alert", style: { margin: "0 0 10px", fontSize: 12, color: "#b42318" }, children: indicatorLabel }) : null,
+                  onRetryVoice && running && snapshot.status === "live_novoice" && needsOpenAIKey(snapshot.voiceUnavailable) ? /* @__PURE__ */ jsx12(KeyPrompt, { reason: snapshot.voiceUnavailable, onRetry: onRetryVoice }) : null,
+                  /* @__PURE__ */ jsx12(
+                    Board,
+                    {
+                      units: snapshot.units,
+                      questions: snapshot.openQuestions,
+                      guesses,
+                      notes,
+                      isReleased: (id) => session.isReleased(id),
+                      mode: snapshot.mode,
+                      voice: voiceRunning(snapshot),
+                      onWithdraw: running ? handleWithdraw : void 0,
+                      onAnswer: running ? handleAnswer : void 0
+                    }
+                  )
+                ] }),
+                settingsOpen ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-settings": "", style: settingsStyle, children: [
+                  /* @__PURE__ */ jsxs12("span", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#667085" }, children: [
+                    "When the agent applies changes",
+                    /* @__PURE__ */ jsxs12("span", { style: { display: "flex", gap: 3 }, children: [
+                      /* @__PURE__ */ jsx12(Kbd, { children: "1" }),
+                      /* @__PURE__ */ jsx12(Kbd, { children: "2" }),
+                      /* @__PURE__ */ jsx12(Kbd, { children: "3" })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsx12(ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
+                  /* @__PURE__ */ jsx12("span", { style: { fontSize: 11, lineHeight: 1.4, color: "#475467" }, children: MODE_DESCRIPTIONS[snapshot.mode] }),
+                  /* @__PURE__ */ jsx12("span", { style: legendStyle, children: LEGEND.map(([key, label]) => /* @__PURE__ */ jsx12(KeyHint, { k: key, children: label }, key)) })
+                ] }) : null,
+                /* @__PURE__ */ jsxs12("div", { style: footerStyle, children: [
+                  /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "center", gap: 2, minWidth: 0 }, children: [
+                    /* @__PURE__ */ jsxs12(
+                      "button",
+                      {
+                        type: "button",
+                        "data-riffrec-live-settings": "",
+                        "aria-expanded": settingsOpen,
+                        style: settingsToggleStyle,
+                        onClick: () => setSettingsOpen((open) => !open),
+                        children: [
+                          MODE_LABELS[snapshot.mode],
+                          " mode",
+                          snapshot.pendingMode !== null ? /* @__PURE__ */ jsx12("span", { style: { color: "#b54708" }, children: "\xB7 pending" }) : null,
+                          /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { fontSize: 10 }, children: settingsOpen ? "\u25BE" : "\u25B8" })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxs12(
+                      "button",
+                      {
+                        type: "button",
+                        "data-riffrec-live-compound": "",
+                        title: "Compound: have the agent run /ce-compound on what you decided (K)",
+                        disabled: !running,
+                        style: { ...settingsToggleStyle, marginLeft: 0, color: "#6941c6" },
+                        onClick: compound,
+                        children: [
+                          /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", children: "\u25CE" }),
+                          " Compound"
+                        ]
+                      }
+                    )
+                  ] }),
+                  held > 0 ? /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "center", gap: 8, flex: "none" }, children: [
+                    /* @__PURE__ */ jsxs12("span", { "data-riffrec-live-held": "", title: "Goes out on its own when you pause; Send (S) pushes it now", style: { fontSize: 11, color: "#98a2b3", whiteSpace: "nowrap" }, children: [
+                      held,
+                      " held"
+                    ] }),
+                    /* @__PURE__ */ jsx12(SendControl, { onSend: handleSend, heldCount: held, disabled: !running, compact: true })
+                  ] }) : /* @__PURE__ */ jsx12("span", { "data-riffrec-live-held": "", style: { fontSize: 11, color: "#98a2b3", whiteSpace: "nowrap" }, children: "Auto-sends" })
+                ] })
+              ] }) : /* @__PURE__ */ jsxs12("div", { style: { padding: 12, overflowY: "auto", borderTop: "1px solid #f2f4f7" }, children: [
+                /* @__PURE__ */ jsxs12("div", { style: hintRowStyle, children: [
+                  /* @__PURE__ */ jsx12(KeyHint, { k: "Esc", children: "keep riffing" }),
+                  /* @__PURE__ */ jsx12(KeyHint, { k: "\u21B5", children: "finish" })
+                ] }),
+                /* @__PURE__ */ jsx12(
+                  ConfirmationPass,
+                  {
+                    units: confirmable,
+                    busy: finishing,
+                    onCancel: () => setView("board"),
+                    onComplete: handleConfirmations
+                  }
+                )
+              ] })
+            ]
+          }
+        ),
+        toolbar,
+        running ? askedUnits.map((unit) => /* @__PURE__ */ jsx12(AskedHighlight, { unit, zIndex }, unit.id)) : null,
+        compounding ? /* @__PURE__ */ jsx12(CompoundBurst, { zIndex: zIndex + 3 }) : null,
+        toast ? /* @__PURE__ */ jsx12("div", { "data-riffrec-live-toast": "", role: "status", style: { ...toastStyle, zIndex: zIndex + 1 }, children: toast }) : null
+      ]
+    }
+  );
 }
 
 // src/live/LiveOverlay.tsx
-import { Fragment as Fragment2, jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
+import { Fragment as Fragment2, jsx as jsx13, jsxs as jsxs13 } from "react/jsx-runtime";
+var NEXT_SESSION_PROBE_INTERVAL_MS = 2e4;
+function useNextSession(idle, fetchImpl) {
+  const [next, setNext] = useState8(null);
+  useEffect6(() => {
+    if (!idle) {
+      setNext(null);
+      return;
+    }
+    let cancelled = false;
+    let timer;
+    const probe = async () => {
+      const link = readRememberedBootstrap();
+      if (!link) {
+        setNext(null);
+        return;
+      }
+      const result = await probeEndpoint(link, fetchImpl);
+      if (cancelled) return;
+      if (result === "rejected") {
+        forgetRememberedBootstrap();
+        setNext(null);
+        return;
+      }
+      setNext(result === "ready" || result === "draining" ? { state: result, endpoint: link.endpoint } : null);
+      timer = setTimeout(() => void probe(), NEXT_SESSION_PROBE_INTERVAL_MS);
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [idle, fetchImpl]);
+  return next;
+}
 var resharePromptStyle = {
   position: "fixed",
   left: "50%",
@@ -7226,17 +8848,20 @@ function LiveMount({
   onSnapshot,
   onEnded,
   onError,
+  onStart,
   getUserMedia,
   fetch: fetchImpl
 }) {
-  const runtimeRef = useRef6(null);
-  const [session, setSession] = useState7(null);
-  const [reshareNeeded, setReshareNeeded] = useState7(false);
-  const callbacks = useRef6({ onHandle, onSnapshot, onEnded, onError });
+  const runtimeRef = useRef7(null);
+  const [session, setSession] = useState8(null);
+  const [reshareNeeded, setReshareNeeded] = useState8(false);
+  const [phase, setPhase] = useState8(null);
+  const nextSession = useNextSession(onStart !== void 0 && (phase === "idle" || phase === "ended"), fetchImpl);
+  const callbacks = useRef7({ onHandle, onSnapshot, onEnded, onError });
   callbacks.current = { onHandle, onSnapshot, onEnded, onError };
-  const captureRef = useRef6(capture);
+  const captureRef = useRef7(capture);
   captureRef.current = capture;
-  useEffect4(() => {
+  useEffect6(() => {
     let runtime2 = null;
     runtime2 = new LiveRuntime({
       config,
@@ -7246,6 +8871,7 @@ function LiveMount({
       callbacks: {
         onSnapshot: (snapshot) => {
           if (runtime2) setSession(runtime2.session);
+          setPhase(snapshot.phase);
           callbacks.current.onSnapshot(snapshot);
         },
         onEnded: () => callbacks.current.onEnded(),
@@ -7256,6 +8882,7 @@ function LiveMount({
     const created = runtime2;
     runtimeRef.current = created;
     setSession(created.session);
+    setPhase(created.session.snapshot().phase);
     callbacks.current.onHandle({
       begin: (options) => created.begin(options),
       stop: () => created.stop(),
@@ -7272,8 +8899,8 @@ function LiveMount({
   const handlePause = useCallback3((paused) => runtimeRef.current?.setPaused(paused), []);
   if (!session) return null;
   const runtime = runtimeRef.current;
-  return /* @__PURE__ */ jsxs10(Fragment2, { children: [
-    /* @__PURE__ */ jsx10(
+  return /* @__PURE__ */ jsxs13(Fragment2, { children: [
+    /* @__PURE__ */ jsx13(
       LiveOverlay,
       {
         session,
@@ -7284,10 +8911,13 @@ function LiveMount({
         onConsent: (result) => runtime?.consent(result),
         onAnnotation: runtime?.annotation,
         onFinished: (result) => runtime?.finished(result),
-        onPauseChange: handlePause
+        onPauseChange: handlePause,
+        onRetryVoice: () => runtime?.retryVoice(),
+        nextSession,
+        onStartNext: onStart
       }
     ),
-    reshareNeeded && runtime ? /* @__PURE__ */ jsxs10(
+    reshareNeeded && runtime ? /* @__PURE__ */ jsxs13(
       "div",
       {
         ...{ [OVERLAY_ATTRIBUTE]: "" },
@@ -7296,15 +8926,16 @@ function LiveMount({
         "data-riffrec-live-reshare": "",
         style: resharePromptStyle,
         children: [
-          /* @__PURE__ */ jsx10("span", { children: "The page reloaded. Share your screen again to keep recording." }),
-          /* @__PURE__ */ jsx10("button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
-          /* @__PURE__ */ jsx10("button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
+          /* @__PURE__ */ jsx13("span", { children: "The page reloaded. Share your screen again to keep recording." }),
+          /* @__PURE__ */ jsx13("button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
+          /* @__PURE__ */ jsx13("button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
         ]
       }
     ) : null
   ] });
 }
 export {
+  NEXT_SESSION_PROBE_INTERVAL_MS,
   LiveMount as default
 };
-//# sourceMappingURL=LiveOverlay-LQJM63HJ.js.map
+//# sourceMappingURL=LiveOverlay-VE7JM7LT.js.map

@@ -243,6 +243,26 @@ describe("DrawingLayer", () => {
     expect(document.querySelector("[data-riffrec-pin-composer]")).toBeNull();
   });
 
+  it("keeps to one tool: draw never pins on a tap, pin never strokes on a drag", async () => {
+    stubHitTest(() => [app, document.body]);
+
+    await render({ defaultActive: true, tool: "draw" });
+    await draw([{ x: 60, y: 36 }]);
+    expect(document.querySelector("[data-riffrec-pin-composer]")).toBeNull();
+
+    await render({ defaultActive: true, tool: "pin" });
+    expect(surface().style.cursor).toBe("cell");
+    await draw([
+      { x: 60, y: 36 },
+      { x: 160, y: 136 }
+    ]);
+    expect(document.querySelector("[data-riffrec-stroke-draft]")).toBeNull();
+    expect(document.querySelector("[data-riffrec-pin-composer]")).toBeNull();
+    expect(onAnnotation).toHaveBeenCalledTimes(1);
+    expect(onAnnotation.mock.calls[0][0]).toMatchObject({ kind: "pin", points: [{ x: 60, y: 36 }] });
+    expect(onAnnotation.mock.calls[0][0].text).toBeUndefined();
+  });
+
   it("renders annotations passed by prop after a remount", async () => {
     const anchor = { route: "/", selector: "button", component: null, rect: { x: 0, y: 0, width: 10, height: 10 }, t: 1 };
     const annotations: LiveAnnotation[] = [

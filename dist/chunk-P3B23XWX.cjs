@@ -1,4 +1,4 @@
-// src/live/tools.ts
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }// src/live/tools.ts
 var LIVE_TOOL_NAMES = ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"];
 var anchorsProperty = {
   type: "array",
@@ -118,6 +118,7 @@ var DEFAULT_INTERVIEWER_INSTRUCTIONS = [
   "Never invent anchors. Use only the anchor ids the page announced or the element references the riffer named. When the riffer names no element and no anchor was announced, record the unit with an empty anchors list.",
   "When the riffer takes back a change, call withdraw_unit and acknowledge it aloud in a few words. When they refine a change already on the board, call update_unit; if it is rejected because the unit was already picked up, record the refinement as a new unit.",
   "When a note marked [ENDPOINT QUESTION] arrives, read the question to the riffer in your own words at the next pause and, once they answer, call relay_answer with their answer for that unit. Never answer such a question yourself.",
+  'When the riffer asks to compound, to capture what was learned, or to remember a decision for next time, record one unit whose statement starts with "/ce-compound:" followed by what to capture, with an empty anchors list, and say in a few words that it will be compounded.',
   "Keep every spoken turn under two sentences. Speak the riffer's language.",
   SCREEN_CONTEXT_SECTION
 ].join("\n\n");
@@ -132,7 +133,7 @@ function withScreenContext(instructions) {
 ${SCREEN_CONTEXT_SECTION}` : SCREEN_CONTEXT_SECTION;
 }
 function buildInterviewerInstructions(options = {}) {
-  const brief = options.brief?.trim();
+  const brief = _optionalChain([options, 'access', _ => _.brief, 'optionalAccess', _2 => _2.trim, 'call', _3 => _3()]);
   if (!brief) return DEFAULT_INTERVIEWER_INSTRUCTIONS;
   const bounded = brief.length > BRIEF_MAX_CHARS ? `${brief.slice(0, BRIEF_MAX_CHARS - 1)}\u2026` : brief;
   return `${DEFAULT_INTERVIEWER_INSTRUCTIONS}
@@ -144,6 +145,7 @@ ${bounded}`;
 // src/live/contract.ts
 var LIVE_SCHEMA_VERSION = "live/1";
 var LIVE_SESSION_HEADER = "X-Riffrec-Session";
+var LIVE_OPENAI_KEY_HEADER = "X-Riffrec-OpenAI-Key";
 var LIVE_EVENTS_BODY_MAX_BYTES = 64 * 1024;
 var LIVE_FRAME_BODY_MAX_BYTES = 2 * 1024 * 1024;
 var LIVE_EVENT_TYPES = [
@@ -170,6 +172,7 @@ var UNIT_STATUSES = [
   "triaging",
   "accepted",
   "needs_info",
+  "working",
   "applied",
   "blocked",
   "withdrawn"
@@ -324,37 +327,38 @@ function isLiveEnvelopeOfType(envelope, type) {
   return envelope.type === type;
 }
 
-export {
-  LIVE_TOOL_NAMES,
-  RECORD_UNIT_TOOL,
-  UPDATE_UNIT_TOOL,
-  WITHDRAW_UNIT_TOOL,
-  RELAY_ANSWER_TOOL,
-  LOOK_AT_SCREEN_TOOL,
-  LIVE_TOOLS,
-  isLiveToolName,
-  getLiveTool,
-  BRIEF_MAX_CHARS,
-  SCREEN_CONTEXT_MARKER,
-  SCREEN_CONTEXT_SECTION,
-  DEFAULT_INTERVIEWER_INSTRUCTIONS,
-  hasScreenContext,
-  withScreenContext,
-  buildInterviewerInstructions,
-  LIVE_SCHEMA_VERSION,
-  LIVE_SESSION_HEADER,
-  LIVE_EVENTS_BODY_MAX_BYTES,
-  LIVE_FRAME_BODY_MAX_BYTES,
-  LIVE_EVENT_TYPES,
-  EXECUTION_MODES,
-  DEFAULT_EXECUTION_MODE,
-  UNIT_STATUSES,
-  CHECKPOINT_TRIGGERS,
-  ALWAYS_WAKE_TRIGGERS,
-  FRAME_DROP_REASONS,
-  isLiveEventType,
-  inspectEnvelope,
-  validateEnvelope,
-  isLiveEnvelopeOfType
-};
-//# sourceMappingURL=chunk-Z57RQNC3.js.map
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exports.LIVE_TOOL_NAMES = LIVE_TOOL_NAMES; exports.RECORD_UNIT_TOOL = RECORD_UNIT_TOOL; exports.UPDATE_UNIT_TOOL = UPDATE_UNIT_TOOL; exports.WITHDRAW_UNIT_TOOL = WITHDRAW_UNIT_TOOL; exports.RELAY_ANSWER_TOOL = RELAY_ANSWER_TOOL; exports.LOOK_AT_SCREEN_TOOL = LOOK_AT_SCREEN_TOOL; exports.LIVE_TOOLS = LIVE_TOOLS; exports.isLiveToolName = isLiveToolName; exports.getLiveTool = getLiveTool; exports.BRIEF_MAX_CHARS = BRIEF_MAX_CHARS; exports.SCREEN_CONTEXT_MARKER = SCREEN_CONTEXT_MARKER; exports.SCREEN_CONTEXT_SECTION = SCREEN_CONTEXT_SECTION; exports.DEFAULT_INTERVIEWER_INSTRUCTIONS = DEFAULT_INTERVIEWER_INSTRUCTIONS; exports.hasScreenContext = hasScreenContext; exports.withScreenContext = withScreenContext; exports.buildInterviewerInstructions = buildInterviewerInstructions; exports.LIVE_SCHEMA_VERSION = LIVE_SCHEMA_VERSION; exports.LIVE_SESSION_HEADER = LIVE_SESSION_HEADER; exports.LIVE_OPENAI_KEY_HEADER = LIVE_OPENAI_KEY_HEADER; exports.LIVE_EVENTS_BODY_MAX_BYTES = LIVE_EVENTS_BODY_MAX_BYTES; exports.LIVE_FRAME_BODY_MAX_BYTES = LIVE_FRAME_BODY_MAX_BYTES; exports.LIVE_EVENT_TYPES = LIVE_EVENT_TYPES; exports.EXECUTION_MODES = EXECUTION_MODES; exports.DEFAULT_EXECUTION_MODE = DEFAULT_EXECUTION_MODE; exports.UNIT_STATUSES = UNIT_STATUSES; exports.CHECKPOINT_TRIGGERS = CHECKPOINT_TRIGGERS; exports.ALWAYS_WAKE_TRIGGERS = ALWAYS_WAKE_TRIGGERS; exports.FRAME_DROP_REASONS = FRAME_DROP_REASONS; exports.isLiveEventType = isLiveEventType; exports.inspectEnvelope = inspectEnvelope; exports.validateEnvelope = validateEnvelope; exports.isLiveEnvelopeOfType = isLiveEnvelopeOfType;
+//# sourceMappingURL=chunk-P3B23XWX.cjs.map

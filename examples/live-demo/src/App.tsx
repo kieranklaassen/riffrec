@@ -5,6 +5,7 @@ import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { ActivityPage } from './pages/ActivityPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { FunPage } from './pages/FunPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/fun" element={<FunPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

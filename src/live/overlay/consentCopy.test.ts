@@ -33,23 +33,32 @@ describe("consentCopy", () => {
     expect(copy.retention).toMatch(/local session log .* until you delete it/);
   });
 
-  it("names OpenAI Realtime as the microphone destination when voice can run, with clicks and screenshots per the profile", () => {
+  it("names OpenAI as the microphone destination when voice can run, with clicks and screenshots per the profile", () => {
     const copy = buildConsentCopy({ endpoint: ORIGIN });
     const openai = copy.destinations.find((destination) => destination.id === "openai")!;
     expect(openai.to).toBe(OPENAI_DESTINATION);
     expect(openai.items.some((item) => /microphone audio/.test(item))).toBe(true);
     expect(openai.items.some((item) => /session brief/.test(item))).toBe(true);
-    expect(openai.items.some((item) => /what you click, draw on, and pin, and screenshots of the page/.test(item))).toBe(true);
+    expect(openai.items.some((item) => /what you click, draw and pin/.test(item))).toBe(true);
+    expect(openai.items.some((item) => /screenshots when you point at something/.test(item))).toBe(true);
 
     const noFrames = buildConsentCopy({ endpoint: ORIGIN, profile: { frames: false } });
     const items = noFrames.destinations.find((destination) => destination.id === "openai")!.items;
-    expect(items.some((item) => /what you click, draw on, and pin/.test(item))).toBe(true);
+    expect(items.some((item) => /what you click, draw and pin/.test(item))).toBe(true);
     expect(items.some((item) => /screenshots/.test(item))).toBe(false);
   });
 
   it("omits OpenAI when the consumer says no voice runs", () => {
     const copy = buildConsentCopy({ endpoint: ORIGIN, voice: false });
     expect(copy.destinations.map((destination) => destination.id)).toEqual(["endpoint"]);
+  });
+
+  it("drops OpenAI, the transcript, and the microphone once the riffer turns voice off", () => {
+    const copy = buildConsentCopy({ endpoint: ORIGIN, microphone: false });
+    expect(copy.destinations.map((destination) => destination.id)).toEqual(["endpoint"]);
+    expect(endpointItems(copy).some((item) => /transcript/.test(item))).toBe(false);
+    expect(copy.microphone).toMatch(/no microphone needed/);
+    expect(copy.acceptLabel).toBe("Start session");
   });
 
   it("describes the local-archive shape when no endpoint is configured", () => {
@@ -59,10 +68,11 @@ describe("consentCopy", () => {
     expect(copy.intro).toMatch(/nothing streams/);
   });
 
-  it("says screenshots exclude nothing and that capture can be paused (R25)", () => {
+  it("says screenshots blur nothing and that capture can be paused (R25)", () => {
     const copy = buildConsentCopy({ endpoint: ORIGIN });
-    expect(copy.noExclusions).toMatch(/exclude nothing automatically/);
+    expect(copy.noExclusions).toMatch(/don't blur anything/);
     expect(copy.noExclusions).toMatch(/pause/);
+    expect(buildConsentCopy({ endpoint: ORIGIN, profile: { frames: false } }).noExclusions).not.toMatch(/Screenshots/);
   });
 
   it("resolves partial profiles over the R19 default", () => {

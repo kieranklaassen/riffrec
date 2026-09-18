@@ -19,8 +19,8 @@ type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 type ExecutionMode = "instant" | "smart" | "collect";
 declare const EXECUTION_MODES: readonly ExecutionMode[];
 declare const DEFAULT_EXECUTION_MODE: ExecutionMode;
-/** R11: initial -> triaging -> accepted | needs_info, then applied | blocked; withdrawn when retracted. */
-type UnitStatus = "initial" | "triaging" | "accepted" | "needs_info" | "applied" | "blocked" | "withdrawn";
+/** R11: initial -> triaging -> accepted | needs_info -> working (the agent is editing), then applied | blocked; withdrawn when retracted. */
+type UnitStatus = "initial" | "triaging" | "accepted" | "needs_info" | "working" | "applied" | "blocked" | "withdrawn";
 declare const UNIT_STATUSES: readonly UnitStatus[];
 /**
  * KTD9/KTD12: `silence`, `page_change`, `send`, and `final` are page-emitted;
@@ -175,7 +175,9 @@ type LiveEnvelopeInspection = {
     reason: LiveEnvelopeRejection;
     detail?: string;
 };
-type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended";
+type LiveServerEventName = "unit_status" | "applied" | "ask" | "ack" | "session_ended" | "agent";
+/** What the agent is doing right now, as the endpoint sees it (its wait loop). */
+type LiveAgentState = "listening" | "working" | "away";
 interface LiveUnitStatusEvent {
     event: "unit_status";
     data: {
@@ -211,7 +213,16 @@ interface LiveSessionEndedEvent {
         reason?: string;
     };
 }
-type LiveServerEvent = LiveUnitStatusEvent | LiveAppliedEvent | LiveAskEvent | LiveAckEvent | LiveSessionEndedEvent;
+/** Sent on connect and on every change: listening (a wait is parked), working (a batch is out), away. */
+interface LiveAgentEvent {
+    event: "agent";
+    data: {
+        state: LiveAgentState;
+        since: number;
+        checkpoint_id?: string;
+    };
+}
+type LiveServerEvent = LiveAgentEvent | LiveUnitStatusEvent | LiveAppliedEvent | LiveAskEvent | LiveAckEvent | LiveSessionEndedEvent;
 type WakeSessionStatus = "live" | "page_lost";
 /** KTD7: the JSON printed by `wait` when a batch is available. */
 interface LiveWakeBatch {
@@ -291,6 +302,95 @@ interface EvidenceProfile {
     audio_clip: boolean;
 }
 type EvidenceProfileName = "anchors_transcript_only" | "default" | "full";
+
+/**
+ * Interviewer tool set (KTD5): five flat function tools in the `breathwork-live`
+ * shape. Exported as data so the endpoint helper can copy them verbatim; the
+ * page also reconciles them onto the live Realtime session after connecting
+ * (`realtime/sessionConfig.ts`), so a mint that carries an older copy still
+ * gets every tool the page can answer.
+ *
+ * No tool emits checkpoints or reports state: the client owns all timing, and
+ * page-side facts (a click, a completed drawing, buffering, a mute) reach the
+ * interviewer as text conversation items. No tool *parameter* carries image
+ * content: `look_at_screen` asks the page for a screenshot, and the page
+ * attaches it as an image conversation item before the tool result.
+ */
+declare const LIVE_TOOL_NAMES: readonly ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"];
+type LiveToolName = (typeof LIVE_TOOL_NAMES)[number];
+interface JsonSchemaProperty {
+    type: "string" | "number" | "integer" | "boolean" | "array" | "object";
+    description?: string;
+    items?: JsonSchemaProperty;
+    enum?: readonly string[];
+}
+interface JsonSchemaObject {
+    type: "object";
+    properties: Record<string, JsonSchemaProperty>;
+    required: readonly string[];
+    additionalProperties: false;
+}
+/** The flat Realtime session tool shape: `{ type: "function", name, description, parameters }`. */
+interface LiveToolDefinition<N extends LiveToolName = LiveToolName> {
+    type: "function";
+    name: N;
+    description: string;
+    parameters: JsonSchemaObject;
+}
+interface RecordUnitArgs {
+    statement: string;
+    /**
+     * Anchor references, as the riffer named them or as the page announced them in
+     * a conversation item ("the riffer clicked Button \"Export\" (anchor id: anchor_0003)").
+     * The client resolves them to `LiveAnchor` objects.
+     */
+    anchors: string[];
+    transcript_excerpt: string;
+}
+interface UpdateUnitArgs {
+    unit_id: string;
+    statement?: string;
+    anchors_add?: string[];
+}
+interface WithdrawUnitArgs {
+    unit_id: string;
+    reason?: string;
+}
+interface RelayAnswerArgs {
+    unit_id: string;
+    answer_text: string;
+}
+interface LookAtScreenArgs {
+    /** Why the interviewer needs to see the screen, in a few words. */
+    reason?: string;
+}
+interface LiveToolArgsMap {
+    record_unit: RecordUnitArgs;
+    update_unit: UpdateUnitArgs;
+    withdraw_unit: WithdrawUnitArgs;
+    relay_answer: RelayAnswerArgs;
+    look_at_screen: LookAtScreenArgs;
+}
+type LiveToolArgs<N extends LiveToolName = LiveToolName> = LiveToolArgsMap[N];
+/** A tool call as the client receives it from the Realtime data channel. */
+type LiveToolCall<N extends LiveToolName = LiveToolName> = N extends LiveToolName ? {
+    call_id: string;
+    name: N;
+    arguments: LiveToolArgsMap[N];
+} : never;
+interface LiveToolResult {
+    call_id: string;
+    /** JSON-serializable result handed back as the function call output. */
+    output: Record<string, unknown>;
+}
+declare const RECORD_UNIT_TOOL: LiveToolDefinition<"record_unit">;
+declare const UPDATE_UNIT_TOOL: LiveToolDefinition<"update_unit">;
+declare const WITHDRAW_UNIT_TOOL: LiveToolDefinition<"withdraw_unit">;
+declare const RELAY_ANSWER_TOOL: LiveToolDefinition<"relay_answer">;
+declare const LOOK_AT_SCREEN_TOOL: LiveToolDefinition<"look_at_screen">;
+declare const LIVE_TOOLS: readonly LiveToolDefinition[];
+declare function isLiveToolName(value: unknown): value is LiveToolName;
+declare function getLiveTool<N extends LiveToolName>(name: N): LiveToolDefinition<N>;
 
 /**
  * The live session (U2): the state machine from the plan's High-Level
@@ -504,95 +604,6 @@ declare global {
         __RIFFREC_PATCHED__?: boolean;
     }
 }
-
-/**
- * Interviewer tool set (KTD5): five flat function tools in the `breathwork-live`
- * shape. Exported as data so the endpoint helper can copy them verbatim; the
- * page also reconciles them onto the live Realtime session after connecting
- * (`realtime/sessionConfig.ts`), so a mint that carries an older copy still
- * gets every tool the page can answer.
- *
- * No tool emits checkpoints or reports state: the client owns all timing, and
- * page-side facts (a click, a completed drawing, buffering, a mute) reach the
- * interviewer as text conversation items. No tool *parameter* carries image
- * content: `look_at_screen` asks the page for a screenshot, and the page
- * attaches it as an image conversation item before the tool result.
- */
-declare const LIVE_TOOL_NAMES: readonly ["record_unit", "update_unit", "withdraw_unit", "relay_answer", "look_at_screen"];
-type LiveToolName = (typeof LIVE_TOOL_NAMES)[number];
-interface JsonSchemaProperty {
-    type: "string" | "number" | "integer" | "boolean" | "array" | "object";
-    description?: string;
-    items?: JsonSchemaProperty;
-    enum?: readonly string[];
-}
-interface JsonSchemaObject {
-    type: "object";
-    properties: Record<string, JsonSchemaProperty>;
-    required: readonly string[];
-    additionalProperties: false;
-}
-/** The flat Realtime session tool shape: `{ type: "function", name, description, parameters }`. */
-interface LiveToolDefinition<N extends LiveToolName = LiveToolName> {
-    type: "function";
-    name: N;
-    description: string;
-    parameters: JsonSchemaObject;
-}
-interface RecordUnitArgs {
-    statement: string;
-    /**
-     * Anchor references, as the riffer named them or as the page announced them in
-     * a conversation item ("the riffer clicked Button \"Export\" (anchor id: anchor_0003)").
-     * The client resolves them to `LiveAnchor` objects.
-     */
-    anchors: string[];
-    transcript_excerpt: string;
-}
-interface UpdateUnitArgs {
-    unit_id: string;
-    statement?: string;
-    anchors_add?: string[];
-}
-interface WithdrawUnitArgs {
-    unit_id: string;
-    reason?: string;
-}
-interface RelayAnswerArgs {
-    unit_id: string;
-    answer_text: string;
-}
-interface LookAtScreenArgs {
-    /** Why the interviewer needs to see the screen, in a few words. */
-    reason?: string;
-}
-interface LiveToolArgsMap {
-    record_unit: RecordUnitArgs;
-    update_unit: UpdateUnitArgs;
-    withdraw_unit: WithdrawUnitArgs;
-    relay_answer: RelayAnswerArgs;
-    look_at_screen: LookAtScreenArgs;
-}
-type LiveToolArgs<N extends LiveToolName = LiveToolName> = LiveToolArgsMap[N];
-/** A tool call as the client receives it from the Realtime data channel. */
-type LiveToolCall<N extends LiveToolName = LiveToolName> = N extends LiveToolName ? {
-    call_id: string;
-    name: N;
-    arguments: LiveToolArgsMap[N];
-} : never;
-interface LiveToolResult {
-    call_id: string;
-    /** JSON-serializable result handed back as the function call output. */
-    output: Record<string, unknown>;
-}
-declare const RECORD_UNIT_TOOL: LiveToolDefinition<"record_unit">;
-declare const UPDATE_UNIT_TOOL: LiveToolDefinition<"update_unit">;
-declare const WITHDRAW_UNIT_TOOL: LiveToolDefinition<"withdraw_unit">;
-declare const RELAY_ANSWER_TOOL: LiveToolDefinition<"relay_answer">;
-declare const LOOK_AT_SCREEN_TOOL: LiveToolDefinition<"look_at_screen">;
-declare const LIVE_TOOLS: readonly LiveToolDefinition[];
-declare function isLiveToolName(value: unknown): value is LiveToolName;
-declare function getLiveTool<N extends LiveToolName>(name: N): LiveToolDefinition<N>;
 
 /**
  * The interviewer's default instructions (KTD5, KTD6, KTD13). The endpoint

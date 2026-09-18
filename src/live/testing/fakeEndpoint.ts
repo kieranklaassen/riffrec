@@ -14,6 +14,7 @@ import {
   type LiveFrame,
   type LiveMintError,
   type LiveMintResponse,
+  type LiveSessionProbeResponse,
   type LiveServerEvent,
   type LiveUnit,
   type LiveWakeBatch,
@@ -82,7 +83,7 @@ const DEFAULT_MINT: LiveMintResponse = {
 
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 
-const PAGE_ROUTES = new Set(["/events", "/stream", "/mint", "/session/end"]);
+const PAGE_ROUTES = new Set(["/events", "/stream", "/mint", "/session/end", "/session"]);
 
 function byteLength(value: string): number {
   return new TextEncoder().encode(value).length;
@@ -268,6 +269,8 @@ export class FakeEndpoint {
     if (token === null) return this.json(401, { reason: "missing_token" });
     if (token === this.agentToken) return this.json(403, { reason: "wrong_credential" });
     if (token !== this.pageToken) return this.json(401, { reason: "bad_token" });
+    // The probe carries no session header: it asks whether the link can take a session at all.
+    if (path === "/session") return this.handleSessionProbe();
 
     const sessionHeader = headerLookup(request.headers, LIVE_SESSION_HEADER);
     if (!sessionHeader) return this.json(400, { reason: "missing_session" });
@@ -523,6 +526,16 @@ export class FakeEndpoint {
       return this.json(status, rest);
     }
     return this.json(200, this.mint);
+  }
+
+  private handleSessionProbe(): FakeResponse {
+    const drained = this.readyBatches.length === 0 && this.unackedBatches.length === 0;
+    const probe: LiveSessionProbeResponse = {
+      status: this.ended ? "ended" : "live",
+      session_id: this.sessionId,
+      accepts_new_session: this.ended && drained
+    };
+    return this.json(200, probe);
   }
 
   private handleSessionEnd(): FakeResponse {

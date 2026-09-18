@@ -25,9 +25,18 @@ export interface DrawingLayerProps {
   showToggle?: boolean;
   /** A tap (pointer down and up without movement) opens the pin composer. Defaults to `true`. */
   pinOnTap?: boolean;
+  /**
+   * One tool at a time, as the page toolbar picks it: `draw` only strokes, `pin` only drops
+   * pins (no note box) wherever the pointer goes down. Omitted, a drag strokes and a tap pins.
+   */
+  tool?: DrawingTool;
+  /** Marks on their way out: rendered fading to transparent. */
+  fadingIds?: ReadonlySet<string>;
   zIndex?: number;
   strokeColor?: string;
 }
+
+export type DrawingTool = "draw" | "pin";
 
 interface PendingPin {
   point: LivePoint;
@@ -129,8 +138,14 @@ const tintStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
   pointerEvents: "none",
-  boxShadow: "inset 0 0 0 3px rgba(217, 45, 32, 0.85)"
+  boxShadow: "inset 0 0 0 2px rgba(217, 45, 32, 0.5)"
 };
+
+const FADE_MS = 600;
+
+function fadeStyle(fading: boolean | undefined): CSSProperties {
+  return { opacity: fading ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` };
+}
 
 const toggleStyle: CSSProperties = {
   position: "absolute",
@@ -177,6 +192,8 @@ export function DrawingLayer({
   createId = defaultCreateId,
   showToggle = true,
   pinOnTap = true,
+  tool,
+  fadingIds,
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }: DrawingLayerProps) {
@@ -255,22 +272,29 @@ export function DrawingLayer({
     [anchorOptions, createId, onAnnotation]
   );
 
-  const completePin = useCallback(
-    (comment: string) => {
-      if (!pendingPin) return;
+  const emitPin = useCallback(
+    (pin: PendingPin, comment?: string) => {
       const options = anchorOptions();
-      const bbox = { x: pendingPin.point.x, y: pendingPin.point.y, width: 0, height: 0 };
+      const bbox = { x: pin.point.x, y: pin.point.y, width: 0, height: 0 };
       onAnnotation({
         id: createId(),
         kind: "pin",
-        points: [pendingPin.point],
+        points: [pin.point],
         bbox,
-        anchor: pendingPin.target ? buildAnchor(pendingPin.target, options) : buildFallbackAnchor(bbox, options),
-        text: comment
+        anchor: pin.target ? buildAnchor(pin.target, options) : buildFallbackAnchor(bbox, options),
+        ...(comment ? { text: comment } : {})
       });
+    },
+    [anchorOptions, createId, onAnnotation]
+  );
+
+  const completePin = useCallback(
+    (comment: string) => {
+      if (!pendingPin) return;
+      emitPin(pendingPin, comment);
       setPendingPin(null);
     },
-    [anchorOptions, createId, onAnnotation, pendingPin]
+    [emitPin, pendingPin]
   );
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -290,12 +314,13 @@ export function DrawingLayer({
     }
     const point = pointFromEvent(event);
     draftRef.current = [point];
-    setDraft([point]);
+    if (tool !== "pin") setDraft([point]);
   };
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
+    if (tool === "pin") return;
     const next = [...draftRef.current, pointFromEvent(event)];
     draftRef.current = next;
     setDraft(next);
@@ -308,9 +333,14 @@ export function DrawingLayer({
     resetDraft();
 
     const start = points[0];
+    // The Pin tool drops the pin at once; the riffer says what it is about, no note box.
+    if (tool === "pin") {
+      emitPin({ point: start, target: resolvePointTarget(start) });
+      return;
+    }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);
     if (!travelled) {
-      if (pinOnTap) {
+      if (pinOnTap && tool !== "draw") {
         setPendingPin({ point: start, target: resolvePointTarget(start) });
       }
       return;
@@ -342,7 +372,7 @@ export function DrawingLayer({
         style={{
           ...surfaceStyle,
           pointerEvents: active ? "auto" : "none",
-          cursor: active ? "crosshair" : "default"
+          cursor: active ? (tool === "pin" ? "cell" : "crosshair") : "default"
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -357,9 +387,12 @@ export function DrawingLayer({
               d={strokePath(annotation.points, true)}
               fill={strokeColor}
               fillOpacity={0.9}
+              style={fadeStyle(fadingIds?.has(annotation.id))}
             />
           ) : (
-            <Pin key={annotation.id} annotation={annotation} index={pins.indexOf(annotation) + 1} />
+            <g key={annotation.id} style={fadeStyle(fadingIds?.has(annotation.id))}>
+              <Pin annotation={annotation} index={pins.indexOf(annotation) + 1} />
+            </g>
           )
         )}
         {draftPath ? <path data-riffrec-stroke-draft="" d={draftPath} fill={strokeColor} fillOpacity={0.9} /> : null}

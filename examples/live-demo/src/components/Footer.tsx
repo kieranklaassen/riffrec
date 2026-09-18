@@ -1,7 +1,7 @@
 export function Footer() {
   return (
     <footer className="footer">
-      <span>© 2026 Orbit Labs</span>
+      <span>© 2027 Orbit Labs</span>
       <nav className="footer__links" aria-label="Footer">
         <a href="#">Docs</a>
         <a href="#">Status</a>
