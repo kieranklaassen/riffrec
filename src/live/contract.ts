@@ -21,6 +21,8 @@ export type LiveSchemaVersion = typeof LIVE_SCHEMA_VERSION;
 
 /** Header carrying the page's session id on every page -> endpoint request. */
 export const LIVE_SESSION_HEADER = "X-Riffrec-Session" as const;
+/** Carries a riffer-pasted OpenAI key on `POST /mint`; the endpoint prefers it over its own. */
+export const LIVE_OPENAI_KEY_HEADER = "X-Riffrec-OpenAI-Key" as const;
 
 /** Body cap for a `POST /events` batch (I3). */
 export const LIVE_EVENTS_BODY_MAX_BYTES = 64 * 1024;
@@ -341,6 +343,14 @@ export interface LiveMintResponse {
   /** Unix epoch seconds. */
   expires_at: number;
   model: string;
+}
+
+/** `GET /session`: whether the link's endpoint is up and can take another session. */
+export interface LiveSessionProbeResponse {
+  status: "live" | "ended";
+  session_id: string | null;
+  /** The last session ended and nothing is still held, so a new session id opens a fresh board. */
+  accepts_new_session: boolean;
 }
 
 export type LiveMintError =

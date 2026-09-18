@@ -25,24 +25,31 @@ export const MODE_DESCRIPTIONS: Record<ExecutionMode, string> = {
   collect: "Applies nothing during the riff; the accepted batch lands as one pass when you say done."
 };
 
+/** One-line forms for the start flow's mode cards. */
+export const MODE_SUMMARIES: Record<ExecutionMode, string> = {
+  instant: "Applies everything it can at each checkpoint, noting its guesses.",
+  smart: "Applies clear edits, asks about ambiguous ones, lists bigger ones.",
+  collect: "Applies nothing live. One pass when you say done."
+};
+
 export const PENDING_MODE_HINT = "Pending until next checkpoint";
 
 const groupStyle: CSSProperties = {
   display: "inline-flex",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   overflow: "hidden",
   background: "#ffffff"
 };
 
 const optionStyle: CSSProperties = {
   border: "none",
-  borderRight: "1px solid #d0d5dd",
+  borderRight: "1px solid #e4e7ec",
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 500,
   padding: "5px 10px",
   cursor: "pointer"
 };

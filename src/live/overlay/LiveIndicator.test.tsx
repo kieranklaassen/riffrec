@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveSessionStatus } from "../session";
-import { LiveIndicator, describeIndicator, deriveIndicatorState, type IndicatorState, type LiveIndicatorProps } from "./LiveIndicator";
+import { LiveIndicator, describeIndicator, deriveIndicatorState, voiceUnavailableCause, type IndicatorState, type LiveIndicatorProps } from "./LiveIndicator";
 
 const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,13 +14,39 @@ const MACHINE_STATES: Array<{ status: LiveSessionStatus; state: IndicatorState; 
   { status: "consenting", state: "consenting", label: /Waiting for consent/ },
   { status: "connecting", state: "connecting", label: /Connecting/ },
   { status: "live", state: "streaming", label: /Live · streaming to polish\.local:4321/ },
-  { status: "live_novoice", state: "novoice", label: /Live · no voice/ },
+  { status: "live_novoice", state: "novoice", label: /Voice off · streaming to polish\.local:4321/ },
   { status: "buffering", state: "buffering", label: /Buffering locally · endpoint unreachable/ },
   { status: "reconnecting", state: "reconnecting", label: /Reconnecting/ },
   { status: "incompatible", state: "incompatible", label: /Incompatible endpoint · expects live\/2/ },
   { status: "ended", state: "ended", label: /Session ended/ },
   { status: "error", state: "error", label: /Error · The endpoint rejected the page token\./ }
 ];
+
+describe("voiceUnavailableCause", () => {
+  it.each([
+    [{ kind: "refused", reason: "openai_error", status: 502, upstreamStatus: 401 }, "OpenAI rejected the API key"],
+    [{ kind: "refused", reason: "openai_error", status: 502, upstreamStatus: 429 }, "OpenAI rate limit or quota reached"],
+    [{ kind: "refused", reason: "openai_error", status: 502, upstreamStatus: 500 }, "OpenAI returned an error (500)"],
+    [{ kind: "refused", reason: "openai_error", status: 502 }, "couldn't reach OpenAI"],
+    [{ kind: "refused", reason: "no_key", status: 503 }, "the endpoint has no OpenAI key"],
+    [{ kind: "refused", reason: "unauthorized", status: 401 }, "the endpoint rejected this page's token"],
+    [{ kind: "exhausted", reason: "network_error" }, "couldn't reach the endpoint"],
+    [{ kind: "connect_failed", message: "ice failed" }, "couldn't connect to OpenAI Realtime"]
+  ] as const)("names %j as %s", (reason, cause) => {
+    expect(voiceUnavailableCause(reason)).toBe(cause);
+  });
+
+  it("puts the cause in the label and keeps the streaming note in the tooltip", () => {
+    const view = describeIndicator({
+      status: "live_novoice",
+      muted: false,
+      endpoint: "http://localhost:49169",
+      voiceUnavailable: { kind: "refused", reason: "openai_error", status: 502, upstreamStatus: 401 }
+    });
+    expect(view.label).toBe("Voice off · OpenAI rejected the API key");
+    expect(view.detail).toContain("still stream to localhost:49169");
+  });
+});
 
 describe("LiveIndicator", () => {
   let container: HTMLDivElement;
@@ -76,46 +102,21 @@ describe("LiveIndicator", () => {
     expect(deriveIndicatorState({ status: "ended", muted: true, paused: true })).toBe("ended");
   });
 
-  it("toggles mute through the control and flips the label back", async () => {
-    const onToggleMute = vi.fn();
-    await render({ muted: false, onToggleMute });
+  it("labels muted and paused states on the running session", async () => {
+    await render({ muted: false });
     expect(state()).toBe("streaming");
 
-    await act(async () => container.querySelector<HTMLButtonElement>("[data-riffrec-live-mute]")!.click());
-    expect(onToggleMute).toHaveBeenCalledTimes(1);
-
-    await render({ muted: true, onToggleMute });
+    await render({ muted: true });
     expect(state()).toBe("muted");
     expect(label()).toMatch(/Microphone muted/);
-    expect(container.querySelector("[data-riffrec-live-mute]")!.getAttribute("aria-pressed")).toBe("true");
 
-    await render({ muted: false, onToggleMute });
-    expect(state()).toBe("streaming");
-  });
-
-  it("offers pause only while running and reports it as capture paused", async () => {
-    const onTogglePause = vi.fn();
-    await render({ paused: false, onTogglePause });
-    await act(async () => container.querySelector<HTMLButtonElement>("[data-riffrec-live-pause]")!.click());
-    expect(onTogglePause).toHaveBeenCalledTimes(1);
-
-    await render({ paused: true, onTogglePause });
+    await render({ paused: true });
     expect(state()).toBe("paused");
     expect(label()).toMatch(/Capture paused/);
-
-    await render({ status: "ended", onTogglePause, onToggleMute: vi.fn() });
-    expect(container.querySelector("[data-riffrec-live-pause]")).toBeNull();
-    expect(container.querySelector("[data-riffrec-live-mute]")).toBeNull();
   });
 
-  it("disables the mute control when the microphone was denied", async () => {
-    await render({ status: "live_novoice", mic: "denied", onToggleMute: vi.fn() });
-    expect(container.querySelector<HTMLButtonElement>("[data-riffrec-live-mute]")!.disabled).toBe(true);
-  });
-
-  it("uses the short label in compact form and hides the controls", async () => {
-    await render({ compact: true, onToggleMute: vi.fn() });
+  it("uses the short label in compact form", async () => {
+    await render({ compact: true });
     expect(label()).toBe("Live");
-    expect(container.querySelector("[data-riffrec-live-mute]")).toBeNull();
   });
 });

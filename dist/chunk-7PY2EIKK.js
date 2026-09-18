@@ -144,6 +144,7 @@ ${bounded}`;
 // src/live/contract.ts
 var LIVE_SCHEMA_VERSION = "live/1";
 var LIVE_SESSION_HEADER = "X-Riffrec-Session";
+var LIVE_OPENAI_KEY_HEADER = "X-Riffrec-OpenAI-Key";
 var LIVE_EVENTS_BODY_MAX_BYTES = 64 * 1024;
 var LIVE_FRAME_BODY_MAX_BYTES = 2 * 1024 * 1024;
 var LIVE_EVENT_TYPES = [
@@ -343,6 +344,7 @@ export {
   buildInterviewerInstructions,
   LIVE_SCHEMA_VERSION,
   LIVE_SESSION_HEADER,
+  LIVE_OPENAI_KEY_HEADER,
   LIVE_EVENTS_BODY_MAX_BYTES,
   LIVE_FRAME_BODY_MAX_BYTES,
   LIVE_EVENT_TYPES,
@@ -357,4 +359,4 @@ export {
   validateEnvelope,
   isLiveEnvelopeOfType
 };
-//# sourceMappingURL=chunk-Z57RQNC3.js.map
+//# sourceMappingURL=chunk-7PY2EIKK.js.map

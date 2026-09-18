@@ -12,6 +12,7 @@ import type { UnitQuestion } from "../units";
 import type { RealtimeServerEvent, RealtimeTransport } from "./client";
 import type { SharedMicrophone } from "./audioRouting";
 import { mintWithRetry, type MintRefusalReason, type MintRetryResult } from "./mint";
+import { readStoredOpenAIKey } from "./openaiKey";
 import { reconcileSessionConfig, type RealtimeSessionConfig } from "./sessionConfig";
 
 /**
@@ -564,7 +565,7 @@ export class Interviewer {
     const token = this.session.pageToken;
     if (!endpoint || !token) {
       this.unavailable = { kind: "no_endpoint" };
-      this.session.voiceUnavailable();
+      this.session.voiceUnavailable(this.unavailable);
       this.emitStatus();
       return;
     }
@@ -601,7 +602,7 @@ export class Interviewer {
           this.onError(error);
           if (attempt === CONNECT_MAX_ATTEMPTS) {
             this.unavailable = { kind: "connect_failed", message: error instanceof Error ? error.message : String(error) };
-            this.session.voiceUnavailable();
+            this.session.voiceUnavailable(this.unavailable);
             return;
           }
         }
@@ -617,6 +618,7 @@ export class Interviewer {
       endpoint: this.session.endpoint!,
       token: this.session.pageToken!,
       sessionId: this.session.id,
+      openaiKey: readStoredOpenAIKey(),
       fetch: this.fetchImpl,
       setTimeout: this.schedule,
       clearTimeout: this.cancel,
@@ -647,7 +649,7 @@ export class Interviewer {
         return exhaustive;
       }
     }
-    this.session.voiceUnavailable();
+    this.session.voiceUnavailable(this.unavailable);
   }
 
   private becomeConnected(transport: RealtimeTransport, reconnect: boolean): void {

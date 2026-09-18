@@ -23,7 +23,7 @@ import { SharedMicrophone } from "./realtime/audioRouting";
 import { REALTIME_CALLS_URL, createRealtimeConnector, type RealtimeConnector } from "./realtime/client";
 import { createInterviewer, type Interviewer } from "./realtime/interviewer";
 import { LiveSession, type FinishResult, type LiveSessionSnapshot } from "./session";
-import { bootstrapLiveToken } from "./tokenBootstrap";
+import { bootstrapLiveToken, restoreRememberedBootstrap } from "./tokenBootstrap";
 
 /**
  * The live subtree's non-React half (U7): one object per provider mount that
@@ -200,7 +200,10 @@ export class LiveRuntime {
   /** Riffer or host asked to go live: the overlay shows the consent step. */
   begin(options: RiffrecSessionOptions = {}): void {
     if (this.suspended) return;
-    if (this.current.status === "ended" || this.current.status === "error") {
+    const spent = this.current.status === "ended" || this.current.status === "error";
+    // A finished session cleared its tab credentials; the remembered link starts the next one.
+    const restored = (spent || (this.current.status === "idle" && this.current.pageToken === null)) && restoreRememberedBootstrap();
+    if (spent || restored) {
       this.current = LiveSession.create(this.sessionOptions());
       this.attachSession(this.current);
     }
@@ -246,6 +249,11 @@ export class LiveRuntime {
 
   setMode(mode: ExecutionMode): void {
     this.current.setMode(mode);
+  }
+
+  /** Re-mints after a settled refusal, e.g. once the riffer pasted an OpenAI key. */
+  retryVoice(): void {
+    void this.active?.interviewer?.retryVoice().catch((error) => this.callbacks.onError(toError(error)));
   }
 
   setMuted(muted: boolean): void {

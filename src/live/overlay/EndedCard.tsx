@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { UNIT_STATUSES, type LiveUnit, type UnitStatus } from "../contract";
 import { STATUS_LABELS } from "./Board";
+import { startButtonDisabledStyle, startButtonStyle, type NextSessionState } from "./NextSessionLauncher";
 
 export interface EndedCardProps {
   units: readonly LiveUnit[];
@@ -9,6 +10,9 @@ export interface EndedCardProps {
   /** Where the consumer wrote the residual list; a generic pointer when unknown. */
   residualHint?: string;
   onDismiss?: () => void;
+  /** The remembered link can open another session; `draining` while the agent finishes this one. */
+  next?: NextSessionState | null;
+  onStartNext?: () => void;
 }
 
 export type EndedCounts = Record<UnitStatus, number>;
@@ -32,9 +36,9 @@ const cardStyle: CSSProperties = {
   fontSize: 13,
   color: "#101828",
   background: "#ffffff",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.18)",
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
   padding: 16,
   width: 300
 };
@@ -50,8 +54,8 @@ const countsStyle: CSSProperties = {
 };
 
 const buttonStyle: CSSProperties = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -65,7 +69,7 @@ const buttonStyle: CSSProperties = {
  * (`session_ended`): the delivery already happened as a stream, so the card
  * reports counts by final status and points at the residual list (R43).
  */
-export function EndedCard({ units, reason, residualHint, onDismiss }: EndedCardProps) {
+export function EndedCard({ units, reason, residualHint, onDismiss, next, onStartNext }: EndedCardProps) {
   const counts = countByStatus(units);
   const residuals = residualCount(counts);
   const shown = UNIT_STATUSES.filter((status) => counts[status] > 0);
@@ -83,7 +87,7 @@ export function EndedCard({ units, reason, residualHint, onDismiss }: EndedCardP
           {shown.map((status) => (
             <li key={status} data-riffrec-ended-count={status} style={{ display: "contents" }}>
               <span>{STATUS_LABELS[status]}</span>
-              <span style={{ fontWeight: 600, textAlign: "right" }}>{counts[status]}</span>
+              <span style={{ fontWeight: 500, textAlign: "right" }}>{counts[status]}</span>
             </li>
           ))}
         </ul>
@@ -98,11 +102,25 @@ export function EndedCard({ units, reason, residualHint, onDismiss }: EndedCardP
           Ended by the endpoint: {reason}
         </p>
       ) : null}
-      {onDismiss ? (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-          <button type="button" data-riffrec-ended-dismiss="" style={buttonStyle} onClick={onDismiss}>
-            Close
-          </button>
+      {onDismiss || (next && onStartNext) ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 12 }}>
+          {next && onStartNext ? (
+            <button
+              type="button"
+              data-riffrec-ended-start-next={next}
+              disabled={next !== "ready"}
+              title={next === "ready" ? undefined : "The agent is still finishing this session"}
+              style={next === "ready" ? startButtonStyle : startButtonDisabledStyle}
+              onClick={onStartNext}
+            >
+              {next === "ready" ? "Start another session" : "Agent wrapping up…"}
+            </button>
+          ) : null}
+          {onDismiss ? (
+            <button type="button" data-riffrec-ended-dismiss="" style={buttonStyle} onClick={onDismiss}>
+              Close
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

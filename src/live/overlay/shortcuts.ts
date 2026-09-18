@@ -89,10 +89,15 @@ function hasModifier(shortcut: ParsedShortcut): boolean {
   return shortcut.alt || shortcut.ctrl || shortcut.meta || shortcut.mod;
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   const tag = target.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || (target as HTMLElement).isContentEditable === true;
+}
+
+/** A bare key press meant for the overlay: not typed into a field and not part of a browser or OS chord. */
+export function isPlainKey(event: KeyboardEvent): boolean {
+  return !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditableTarget(event.target);
 }
 
 /**

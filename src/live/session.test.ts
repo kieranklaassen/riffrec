@@ -732,6 +732,18 @@ describe("LiveSession buffering, persistence, and rehydration", () => {
     await vi.waitFor(() => expect(restored.snapshot().pendingMode).toBeNull());
   });
 
+  it("keeps screenshots off across a reload once the riffer turned them off at consent", () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options()));
+    expect(session.framesLeavePage).toBe(true);
+    session.disableFrames();
+    session.start();
+    expect(session.framesLeavePage).toBe(false);
+
+    const restored = track(LiveSession.rehydrate(h.options({ sessionId: undefined }))!);
+    expect(restored.framesLeavePage).toBe(false);
+  });
+
   it("enters incompatible on a schema-version 409 instead of buffering", async () => {
     const h = harness();
     const fetchImpl: typeof fetch = async (input, init) => {

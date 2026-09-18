@@ -25,9 +25,16 @@ export interface DrawingLayerProps {
   showToggle?: boolean;
   /** A tap (pointer down and up without movement) opens the pin composer. Defaults to `true`. */
   pinOnTap?: boolean;
+  /**
+   * One tool at a time, as the page toolbar picks it: `draw` only strokes, `pin` only drops
+   * pins wherever the pointer goes down. Omitted, a drag strokes and a tap pins.
+   */
+  tool?: DrawingTool;
   zIndex?: number;
   strokeColor?: string;
 }
+
+export type DrawingTool = "draw" | "pin";
 
 interface PendingPin {
   point: LivePoint;
@@ -129,7 +136,7 @@ const tintStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
   pointerEvents: "none",
-  boxShadow: "inset 0 0 0 3px rgba(217, 45, 32, 0.85)"
+  boxShadow: "inset 0 0 0 2px rgba(217, 45, 32, 0.5)"
 };
 
 const toggleStyle: CSSProperties = {
@@ -177,6 +184,7 @@ export function DrawingLayer({
   createId = defaultCreateId,
   showToggle = true,
   pinOnTap = true,
+  tool,
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }: DrawingLayerProps) {
@@ -290,12 +298,13 @@ export function DrawingLayer({
     }
     const point = pointFromEvent(event);
     draftRef.current = [point];
-    setDraft([point]);
+    if (tool !== "pin") setDraft([point]);
   };
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
+    if (tool === "pin") return;
     const next = [...draftRef.current, pointFromEvent(event)];
     draftRef.current = next;
     setDraft(next);
@@ -308,9 +317,13 @@ export function DrawingLayer({
     resetDraft();
 
     const start = points[0];
+    if (tool === "pin") {
+      setPendingPin({ point: start, target: resolvePointTarget(start) });
+      return;
+    }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);
     if (!travelled) {
-      if (pinOnTap) {
+      if (pinOnTap && tool !== "draw") {
         setPendingPin({ point: start, target: resolvePointTarget(start) });
       }
       return;
@@ -342,7 +355,7 @@ export function DrawingLayer({
         style={{
           ...surfaceStyle,
           pointerEvents: active ? "auto" : "none",
-          cursor: active ? "crosshair" : "default"
+          cursor: active ? (tool === "pin" ? "cell" : "crosshair") : "default"
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

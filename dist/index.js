@@ -12,7 +12,7 @@ import {
   parseLiveFragment,
   readStoredBootstrap,
   segmentFileName
-} from "./chunk-CBFDNQ3P.js";
+} from "./chunk-4HQNLXIU.js";
 import {
   ALWAYS_WAKE_TRIGGERS,
   BRIEF_MAX_CHARS,
@@ -45,7 +45,7 @@ import {
   isLiveToolName,
   validateEnvelope,
   withScreenContext
-} from "./chunk-Z57RQNC3.js";
+} from "./chunk-7PY2EIKK.js";
 
 // src/RiffrecProvider.tsx
 import {
@@ -258,7 +258,7 @@ var SessionWriter = class {
 
 // src/RiffrecProvider.tsx
 import { jsx, jsxs } from "react/jsx-runtime";
-var LiveMount = lazy(() => import("./LiveOverlay-LQJM63HJ.js"));
+var LiveMount = lazy(() => import("./LiveOverlay-IRBI5SSB.js"));
 var DEFAULT_LIVE_MODE = "smart";
 var DEFAULT_FORCE_ENABLE_PARAM = "riffrec";
 var ENABLE_PARAM_VALUES = /* @__PURE__ */ new Set(["", "1", "true", "on", "yes"]);
@@ -672,6 +672,7 @@ function RiffrecProvider({
     liveActive.current = true;
     void stopLive();
   }, [stopLive]);
+  const startLive = useCallback(() => void start(), [start]);
   const handleLiveError = useCallback((error) => {
     configRef.current.onError?.(error);
   }, []);
@@ -714,7 +715,8 @@ function RiffrecProvider({
         onHandle: handleLiveHandle,
         onSnapshot: handleLiveSnapshot,
         onEnded: handleLiveEnded,
-        onError: handleLiveError
+        onError: handleLiveError,
+        onStart: startLive
       }
     ) }) : null,
     isRecordingVisible ? /* @__PURE__ */ jsxs("div", { "aria-live": "polite", role: "status", style: recordingOverlayStyle, children: [

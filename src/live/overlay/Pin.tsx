@@ -6,7 +6,8 @@ import type { LiveAnnotation, LivePoint } from "../contract";
 import { elementRect } from "./strokeAnchor";
 
 const SNIPPET_LIMIT = 80;
-const PIN_RADIUS = 11;
+/** A 22px teardrop whose sharp corner sits on the pinned point. */
+const PIN_PATH = "M2 0 L11 0 A11 11 0 0 0 22 -11 A11 11 0 0 0 11 -22 A11 11 0 0 0 0 -11 L0 -2 A2 2 0 0 0 2 0 Z";
 
 /** The `ce-prototype` pin record: what was pinned (selector, text snippet, rect) and what was said about it. */
 export interface PinRecord {
@@ -124,7 +125,7 @@ export function buildPinRecord(element: Element, comment: string): PinRecord {
 const markerStyle: CSSProperties = {
   fontFamily:
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
   userSelect: "none"
 };
@@ -139,8 +140,8 @@ export function Pin({ annotation, index }: PinProps) {
       aria-label={annotation.text ? `Pin ${index}: ${annotation.text}` : `Pin ${index}`}
     >
       <title>{annotation.text ?? `Pin ${index}`}</title>
-      <circle r={PIN_RADIUS} fill="#d92d20" stroke="#ffffff" strokeWidth={2} />
-      <text textAnchor="middle" dominantBaseline="central" fill="#ffffff">
+      <path d={PIN_PATH} fill="#d92d20" style={{ filter: "drop-shadow(0 1px 2px rgba(16, 24, 40, 0.2))" }} />
+      <text x={11} y={-11} textAnchor="middle" dominantBaseline="central" fill="#ffffff">
         {index}
       </text>
     </g>
@@ -152,9 +153,9 @@ const composerStyle: CSSProperties = {
   width: 280,
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.24)",
+  border: "1px solid #eaecf0",
+  borderRadius: 10,
+  boxShadow: "0 4px 16px rgba(16, 24, 40, 0.08)",
   padding: 12,
   display: "grid",
   gap: 8,
@@ -177,8 +178,8 @@ const textareaStyle: CSSProperties = {
   width: "100%",
   minHeight: 64,
   resize: "vertical",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: 8,
   font: "inherit",
   boxSizing: "border-box"
@@ -191,12 +192,14 @@ const buttonRowStyle: CSSProperties = {
 };
 
 const buttonStyle: CSSProperties = {
-  border: "1px solid #344054",
-  borderRadius: 6,
-  padding: "6px 12px",
+  border: "1px solid #101828",
+  borderRadius: 7,
+  padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
   cursor: "pointer"
 };
 
@@ -204,7 +207,7 @@ const secondaryButtonStyle: CSSProperties = {
   ...buttonStyle,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 
 function composerPosition(point: LivePoint): CSSProperties {

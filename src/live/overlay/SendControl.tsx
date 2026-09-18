@@ -3,8 +3,8 @@ import { useRef, useState, type CSSProperties } from "react";
 export interface SendControlProps {
   /** The session's `send` checkpoint; resolves with whether a checkpoint left the page. */
   onSend: () => Promise<boolean>;
-  /** Opens the confirmation pass; the overlay emits `final` once it completes (KTD9, KTD22). */
-  onDone: () => void;
+  /** Opens the confirmation pass; the overlay emits `final` once it completes (KTD9, KTD22). Not shown when compact. */
+  onDone?: () => void;
   /** Units and forwarded withdrawals the next checkpoint would release. */
   heldCount?: number;
   disabled?: boolean;
@@ -13,14 +13,14 @@ export interface SendControlProps {
 }
 
 const buttonStyle: CSSProperties = {
-  border: "1px solid #344054",
-  borderRadius: 6,
+  border: "1px solid #101828",
+  borderRadius: 7,
   padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 500,
   cursor: "pointer",
   whiteSpace: "nowrap"
 };
@@ -29,7 +29,7 @@ const secondaryButtonStyle: CSSProperties = {
   ...buttonStyle,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 
 const disabledStyle: CSSProperties = {
@@ -82,7 +82,7 @@ export function SendControl({ onSend, onDone, heldCount = 0, disabled = false, c
       >
         {sending ? "Sending…" : heldCount > 0 ? `Send (${heldCount})` : "Send"}
       </button>
-      {!compact ? (
+      {!compact && onDone ? (
         <button
           type="button"
           data-riffrec-done=""

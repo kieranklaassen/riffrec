@@ -55,7 +55,7 @@ const listStyle: CSSProperties = {
 
 const itemStyle: CSSProperties = {
   border: "1px solid #eaecf0",
-  borderRadius: 6,
+  borderRadius: 8,
   padding: "8px 10px",
   background: "#ffffff"
 };
@@ -63,7 +63,7 @@ const itemStyle: CSSProperties = {
 const badgeStyle: CSSProperties = {
   display: "inline-block",
   fontSize: 11,
-  fontWeight: 600,
+  fontWeight: 500,
   padding: "1px 6px",
   borderRadius: 4,
   color: "#ffffff",
@@ -72,8 +72,8 @@ const badgeStyle: CSSProperties = {
 };
 
 const smallButtonStyle: CSSProperties = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -85,15 +85,16 @@ const smallButtonStyle: CSSProperties = {
 const primaryButtonStyle: CSSProperties = {
   ...smallButtonStyle,
   background: "#101828",
-  borderColor: "#344054",
-  color: "#ffffff"
+  borderColor: "#101828",
+  color: "#ffffff",
+  fontWeight: 500
 };
 
 const inputStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: "4px 8px",
   font: "inherit",
   fontSize: 12
@@ -108,7 +109,8 @@ const noteStyle: CSSProperties = {
 const emptyStyle: CSSProperties = {
   ...itemStyle,
   color: "#667085",
-  fontStyle: "italic",
+  borderStyle: "dashed",
+  fontSize: 12,
   textAlign: "center"
 };
 
@@ -278,7 +280,7 @@ export function ConfirmationPass({ units, onComplete, onCancel, busy = false }: 
 
   return (
     <div data-riffrec-confirmation="" style={{ fontFamily: FONT, fontSize: 13, color: "#101828" }}>
-      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Before you go: did we get each one right?</p>
+      <p style={{ margin: "0 0 8px", fontWeight: 500 }}>Before you go: did we get each one right?</p>
       {units.length === 0 ? (
         <p style={{ ...noteStyle, marginBottom: 8 }}>No units this session. Finishing releases anything the agent still holds.</p>
       ) : (

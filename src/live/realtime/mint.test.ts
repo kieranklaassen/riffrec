@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LIVE_SESSION_HEADER } from "../contract";
+import { LIVE_OPENAI_KEY_HEADER, LIVE_SESSION_HEADER } from "../contract";
 import { MINT_DEFAULT_RETRY_AFTER_S, MINT_NETWORK_RETRY_MS, mint, mintWithRetry, type MintOptions } from "./mint";
 
 type Scripted = { status: number; body?: unknown; headers?: Record<string, string> } | Error;
@@ -42,6 +42,17 @@ describe("mint", () => {
       [LIVE_SESSION_HEADER]: "sess_mint"
     });
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ session_id: "sess_mint" });
+  });
+
+  it("sends a pasted OpenAI key in its header only when one is given", async () => {
+    const { fetch: fetchImpl, calls } = scriptedFetch([
+      { status: 200, body: SECRET },
+      { status: 200, body: SECRET }
+    ]);
+    await mint({ ...options(fetchImpl), openaiKey: "sk-pasted" });
+    await mint(options(fetchImpl));
+    expect(calls[0].init?.headers).toMatchObject({ [LIVE_OPENAI_KEY_HEADER]: "sk-pasted" });
+    expect(calls[1].init?.headers).not.toHaveProperty(LIVE_OPENAI_KEY_HEADER);
   });
 
   it("treats 429 as retryable with retry_after in seconds", async () => {

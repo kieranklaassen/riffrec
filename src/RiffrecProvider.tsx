@@ -545,6 +545,8 @@ export function RiffrecProvider({
     void stopLive();
   }, [stopLive]);
 
+  const startLive = useCallback(() => void start(), [start]);
+
   const handleLiveError = useCallback((error: Error) => {
     configRef.current.onError?.(error);
   }, []);
@@ -594,6 +596,7 @@ export function RiffrecProvider({
             onSnapshot={handleLiveSnapshot}
             onEnded={handleLiveEnded}
             onError={handleLiveError}
+            onStart={startLive}
           />
         </Suspense>
       ) : null}

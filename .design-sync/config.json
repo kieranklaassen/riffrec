@@ -1,0 +1,69 @@
+{
+  "projectId": "24fb8d2c-d0d3-49dd-950b-c28803bea11e",
+  "shape": "package",
+  "pkg": "riffrec",
+  "globalName": "Riffrec",
+  "buildCmd": "npm run build",
+  "extraEntries": [
+    "./.design-sync/overlay-entry.ts"
+  ],
+  "componentSrcMap": {
+    "Board": "src/live/overlay/Board.tsx",
+    "ConfirmationPass": "src/live/overlay/Board.tsx",
+    "ConsentDialog": "src/live/overlay/ConsentDialog.tsx",
+    "DrawingLayer": "src/live/overlay/DrawingLayer.tsx",
+    "EndedCard": "src/live/overlay/EndedCard.tsx",
+    "KeyPrompt": "src/live/overlay/KeyPrompt.tsx",
+    "LiveIndicator": "src/live/overlay/LiveIndicator.tsx",
+    "LiveOverlay": "src/live/overlay/LiveOverlay.tsx",
+    "ModeSwitch": "src/live/overlay/ModeSwitch.tsx",
+    "NextSessionLauncher": "src/live/overlay/NextSessionLauncher.tsx",
+    "Pin": "src/live/overlay/Pin.tsx",
+    "PinComposer": "src/live/overlay/Pin.tsx",
+    "SendControl": "src/live/overlay/SendControl.tsx",
+    "RiffrecProvider": null,
+    "RiffrecRecorder": null
+  },
+  "dtsPropsFor": {
+    "Board": "/** Feedback units the riffer has spoken or drawn, newest last. */ units: ReadonlyArray<{ id: string; statement: string; transcript_excerpt: string; anchors: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }[]; evidence: { frame_ids: string[]; annotation_ids: string[]; transcript_span: { t_start: number; t_end: number } }; status: \"initial\" | \"triaging\" | \"accepted\" | \"needs_info\" | \"applied\" | \"blocked\" | \"withdrawn\"; confirmed?: { element: boolean; change: boolean } }>; /** Open and answered questions; the open one shows inline under its unit. */ questions?: ReadonlyArray<{ unit_id: string; question: string; t: number; answered: boolean }>; /** Instant-mode guesses, by unit id. */ guesses?: Readonly<Record<string, string>>; /** Agent notes (a blocked reason, an applied summary), by unit id. */ notes?: Readonly<Record<string, string>>; /** Whether the endpoint has released the unit; withdraw is offered only before release. */ isReleased?: (unitId: string) => boolean; mode: \"instant\" | \"smart\" | \"collect\"; /** false makes the typed reply primary (no voice interviewer). */ voice?: boolean; onWithdraw?: (unitId: string) => void; onAnswer?: (unitId: string, text: string) => void;",
+    "ConfirmationPass": "/** Units to confirm, one step each (element, then change). */ units: ReadonlyArray<{ id: string; statement: string; transcript_excerpt: string; anchors: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }[]; evidence: { frame_ids: string[]; annotation_ids: string[]; transcript_span: { t_start: number; t_end: number } }; status: \"initial\" | \"triaging\" | \"accepted\" | \"needs_info\" | \"applied\" | \"blocked\" | \"withdrawn\"; confirmed?: { element: boolean; change: boolean } }>; onComplete: (confirmations: Record<string, { element: boolean; change: boolean }>) => void; onCancel: () => void; busy?: boolean;",
+    "ConsentDialog": "/** Which evidence the session captures; drives the consent copy. */ profile?: { transcript?: boolean; strokes?: boolean; frames?: boolean; audio_clip?: boolean; telemetry_window?: boolean }; /** Endpoint origin receiving the stream; null when nothing streams. */ endpoint: string | null; /** Named owner of the endpoint; defaults to the origin. */ endpointOwner?: string; /** Whether a voice interviewer can run. */ voice?: boolean; /** Step 3 result: the one microphone stream (null when denied or voice was turned off), plus the setup picked in step 1. */ onAccept: (result: { stream: MediaStream | null; mic: \"granted\" | \"denied\"; mode: \"instant\" | \"smart\" | \"collect\"; frames: boolean }) => void; onDecline: () => void; /** Starting selection for the mode cards. Default \"smart\". */ mode?: \"instant\" | \"smart\" | \"collect\"; /** Defaults to navigator.mediaDevices.getUserMedia. */ getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>; zIndex?: number;",
+    "DrawingLayer": "/** Marks to render. */ annotations: ReadonlyArray<{ id: string; kind: \"stroke\" | \"pin\"; points: { x: number; y: number; pressure?: number }[]; bbox: { x: number; y: number; width: number; height: number }; anchor: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }; text?: string; unit_id?: string }>; /** Fires once per completed stroke or saved pin. */ onAnnotation: (annotation: { id: string; kind: \"stroke\" | \"pin\"; points: { x: number; y: number; pressure?: number }[]; bbox: { x: number; y: number; width: number; height: number }; anchor: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }; text?: string; unit_id?: string }) => void; /** Controlled active (drawing) state; omit to let the layer own it. */ active?: boolean; defaultActive?: boolean; onActiveChange?: (active: boolean) => void; /** Keyboard toggle; null disables. */ shortcut?: string | null; route?: string; now?: () => number; createId?: () => string; /** Render the floating toggle control. Default true. */ showToggle?: boolean; /** A tap opens the pin composer. Default true. */ pinOnTap?: boolean; /** One tool at a time: \"draw\" only strokes, \"pin\" only drops pins. Omitted, a drag strokes and a tap pins. */ tool?: \"draw\" | \"pin\"; zIndex?: number; strokeColor?: string;",
+    "EndedCard": "/** The session's units; the card summarises them by status. */ units: ReadonlyArray<{ id: string; statement: string; transcript_excerpt: string; anchors: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }[]; evidence: { frame_ids: string[]; annotation_ids: string[]; transcript_span: { t_start: number; t_end: number } }; status: \"initial\" | \"triaging\" | \"accepted\" | \"needs_info\" | \"applied\" | \"blocked\" | \"withdrawn\"; confirmed?: { element: boolean; change: boolean } }>; /** Why the endpoint ended the session, when it said. */ reason?: string | null; /** Where the residual list was written. */ residualHint?: string; onDismiss?: () => void; /** The remembered link can open another session; \"draining\" disables the button while the agent finishes this one. */ next?: \"ready\" | \"draining\" | null; /** Shows \"Start another session\" beside Close when next is set. */ onStartNext?: () => void;",
+    "KeyPrompt": "/** Why voice is off; the copy changes when OpenAI rejected a saved key. */ reason: { kind: \"no_endpoint\" } | { kind: \"refused\"; reason: \"unauthorized\" | \"tls_required\" | \"openai_error\" | \"no_key\" | \"brief_contains_secret\" | \"invalid_response\" | \"throttled\" | \"network_error\" | \"unknown\"; status: number; upstreamStatus?: number } | { kind: \"exhausted\"; reason: \"throttled\" | \"network_error\" } | { kind: \"connect_failed\"; message: string } | null; /** Called after the pasted key is saved to localStorage. */ onRetry: () => void;",
+    "LiveIndicator": "status: \"idle\" | \"consenting\" | \"connecting\" | \"live\" | \"live_novoice\" | \"buffering\" | \"reconnecting\" | \"incompatible\" | \"ended\" | \"error\"; muted: boolean; mic?: \"granted\" | \"denied\" | \"muted\" | \"unmuted\" | null; paused?: boolean; /** Expected schema_version reported by an incompatible endpoint. */ expectedSchemaVersion?: string | null; endpoint?: string | null; error?: { reason: \"unauthorized\" | \"session_conflict\" | \"persist_failed\" | \"unknown\"; message: string } | null; /** Why the interviewer is not running, for the no-voice label. */ voiceUnavailable?: { kind: \"no_endpoint\" } | { kind: \"refused\"; reason: \"unauthorized\" | \"tls_required\" | \"openai_error\" | \"no_key\" | \"brief_contains_secret\" | \"invalid_response\" | \"throttled\" | \"network_error\" | \"unknown\"; status: number; upstreamStatus?: number } | { kind: \"exhausted\"; reason: \"throttled\" | \"network_error\" } | { kind: \"connect_failed\"; message: string } | null; /** Collapsed pill form: dot and short label only. */ compact?: boolean;",
+    "LiveOverlay": "/** A LiveSession from Riffrec.LiveSession.create({ endpoint }); the overlay renders from its snapshot. */ session: any; profile?: { transcript?: boolean; strokes?: boolean; frames?: boolean; audio_clip?: boolean; telemetry_window?: boolean }; endpointOwner?: string; drawShortcut?: string | null; route?: string; getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>; onConsent?: (result: { stream: MediaStream | null; mic: \"granted\" | \"denied\"; mode: \"instant\" | \"smart\" | \"collect\"; frames: boolean }) => void; onDecline?: () => void; onAnnotation?: (annotation: { id: string; kind: \"stroke\" | \"pin\"; points: { x: number; y: number; pressure?: number }[]; bbox: { x: number; y: number; width: number; height: number }; anchor: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }; text?: string; unit_id?: string }) => void; onFinished?: (result: unknown) => void; paused?: boolean; onPauseChange?: (paused: boolean) => void; /** Shows the paste-key prompt when voice is off for want of a key. */ onRetryVoice?: () => void; residualHint?: string; /** The remembered link still reaches its endpoint; offers another session once none is running. */ nextSession?: { state: \"ready\" | \"draining\"; endpoint: string } | null; onStartNext?: () => void; zIndex?: number; defaultCollapsed?: boolean; now?: () => number;",
+    "ModeSwitch": "mode: \"instant\" | \"smart\" | \"collect\"; /** Mode the endpoint has not acted on yet; renders a pending hint. */ pendingMode: \"instant\" | \"smart\" | \"collect\" | null; onChange: (mode: \"instant\" | \"smart\" | \"collect\") => void; disabled?: boolean;",
+    "Pin": "annotation: { id: string; kind: \"stroke\" | \"pin\"; points: { x: number; y: number; pressure?: number }[]; bbox: { x: number; y: number; width: number; height: number }; anchor: { route: string; selector: string; component?: string | null; rect: { x: number; y: number; width: number; height: number }; t: number }; text?: string; unit_id?: string }; /** 1-based number shown in the marker. */ index: number;",
+    "PinComposer": "/** Viewport point the composer anchors to. */ point: { x: number; y: number; pressure?: number }; /** Element under the pin, for the target label. */ target: Element | null; initialValue?: string; onSubmit: (comment: string) => void; onCancel: () => void;",
+    "SendControl": "/** Sends a checkpoint; resolves with whether one left the page. */ onSend: () => Promise<boolean>; /** Opens the confirmation pass; not shown when compact. */ onDone?: () => void; /** Units the next checkpoint would release. */ heldCount?: number; disabled?: boolean; /** Pill form: icon-sized Send, no Done. */ compact?: boolean;",
+    "NextSessionLauncher": "/** What the endpoint behind the remembered link can do: \"ready\" starts a session, \"draining\" waits for the agent to finish the last one. */ next: { state: \"ready\" | \"draining\"; endpoint: string }; onStart: () => void;"
+  },
+  "guidelinesGlob": [],
+  "overrides": {
+    "ConsentDialog": {
+      "cardMode": "single",
+      "primaryStory": "VoiceAndStream",
+      "viewport": "900x900"
+    },
+    "LiveOverlay": {
+      "cardMode": "single",
+      "primaryStory": "LiveBoard"
+    },
+    "DrawingLayer": {
+      "cardMode": "single",
+      "primaryStory": "Drawing"
+    },
+    "PinComposer": {
+      "cardMode": "single",
+      "primaryStory": "WithDraft"
+    },
+    "EndedCard": {
+      "cardMode": "column"
+    },
+    "LiveIndicator": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

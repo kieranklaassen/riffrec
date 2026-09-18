@@ -1,32 +1,61 @@
-"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } async function _asyncNullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return await rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
-
-
-
-
-
-
-
-
-
-
-var _chunkOGVGX2XHcjs = require('./chunk-OGVGX2XH.cjs');
-
-
-
-
-
-
-
-
-
-
-
-
-
-var _chunk4XWUXLDEcjs = require('./chunk-4XWUXLDE.cjs');
+import {
+  ConsoleCapture,
+  EventCapture,
+  NetworkCapture,
+  ScreenCapture,
+  VoiceCapture,
+  bootstrapLiveToken,
+  buildSelector,
+  clearStoredBootstrap,
+  forgetRememberedBootstrap,
+  getComponentName,
+  readRememberedBootstrap,
+  readStoredBootstrap,
+  restoreRememberedBootstrap
+} from "./chunk-4HQNLXIU.js";
+import {
+  DEFAULT_EXECUTION_MODE,
+  DEFAULT_INTERVIEWER_INSTRUCTIONS,
+  EXECUTION_MODES,
+  LIVE_EVENTS_BODY_MAX_BYTES,
+  LIVE_OPENAI_KEY_HEADER,
+  LIVE_SCHEMA_VERSION,
+  LIVE_SESSION_HEADER,
+  LIVE_TOOLS,
+  UNIT_STATUSES,
+  hasScreenContext,
+  isLiveEnvelopeOfType,
+  isLiveToolName,
+  withScreenContext
+} from "./chunk-7PY2EIKK.js";
 
 // src/live/LiveOverlay.tsx
-var _react = require('react');
+import { useCallback as useCallback3, useEffect as useEffect5, useRef as useRef6, useState as useState8 } from "react";
+
+// src/live/endpointProbe.ts
+async function probeEndpoint(bootstrap, fetchImpl = (input, init) => fetch(input, init)) {
+  let response;
+  try {
+    response = await fetchImpl(`${bootstrap.endpoint}/session`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${bootstrap.token}` }
+    });
+  } catch {
+    return "unreachable";
+  }
+  if (response.status === 401 || response.status === 403) return "rejected";
+  if (!response.ok) return "unreachable";
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return "unreachable";
+  }
+  if (body?.accepts_new_session === true) return "ready";
+  if (body?.status === "live") return body.session_id ? "busy" : "ready";
+  if (body?.status === "ended") return "draining";
+  return "unreachable";
+}
 
 // src/output/segmentStores.ts
 var DB_NAME = "riffrec-recording-segments";
@@ -42,14 +71,14 @@ function chunkKey(sessionId, segment, index) {
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("IndexedDB request failed."))));
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
   });
 }
 function transactionDone(transaction) {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(_nullishCoalesce(transaction.error, () => ( new Error("IndexedDB transaction failed."))));
-    transaction.onabort = () => reject(_nullishCoalesce(transaction.error, () => ( new Error("IndexedDB transaction aborted."))));
+    transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB transaction failed."));
+    transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted."));
   });
 }
 function openDb() {
@@ -61,7 +90,7 @@ function openDb() {
       if (!db.objectStoreNames.contains(CHUNKS_STORE)) db.createObjectStore(CHUNKS_STORE);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("Failed to open riffrec recording segment store."))));
+    request.onerror = () => reject(request.error ?? new Error("Failed to open riffrec recording segment store."));
   });
 }
 function isSegmentMeta(value) {
@@ -120,7 +149,7 @@ var IndexedDbSegmentStore = class {
     const blobs = values.filter((value) => value instanceof Blob && value.size > 0);
     if (blobs.length === 0) return null;
     const metas = await this.listSegments(sessionId);
-    const mimeType = _nullishCoalesce(_optionalChain([metas, 'access', _ => _.find, 'call', _2 => _2((meta) => meta.segment === segment), 'optionalAccess', _3 => _3.mimeType]), () => ( blobs[0].type));
+    const mimeType = metas.find((meta) => meta.segment === segment)?.mimeType ?? blobs[0].type;
     return new Blob(blobs, { type: mimeType });
   }
   async clear(sessionId) {
@@ -163,7 +192,7 @@ var MemorySegmentStore = class {
     const prefix = `${segmentKey(sessionId, segment)}/`;
     const blobs = [...this.chunks.entries()].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, blob]) => blob).filter((blob) => blob.size > 0);
     if (blobs.length === 0) return null;
-    const mimeType = _nullishCoalesce(_optionalChain([this, 'access', _4 => _4.segments, 'access', _5 => _5.get, 'call', _6 => _6(segmentKey(sessionId, segment)), 'optionalAccess', _7 => _7.mimeType]), () => ( blobs[0].type));
+    const mimeType = this.segments.get(segmentKey(sessionId, segment))?.mimeType ?? blobs[0].type;
     return new Blob(blobs, { type: mimeType });
   }
   async clear(sessionId) {
@@ -192,10 +221,10 @@ var AnnotationAttacher = class {
     this.disposed = false;
     this.now = options.now;
     this.onHeldExpired = options.onHeldExpired;
-    this.lookbackMs = _nullishCoalesce(options.lookbackMs, () => ( ATTACH_LOOKBACK_MS));
-    this.drawingOnlyMs = _nullishCoalesce(options.drawingOnlyMs, () => ( DRAWING_ONLY_AFTER_SPEECH_MS));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
+    this.lookbackMs = options.lookbackMs ?? ATTACH_LOOKBACK_MS;
+    this.drawingOnlyMs = options.drawingOnlyMs ?? DRAWING_ONLY_AFTER_SPEECH_MS;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
   }
   get isSpeaking() {
     return this.speaking;
@@ -204,7 +233,7 @@ var AnnotationAttacher = class {
     return this.utteranceOpen;
   }
   get lastUnitId() {
-    return _nullishCoalesce(_optionalChain([this, 'access', _8 => _8.lastUnit, 'optionalAccess', _9 => _9.id]), () => ( null));
+    return this.lastUnit?.id ?? null;
   }
   heldAnnotations() {
     return this.held.map((entry) => entry.annotation);
@@ -294,7 +323,7 @@ function chooseClipMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
     return "audio/webm";
   }
-  return _nullishCoalesce(CLIP_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)), () => ( "audio/webm"));
+  return CLIP_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? "audio/webm";
 }
 function defaultRecorderFactory(stream, mimeType) {
   return new MediaRecorder(stream, { mimeType });
@@ -311,13 +340,13 @@ var AudioClipRecorder = class {
     this.unclaimed = [];
     this.now = options.now;
     this.createId = options.createId;
-    this.createRecorder = _nullishCoalesce(options.createRecorder, () => ( defaultRecorderFactory));
-    this.mimeType = _nullishCoalesce(options.mimeType, () => ( chooseClipMimeType()));
-    this.onClip = _nullishCoalesce(options.onClip, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
-    this.stream = _nullishCoalesce(options.stream, () => ( null));
+    this.createRecorder = options.createRecorder ?? defaultRecorderFactory;
+    this.mimeType = options.mimeType ?? chooseClipMimeType();
+    this.onClip = options.onClip ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
+    this.stream = options.stream ?? null;
   }
   get hasSource() {
     return this.stream !== null;
@@ -369,11 +398,11 @@ var AudioClipRecorder = class {
   }
   /** The id of the clip a `record_unit` arriving now would take; null when none is pending. */
   pendingClipId() {
-    return _nullishCoalesce(_optionalChain([(_nullishCoalesce(_nullishCoalesce(this.unclaimed[0], () => ( _optionalChain([this, 'access', _10 => _10.active, 'optionalAccess', _11 => _11.clip]))), () => ( null))), 'optionalAccess', _12 => _12.id]), () => ( null));
+    return (this.unclaimed[0] ?? this.active?.clip ?? null)?.id ?? null;
   }
   /** The clip for the utterance `record_unit` came from; null when none is pending. */
   claim(unitId) {
-    const clip = _nullishCoalesce(_nullishCoalesce(this.unclaimed.shift(), () => ( _optionalChain([this, 'access', _13 => _13.active, 'optionalAccess', _14 => _14.clip]))), () => ( null));
+    const clip = this.unclaimed.shift() ?? this.active?.clip ?? null;
     if (!clip) return null;
     clip.unit_id = unitId;
     return clip.id;
@@ -400,7 +429,7 @@ var AudioClipRecorder = class {
     clip.t_end = this.now();
     if (!clip.unit_id) this.unclaimed.push(clip);
     try {
-      if (recorder.state === "inactive") _optionalChain([recorder, 'access', _15 => _15.onstop, 'optionalCall', _16 => _16(void 0)]);
+      if (recorder.state === "inactive") recorder.onstop?.(void 0);
       else recorder.stop();
     } catch (error) {
       this.onError(error);
@@ -416,11 +445,11 @@ var AudioClipRecorder = class {
 };
 
 // src/live/overlay/DrawingLayer.tsx
-
-var _perfectfreehand = require('perfect-freehand');
+import { useCallback, useEffect as useEffect2, useRef as useRef2, useState as useState2 } from "react";
+import { getStroke } from "perfect-freehand";
 
 // src/live/overlay/Pin.tsx
-
+import { useEffect, useRef, useState } from "react";
 
 // src/live/overlay/strokeAnchor.ts
 var OVERLAY_ATTRIBUTE = "data-riffrec-overlay";
@@ -506,7 +535,7 @@ function depthOf(element) {
 function largestOverlapTarget(bbox, doc, options) {
   let bestPartial = null;
   let bestContainer = null;
-  for (const element of Array.from(_nullishCoalesce(_optionalChain([doc, 'access', _17 => _17.body, 'optionalAccess', _18 => _18.querySelectorAll, 'call', _19 => _19("*")]), () => ( [])))) {
+  for (const element of Array.from(doc.body?.querySelectorAll("*") ?? [])) {
     if (!isEligible(element, options)) continue;
     const rect = elementRect(element);
     if (rectArea(rect) <= 0) continue;
@@ -523,10 +552,10 @@ function largestOverlapTarget(bbox, doc, options) {
       bestPartial = { element, area: overlap, depth };
     }
   }
-  return _nullishCoalesce(_nullishCoalesce(_optionalChain([bestPartial, 'optionalAccess', _20 => _20.element]), () => ( _optionalChain([bestContainer, 'optionalAccess', _21 => _21.element]))), () => ( null));
+  return bestPartial?.element ?? bestContainer?.element ?? null;
 }
 function resolveStrokeTarget(points, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc || points.length === 0) return null;
   const bbox = computeBbox(points);
   const [underCentroid] = elementsUnderPoint(rectCenter(bbox), doc, options);
@@ -536,15 +565,15 @@ function resolveStrokeTarget(points, options = {}) {
   return largestOverlapTarget(bbox, doc, options);
 }
 function resolvePointTarget(point, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc) return null;
-  return _nullishCoalesce(elementsUnderPoint(point, doc, options)[0], () => ( null));
+  return elementsUnderPoint(point, doc, options)[0] ?? null;
 }
 function buildAnchor(element, options) {
   return {
     route: options.route,
-    selector: _chunkOGVGX2XHcjs.buildSelector.call(void 0, element),
-    component: _chunkOGVGX2XHcjs.getComponentName.call(void 0, element),
+    selector: buildSelector(element),
+    component: getComponentName(element),
     rect: elementRect(element),
     t: options.t
   };
@@ -564,14 +593,14 @@ function anchorStroke(points, options) {
 }
 
 // src/live/overlay/Pin.tsx
-var _jsxruntime = require('react/jsx-runtime');
+import { jsx, jsxs } from "react/jsx-runtime";
 var SNIPPET_LIMIT = 80;
-var PIN_RADIUS = 11;
+var PIN_PATH = "M2 0 L11 0 A11 11 0 0 0 22 -11 A11 11 0 0 0 11 -22 A11 11 0 0 0 0 -11 L0 -2 A2 2 0 0 0 2 0 Z";
 function truncate(value, limit) {
   return value.length > limit ? `${value.slice(0, limit - 1)}\u2026` : value;
 }
 function normalizeText(value) {
-  const text = _optionalChain([value, 'optionalAccess', _22 => _22.replace, 'call', _23 => _23(/\s+/g, " "), 'access', _24 => _24.trim, 'call', _25 => _25()]);
+  const text = value?.replace(/\s+/g, " ").trim();
   return text ? text : null;
 }
 function isFormControl(element) {
@@ -594,7 +623,7 @@ function labelledByText(element) {
 }
 function labelText(element) {
   if (!isFormControl(element)) return null;
-  const labels = Array.from(_nullishCoalesce(element.labels, () => ( [])));
+  const labels = Array.from(element.labels ?? []);
   const wrapping = element.closest("label");
   if (wrapping && !labels.includes(wrapping)) labels.push(wrapping);
   for (const label of labels) {
@@ -609,22 +638,22 @@ function getAccessibleName(element) {
   const labelledBy = labelledByText(element);
   if (labelledBy) return labelledBy;
   if (isFormControl(element)) {
-    return _nullishCoalesce(_nullishCoalesce(_nullishCoalesce(_nullishCoalesce(labelText(element), () => ( normalizeText(element.getAttribute("placeholder")))), () => ( normalizeText(element.getAttribute("title")))), () => ( normalizeText(element.getAttribute("name")))), () => ( null));
+    return labelText(element) ?? normalizeText(element.getAttribute("placeholder")) ?? normalizeText(element.getAttribute("title")) ?? normalizeText(element.getAttribute("name")) ?? null;
   }
   if (element instanceof HTMLImageElement) {
-    return _nullishCoalesce(normalizeText(element.getAttribute("alt")), () => ( normalizeText(element.getAttribute("title"))));
+    return normalizeText(element.getAttribute("alt")) ?? normalizeText(element.getAttribute("title"));
   }
-  return _nullishCoalesce(textWithoutControls(element), () => ( normalizeText(element.getAttribute("title"))));
+  return textWithoutControls(element) ?? normalizeText(element.getAttribute("title"));
 }
 var markerStyle = {
   fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
   userSelect: "none"
 };
 function Pin({ annotation, index }) {
-  const point = _nullishCoalesce(annotation.points[0], () => ( { x: annotation.bbox.x, y: annotation.bbox.y }));
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  const point = annotation.points[0] ?? { x: annotation.bbox.x, y: annotation.bbox.y };
+  return /* @__PURE__ */ jsxs(
     "g",
     {
       "data-riffrec-pin": annotation.id,
@@ -632,9 +661,9 @@ function Pin({ annotation, index }) {
       style: markerStyle,
       "aria-label": annotation.text ? `Pin ${index}: ${annotation.text}` : `Pin ${index}`,
       children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "title", { children: _nullishCoalesce(annotation.text, () => ( `Pin ${index}`)) }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "circle", { r: PIN_RADIUS, fill: "#d92d20", stroke: "#ffffff", strokeWidth: 2 }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "text", { textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
+        /* @__PURE__ */ jsx("title", { children: annotation.text ?? `Pin ${index}` }),
+        /* @__PURE__ */ jsx("path", { d: PIN_PATH, fill: "#d92d20", style: { filter: "drop-shadow(0 1px 2px rgba(16, 24, 40, 0.2))" } }),
+        /* @__PURE__ */ jsx("text", { x: 11, y: -11, textAnchor: "middle", dominantBaseline: "central", fill: "#ffffff", children: index })
       ]
     }
   );
@@ -644,9 +673,9 @@ var composerStyle = {
   width: 280,
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.24)",
+  border: "1px solid #eaecf0",
+  borderRadius: 10,
+  boxShadow: "0 4px 16px rgba(16, 24, 40, 0.08)",
   padding: 12,
   display: "grid",
   gap: 8,
@@ -666,8 +695,8 @@ var textareaStyle = {
   width: "100%",
   minHeight: 64,
   resize: "vertical",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: 8,
   font: "inherit",
   boxSizing: "border-box"
@@ -678,19 +707,21 @@ var buttonRowStyle = {
   gap: 8
 };
 var buttonStyle = {
-  border: "1px solid #344054",
-  borderRadius: 6,
-  padding: "6px 12px",
+  border: "1px solid #101828",
+  borderRadius: 7,
+  padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
   cursor: "pointer"
 };
 var secondaryButtonStyle = {
   ...buttonStyle,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 function composerPosition(point) {
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : Infinity;
@@ -700,15 +731,15 @@ function composerPosition(point) {
   return { left, top };
 }
 function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
-  const [value, setValue] = _react.useState.call(void 0, initialValue);
-  const textareaRef = _react.useRef.call(void 0, null);
+  const [value, setValue] = useState(initialValue);
+  const textareaRef = useRef(null);
   const snippet = target ? getAccessibleName(target) : null;
-  const selector = target ? _chunkOGVGX2XHcjs.buildSelector.call(void 0, target) : null;
-  _react.useEffect.call(void 0, () => {
-    _optionalChain([textareaRef, 'access', _26 => _26.current, 'optionalAccess', _27 => _27.focus, 'call', _28 => _28()]);
+  const selector = target ? buildSelector(target) : null;
+  useEffect(() => {
+    textareaRef.current?.focus();
   }, []);
   const submit = (event) => {
-    _optionalChain([event, 'optionalAccess', _29 => _29.preventDefault, 'call', _30 => _30()]);
+    event?.preventDefault();
     const comment = value.trim();
     if (comment.length === 0) return;
     onSubmit(comment);
@@ -722,7 +753,7 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
       submit();
     }
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  return /* @__PURE__ */ jsxs(
     "form",
     {
       "data-riffrec-pin-composer": "",
@@ -732,8 +763,8 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
       onSubmit: submit,
       onPointerDown: (event) => event.stopPropagation(),
       children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: snippetStyle, title: _nullishCoalesce(selector, () => ( void 0)), children: snippet ? truncate(snippet, SNIPPET_LIMIT) : _nullishCoalesce(selector, () => ( "This spot")) }),
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        /* @__PURE__ */ jsx("div", { style: snippetStyle, title: selector ?? void 0, children: snippet ? truncate(snippet, SNIPPET_LIMIT) : selector ?? "This spot" }),
+        /* @__PURE__ */ jsx(
           "textarea",
           {
             ref: textareaRef,
@@ -745,9 +776,9 @@ function PinComposer({ point, target, initialValue = "", onSubmit, onCancel }) {
             onKeyDown
           }
         ),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: buttonRowStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: secondaryButtonStyle, onClick: onCancel, children: "Cancel" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "submit", style: buttonStyle, disabled: value.trim().length === 0, children: "Save pin" })
+        /* @__PURE__ */ jsxs("div", { style: buttonRowStyle, children: [
+          /* @__PURE__ */ jsx("button", { type: "button", style: secondaryButtonStyle, onClick: onCancel, children: "Cancel" }),
+          /* @__PURE__ */ jsx("button", { type: "submit", style: buttonStyle, disabled: value.trim().length === 0, children: "Save pin" })
         ] })
       ]
     }
@@ -778,7 +809,7 @@ function parseShortcut(shortcut) {
 }
 function isApplePlatform() {
   if (typeof navigator === "undefined") return false;
-  return /Mac|iPhone|iPad|iPod/i.test(_nullishCoalesce(navigator.platform, () => ( ""))) || /Mac OS/i.test(_nullishCoalesce(navigator.userAgent, () => ( "")));
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform ?? "") || /Mac OS/i.test(navigator.userAgent ?? "");
 }
 function keyMatches(event, key) {
   if (typeof event.key === "string" && event.key.toLowerCase() === key) return true;
@@ -801,8 +832,11 @@ function isEditableTarget(target) {
   const tag = target.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
 }
+function isPlainKey(event) {
+  return !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditableTarget(event.target);
+}
 function createDrawToggle(options) {
-  let active = _nullishCoalesce(options.initialActive, () => ( false));
+  let active = options.initialActive ?? false;
   const shortcutString = options.shortcut === void 0 ? DEFAULT_DRAW_SHORTCUT : options.shortcut;
   const parsed = shortcutString ? parseShortcut(shortcutString) : null;
   const target = options.target === void 0 ? typeof window !== "undefined" ? window : null : options.target;
@@ -838,7 +872,7 @@ function createDrawToggle(options) {
 }
 
 // src/live/overlay/DrawingLayer.tsx
-
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var STROKE_OPTIONS = {
   size: 6,
   thinning: 0.55,
@@ -865,7 +899,7 @@ function defaultCreateId() {
   return `ann_${Date.now().toString(36)}_${idCounter.toString(36)}`;
 }
 function toStrokeInput(points) {
-  return points.map((point) => [point.x, point.y, _nullishCoalesce(point.pressure, () => ( 0.5))]);
+  return points.map((point) => [point.x, point.y, point.pressure ?? 0.5]);
 }
 function average(a, b) {
   return (a + b) / 2;
@@ -886,7 +920,7 @@ function getSvgPathFromStroke(outline) {
 }
 function strokePath(points, last) {
   if (points.length === 0) return "";
-  return getSvgPathFromStroke(_perfectfreehand.getStroke.call(void 0, toStrokeInput(points), { ...STROKE_OPTIONS, last }));
+  return getSvgPathFromStroke(getStroke(toStrokeInput(points), { ...STROKE_OPTIONS, last }));
 }
 function pointFromEvent(event) {
   const point = { x: event.clientX, y: event.clientY };
@@ -916,7 +950,7 @@ var tintStyle = {
   position: "absolute",
   inset: 0,
   pointerEvents: "none",
-  boxShadow: "inset 0 0 0 3px rgba(217, 45, 32, 0.85)"
+  boxShadow: "inset 0 0 0 2px rgba(217, 45, 32, 0.5)"
 };
 var toggleStyle = {
   position: "absolute",
@@ -956,27 +990,28 @@ function DrawingLayer({
   createId = defaultCreateId,
   showToggle = true,
   pinOnTap = true,
+  tool,
   zIndex = DEFAULT_Z_INDEX,
   strokeColor = DEFAULT_STROKE_COLOR
 }) {
-  const [uncontrolledActive, setUncontrolledActive] = _react.useState.call(void 0, defaultActive);
-  const active = _nullishCoalesce(controlledActive, () => ( uncontrolledActive));
-  const [draft, setDraft] = _react.useState.call(void 0, []);
-  const [pendingPin, setPendingPin] = _react.useState.call(void 0, null);
-  const pointerIdRef = _react.useRef.call(void 0, null);
-  const draftRef = _react.useRef.call(void 0, []);
-  const isControlledRef = _react.useRef.call(void 0, controlledActive !== void 0);
+  const [uncontrolledActive, setUncontrolledActive] = useState2(defaultActive);
+  const active = controlledActive ?? uncontrolledActive;
+  const [draft, setDraft] = useState2([]);
+  const [pendingPin, setPendingPin] = useState2(null);
+  const pointerIdRef = useRef2(null);
+  const draftRef = useRef2([]);
+  const isControlledRef = useRef2(controlledActive !== void 0);
   isControlledRef.current = controlledActive !== void 0;
-  const onActiveChangeRef = _react.useRef.call(void 0, onActiveChange);
+  const onActiveChangeRef = useRef2(onActiveChange);
   onActiveChangeRef.current = onActiveChange;
-  const setActive = _react.useCallback.call(void 0, (next) => {
+  const setActive = useCallback((next) => {
     if (!isControlledRef.current) setUncontrolledActive(next);
-    _optionalChain([onActiveChangeRef, 'access', _31 => _31.current, 'optionalCall', _32 => _32(next)]);
+    onActiveChangeRef.current?.(next);
   }, []);
-  const activeRef = _react.useRef.call(void 0, active);
+  const activeRef = useRef2(active);
   activeRef.current = active;
-  const toggleRef = _react.useRef.call(void 0, null);
-  _react.useEffect.call(void 0, () => {
+  const toggleRef = useRef2(null);
+  useEffect2(() => {
     const toggle = createDrawToggle({ shortcut, initialActive: activeRef.current, onChange: setActive });
     toggleRef.current = toggle;
     return () => {
@@ -984,20 +1019,20 @@ function DrawingLayer({
       if (toggleRef.current === toggle) toggleRef.current = null;
     };
   }, [shortcut, setActive]);
-  _react.useEffect.call(void 0, () => {
-    _optionalChain([toggleRef, 'access', _33 => _33.current, 'optionalAccess', _34 => _34.sync, 'call', _35 => _35(active)]);
+  useEffect2(() => {
+    toggleRef.current?.sync(active);
   }, [active]);
-  const resetDraft = _react.useCallback.call(void 0, () => {
+  const resetDraft = useCallback(() => {
     draftRef.current = [];
     pointerIdRef.current = null;
     setDraft([]);
   }, []);
-  _react.useEffect.call(void 0, () => {
+  useEffect2(() => {
     if (active) return;
     resetDraft();
     setPendingPin(null);
   }, [active, resetDraft]);
-  _react.useEffect.call(void 0, () => {
+  useEffect2(() => {
     if (!active || typeof window === "undefined") return;
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -1010,8 +1045,8 @@ function DrawingLayer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, pendingPin, setActive]);
-  const anchorOptions = _react.useCallback.call(void 0, () => ({ route: _nullishCoalesce(route, () => ( defaultRoute())), t: now() }), [route, now]);
-  const completeStroke = _react.useCallback.call(void 0, 
+  const anchorOptions = useCallback(() => ({ route: route ?? defaultRoute(), t: now() }), [route, now]);
+  const completeStroke = useCallback(
     (points) => {
       const options = anchorOptions();
       onAnnotation({
@@ -1024,7 +1059,7 @@ function DrawingLayer({
     },
     [anchorOptions, createId, onAnnotation]
   );
-  const completePin = _react.useCallback.call(void 0, 
+  const completePin = useCallback(
     (comment) => {
       if (!pendingPin) return;
       const options = anchorOptions();
@@ -1052,16 +1087,17 @@ function DrawingLayer({
     if (typeof event.currentTarget.setPointerCapture === "function") {
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch (e) {
+      } catch {
       }
     }
     const point = pointFromEvent(event);
     draftRef.current = [point];
-    setDraft([point]);
+    if (tool !== "pin") setDraft([point]);
   };
   const onPointerMove = (event) => {
     if (pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
+    if (tool === "pin") return;
     const next = [...draftRef.current, pointFromEvent(event)];
     draftRef.current = next;
     setDraft(next);
@@ -1072,9 +1108,13 @@ function DrawingLayer({
     const points = [...draftRef.current, pointFromEvent(event)];
     resetDraft();
     const start = points[0];
+    if (tool === "pin") {
+      setPendingPin({ point: start, target: resolvePointTarget(start) });
+      return;
+    }
     const travelled = points.some((point) => distance(point, start) > TAP_DISTANCE);
     if (!travelled) {
-      if (pinOnTap) {
+      if (pinOnTap && tool !== "draw") {
         setPendingPin({ point: start, target: resolvePointTarget(start) });
       }
       return;
@@ -1087,15 +1127,15 @@ function DrawingLayer({
   };
   const pins = annotations.filter((annotation) => annotation.kind === "pin");
   const draftPath = draft.length > 0 ? strokePath(draft, false) : "";
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+  return /* @__PURE__ */ jsxs2(
     "div",
     {
       ...{ [OVERLAY_ATTRIBUTE]: "" },
       "data-riffrec-draw-active": active ? "" : void 0,
       style: { ...rootStyle, zIndex },
       children: [
-        active ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { "data-riffrec-draw-tint": "", "aria-hidden": "true", style: tintStyle }) : null,
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+        active ? /* @__PURE__ */ jsx2("div", { "data-riffrec-draw-tint": "", "aria-hidden": "true", style: tintStyle }) : null,
+        /* @__PURE__ */ jsxs2(
           "svg",
           {
             "data-riffrec-draw-surface": "",
@@ -1105,7 +1145,7 @@ function DrawingLayer({
             style: {
               ...surfaceStyle,
               pointerEvents: active ? "auto" : "none",
-              cursor: active ? "crosshair" : "default"
+              cursor: active ? tool === "pin" ? "cell" : "crosshair" : "default"
             },
             onPointerDown,
             onPointerMove,
@@ -1113,7 +1153,7 @@ function DrawingLayer({
             onPointerCancel,
             children: [
               annotations.map(
-                (annotation) => annotation.kind === "stroke" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+                (annotation) => annotation.kind === "stroke" ? /* @__PURE__ */ jsx2(
                   "path",
                   {
                     "data-riffrec-stroke": annotation.id,
@@ -1122,13 +1162,13 @@ function DrawingLayer({
                     fillOpacity: 0.9
                   },
                   annotation.id
-                ) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, Pin, { annotation, index: pins.indexOf(annotation) + 1 }, annotation.id)
+                ) : /* @__PURE__ */ jsx2(Pin, { annotation, index: pins.indexOf(annotation) + 1 }, annotation.id)
               ),
-              draftPath ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "path", { "data-riffrec-stroke-draft": "", d: draftPath, fill: strokeColor, fillOpacity: 0.9 }) : null
+              draftPath ? /* @__PURE__ */ jsx2("path", { "data-riffrec-stroke-draft": "", d: draftPath, fill: strokeColor, fillOpacity: 0.9 }) : null
             ]
           }
         ),
-        pendingPin ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        pendingPin ? /* @__PURE__ */ jsx2(
           PinComposer,
           {
             point: pendingPin.point,
@@ -1137,7 +1177,7 @@ function DrawingLayer({
             onCancel: () => setPendingPin(null)
           }
         ) : null,
-        showToggle ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        showToggle ? /* @__PURE__ */ jsx2(
           "button",
           {
             type: "button",
@@ -1164,11 +1204,11 @@ var CompositeRenderer = class {
     this.now = options.now;
     this.route = options.route;
     this.createId = options.createId;
-    this.draw = _nullishCoalesce(options.draw, () => ( createCanvasCompositeDrawer()));
-    this.onFrame = _nullishCoalesce(options.onFrame, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    this.draw = options.draw ?? createCanvasCompositeDrawer();
+    this.onFrame = options.onFrame ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
   }
   get pending() {
     return this.pendingCount;
@@ -1182,7 +1222,7 @@ var CompositeRenderer = class {
   render(annotation, base, frameId) {
     if (!base || this.disposed) return Promise.resolve(null);
     this.pendingCount += 1;
-    const id = _nullishCoalesce(frameId, () => ( this.createId()));
+    const id = frameId ?? this.createId();
     const t = this.now();
     const route = this.route();
     const run = this.queue.then(async () => {
@@ -1222,12 +1262,12 @@ function decodeJpeg(base64, doc) {
   });
 }
 function createCanvasCompositeDrawer(options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
-  const quality = _nullishCoalesce(options.quality, () => ( 0.7));
-  const viewport = _nullishCoalesce(options.viewport, () => ( (() => ({
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
+  const quality = options.quality ?? 0.7;
+  const viewport = options.viewport ?? (() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 0,
     height: typeof window !== "undefined" ? window.innerHeight : 0
-  }))));
+  }));
   return async ({ base, annotations }) => {
     if (!doc || typeof Path2D === "undefined") return null;
     const image = await decodeJpeg(base.jpeg_base64, doc);
@@ -1296,15 +1336,15 @@ var FrameBuffer = class {
     this.now = options.now;
     this.route = options.route;
     this.createId = options.createId;
-    this.capacity = _nullishCoalesce(options.capacity, () => ( FRAME_BUFFER_CAPACITY));
-    this.periodicMs = _nullishCoalesce(options.periodicMs, () => ( PERIODIC_FRAME_MS));
-    this.grabber = _nullishCoalesce(options.grabber, () => ( null));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.onFrame = _nullishCoalesce(options.onFrame, () => ( (() => {
-    })));
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    this.capacity = options.capacity ?? FRAME_BUFFER_CAPACITY;
+    this.periodicMs = options.periodicMs ?? PERIODIC_FRAME_MS;
+    this.grabber = options.grabber ?? null;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.onFrame = options.onFrame ?? (() => {
+    });
+    this.onError = options.onError ?? (() => {
+    });
   }
   /** True while a display source exists; false yields nothing from `capture`. */
   get hasSource() {
@@ -1380,13 +1420,13 @@ var FrameBuffer = class {
     return best;
   }
   latest() {
-    return _nullishCoalesce(this.frames[this.frames.length - 1], () => ( null));
+    return this.frames[this.frames.length - 1] ?? null;
   }
   all() {
     return [...this.frames];
   }
   get(id) {
-    return _nullishCoalesce(this.frames.find((frame) => frame.id === id), () => ( null));
+    return this.frames.find((frame) => frame.id === id) ?? null;
   }
   dispose() {
     this.disposed = true;
@@ -1405,10 +1445,10 @@ function dataUrlToBase64(dataUrl) {
   return base64.length > 0 ? base64 : null;
 }
 function createDisplayFrameGrabber(stream, options = {}) {
-  const doc = _nullishCoalesce(options.document, () => ( (typeof document !== "undefined" ? document : null)));
+  const doc = options.document ?? (typeof document !== "undefined" ? document : null);
   if (!doc) return async () => null;
-  const quality = _nullishCoalesce(options.quality, () => ( DEFAULT_FRAME_JPEG_QUALITY));
-  const maxWidth = _nullishCoalesce(options.maxWidth, () => ( DEFAULT_FRAME_MAX_WIDTH));
+  const quality = options.quality ?? DEFAULT_FRAME_JPEG_QUALITY;
+  const maxWidth = options.maxWidth ?? DEFAULT_FRAME_MAX_WIDTH;
   const video = doc.createElement("video");
   video.muted = true;
   video.playsInline = true;
@@ -1466,18 +1506,18 @@ var LiveEvidence = class {
     this.disposed = false;
     this.session = options.session;
     this.now = options.now;
-    const route = _nullishCoalesce(options.route, () => ( currentRoute));
-    this.recentEvents = _nullishCoalesce(options.recentEvents, () => ( (() => [])));
-    this.displayGrabber = _nullishCoalesce(options.displayGrabber, () => ( {}));
+    const route = options.route ?? currentRoute;
+    this.recentEvents = options.recentEvents ?? (() => []);
+    this.displayGrabber = options.displayGrabber ?? {};
     const timers = { setTimeout: options.setTimeout, clearTimeout: options.clearTimeout };
-    const onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
+    const onError = options.onError ?? (() => {
+    });
     this.frames = new FrameBuffer({
       now: this.now,
       route,
       createId: () => this.session.mintId("frame"),
       periodicMs: options.periodicMs,
-      grabber: _nullishCoalesce(options.grabber, () => ( null)),
+      grabber: options.grabber ?? null,
       onFrame: (frame) => this.session.addFrame(frame),
       onError,
       ...timers
@@ -1492,7 +1532,7 @@ var LiveEvidence = class {
     this.clips = new AudioClipRecorder({
       now: this.now,
       createId: () => this.session.mintId("clip"),
-      stream: _nullishCoalesce(options.micStream, () => ( null)),
+      stream: options.micStream ?? null,
       createRecorder: options.createRecorder,
       onClip: (clip) => {
         if (clip.blob) this.session.addClip(clip.id, clip.blob);
@@ -1507,7 +1547,7 @@ var LiveEvidence = class {
       ...timers
     });
     this.gestureTarget = options.gestureTarget === void 0 ? typeof document !== "undefined" ? document : null : options.gestureTarget;
-    _optionalChain([this, 'access', _36 => _36.gestureTarget, 'optionalAccess', _37 => _37.addEventListener, 'call', _38 => _38("pointerdown", this.onPointerDown, true)]);
+    this.gestureTarget?.addEventListener("pointerdown", this.onPointerDown, true);
     if (options.displayStream) this.setDisplayStream(options.displayStream);
   }
   get isPaused() {
@@ -1609,7 +1649,7 @@ var LiveEvidence = class {
       this.session.addFrame({ ...base, id: compositeId, kind: "composite" });
     }
     if (resolution.kind === "held") {
-      unitId = _nullishCoalesce(this.claimedBy.get(annotation.id), () => ( null));
+      unitId = this.claimedBy.get(annotation.id) ?? null;
       this.claimedBy.delete(annotation.id);
     }
     this.session.addAnnotation(unitId ? { ...referenced, unit_id: unitId } : referenced);
@@ -1625,9 +1665,9 @@ var LiveEvidence = class {
     this.attacher.unitExtracted((claimed) => {
       const claimedIds = claimed.map((annotation) => annotation.id);
       const compositeIds = claimed.map((annotation) => this.compositeIds.get(annotation.id)).filter((id) => typeof id === "string");
-      const firstAnchorT = _optionalChain([input, 'access', _39 => _39.anchors, 'access', _40 => _40[0], 'optionalAccess', _41 => _41.t]);
+      const firstAnchorT = input.anchors[0]?.t;
       const gestureFrame = firstAnchorT === void 0 ? this.frames.latest() : this.frames.nearest(firstAnchorT);
-      const span = _nullishCoalesce(_optionalChain([input, 'access', _42 => _42.evidence, 'optionalAccess', _43 => _43.transcript_span]), () => ( { t_start: _nullishCoalesce(firstAnchorT, () => ( this.now())), t_end: this.now() }));
+      const span = input.evidence?.transcript_span ?? { t_start: firstAnchorT ?? this.now(), t_end: this.now() };
       const clipId = this.clips.pendingClipId();
       const telemetry = this.telemetryWindow(span.t_start, span.t_end);
       unit = this.session.recordUnit({
@@ -1635,8 +1675,8 @@ var LiveEvidence = class {
         evidence: {
           ...input.evidence,
           transcript_span: span,
-          frame_ids: dedupe([..._nullishCoalesce(_optionalChain([input, 'access', _44 => _44.evidence, 'optionalAccess', _45 => _45.frame_ids]), () => ( [])), ...compositeIds, ...gestureFrame ? [gestureFrame.id] : []]),
-          annotation_ids: dedupe([..._nullishCoalesce(_optionalChain([input, 'access', _46 => _46.evidence, 'optionalAccess', _47 => _47.annotation_ids]), () => ( [])), ...claimedIds]),
+          frame_ids: dedupe([...input.evidence?.frame_ids ?? [], ...compositeIds, ...gestureFrame ? [gestureFrame.id] : []]),
+          annotation_ids: dedupe([...input.evidence?.annotation_ids ?? [], ...claimedIds]),
           ...telemetry ? { telemetry_window: telemetry } : {},
           ...clipId ? { audio_clip_id: clipId } : {}
         }
@@ -1651,7 +1691,7 @@ var LiveEvidence = class {
   }
   dispose() {
     this.disposed = true;
-    _optionalChain([this, 'access', _48 => _48.gestureTarget, 'optionalAccess', _49 => _49.removeEventListener, 'call', _50 => _50("pointerdown", this.onPointerDown, true)]);
+    this.gestureTarget?.removeEventListener("pointerdown", this.onPointerDown, true);
     this.frames.dispose();
     this.composites.dispose();
     this.clips.dispose();
@@ -1660,7 +1700,7 @@ var LiveEvidence = class {
   /** A held annotation whose utterance produced no unit: it becomes its own unit (R16). */
   openDrawingOnlyUnit(annotation) {
     if (this.disposed) return null;
-    const unitId = this.createDrawingOnlyUnit(annotation, _nullishCoalesce(this.compositeIds.get(annotation.id), () => ( null)));
+    const unitId = this.createDrawingOnlyUnit(annotation, this.compositeIds.get(annotation.id) ?? null);
     if (!this.session.attachAnnotation(annotation.id, unitId)) this.claimedBy.set(annotation.id, unitId);
     return unitId;
   }
@@ -1745,7 +1785,7 @@ function selectUnitFrames(frameIds, profile, frameKind) {
       return [...frameIds];
     case "one": {
       const composite = frameIds.find((id) => frameKind(id) === "composite");
-      const chosen = _nullishCoalesce(composite, () => ( frameIds[0]));
+      const chosen = composite ?? frameIds[0];
       return chosen ? [chosen] : [];
     }
     default: {
@@ -1776,7 +1816,7 @@ function routeRemoteAudio(context, stream) {
   const edges = /* @__PURE__ */ new Map();
   const link = (from, to) => {
     from.connect(to);
-    const set = _nullishCoalesce(edges.get(from), () => ( /* @__PURE__ */ new Set()));
+    const set = edges.get(from) ?? /* @__PURE__ */ new Set();
     set.add(to);
     edges.set(from, set);
   };
@@ -1800,11 +1840,11 @@ function routeRemoteAudio(context, stream) {
       edges.clear();
       try {
         source.disconnect();
-      } catch (e2) {
+      } catch {
       }
       try {
         gain.disconnect();
-      } catch (e3) {
+      } catch {
       }
     }
   };
@@ -1817,18 +1857,18 @@ function reaches(edges, from, to) {
     if (node === to) return true;
     if (seen.has(node)) continue;
     seen.add(node);
-    for (const next of _nullishCoalesce(edges.get(node), () => ( []))) stack.push(next);
+    for (const next of edges.get(node) ?? []) stack.push(next);
   }
   return false;
 }
 function createDefaultAudioContext() {
   if (typeof window === "undefined") return null;
   const scope = window;
-  const Ctor = _nullishCoalesce(scope.AudioContext, () => ( scope.webkitAudioContext));
+  const Ctor = scope.AudioContext ?? scope.webkitAudioContext;
   if (!Ctor) return null;
   try {
     return new Ctor();
-  } catch (e4) {
+  } catch {
     return null;
   }
 }
@@ -1841,7 +1881,7 @@ var SharedMicrophone = class {
     this.clones = /* @__PURE__ */ new Map();
     this.mutedState = false;
     this.stopped = false;
-    this.createStream = _nullishCoalesce(options.createStream, () => ( defaultCreateStream));
+    this.createStream = options.createStream ?? defaultCreateStream;
   }
   get muted() {
     return this.mutedState;
@@ -1862,7 +1902,7 @@ var SharedMicrophone = class {
     return this.createStream(tracks);
   }
   tracksFor(consumer) {
-    return [..._nullishCoalesce(this.clones.get(consumer), () => ( []))];
+    return [...this.clones.get(consumer) ?? []];
   }
   release(consumer) {
     const tracks = this.clones.get(consumer);
@@ -1898,13 +1938,13 @@ function readSessionConfig(session) {
 function reconcileSessionConfig(current) {
   const patch = {};
   const names = new Set(current.tools.map((tool) => tool.name).filter((name) => typeof name === "string"));
-  const endpointConfigured = [...names].some((name) => _chunk4XWUXLDEcjs.isLiveToolName.call(void 0, name));
-  const missing = _chunk4XWUXLDEcjs.LIVE_TOOLS.filter((tool) => !names.has(tool.name));
+  const endpointConfigured = [...names].some((name) => isLiveToolName(name));
+  const missing = LIVE_TOOLS.filter((tool) => !names.has(tool.name));
   if (missing.length > 0) patch.tools = [...current.tools, ...missing.map((tool) => ({ ...tool }))];
   if (!endpointConfigured) {
-    patch.instructions = _chunk4XWUXLDEcjs.DEFAULT_INTERVIEWER_INSTRUCTIONS;
-  } else if (!_chunk4XWUXLDEcjs.hasScreenContext.call(void 0, current.instructions)) {
-    patch.instructions = _chunk4XWUXLDEcjs.withScreenContext.call(void 0, _nullishCoalesce(current.instructions, () => ( "")));
+    patch.instructions = DEFAULT_INTERVIEWER_INSTRUCTIONS;
+  } else if (!hasScreenContext(current.instructions)) {
+    patch.instructions = withScreenContext(current.instructions ?? "");
   }
   return patch.tools || patch.instructions !== void 0 ? patch : null;
 }
@@ -1923,7 +1963,7 @@ function parseToolArgs(value) {
   if (typeof value !== "string") return asRecord(value);
   try {
     return asRecord(JSON.parse(value));
-  } catch (e5) {
+  } catch {
     return {};
   }
 }
@@ -1941,9 +1981,9 @@ function parseRealtimeEvent(raw, context) {
     case "conversation.item.input_audio_transcription.completed": {
       const text = asString(message.transcript).trim();
       const itemId = asString(message.item_id);
-      const span = itemId ? _optionalChain([context, 'access', _51 => _51.spans, 'optionalAccess', _52 => _52.get, 'call', _53 => _53(itemId)]) : void 0;
-      const tStart = _nullishCoalesce(_nullishCoalesce(_optionalChain([span, 'optionalAccess', _54 => _54.start]), () => ( context.utteranceStart)), () => ( context.t));
-      const tEnd = span ? _nullishCoalesce(span.end, () => ( Math.max(tStart, context.t))) : _nullishCoalesce(context.utteranceEnd, () => ( context.t));
+      const span = itemId ? context.spans?.get(itemId) : void 0;
+      const tStart = span?.start ?? context.utteranceStart ?? context.t;
+      const tEnd = span ? span.end ?? Math.max(tStart, context.t) : context.utteranceEnd ?? context.t;
       return {
         type: "transcript",
         transcript: {
@@ -1972,7 +2012,7 @@ function parseRealtimeEvent(raw, context) {
     case "response.function_call_arguments.done": {
       const name = asString(message.name);
       const callId = asString(message.call_id);
-      if (!_chunk4XWUXLDEcjs.isLiveToolName.call(void 0, name)) return { type: "error", message: `Unknown tool call: ${name || "(unnamed)"}` };
+      if (!isLiveToolName(name)) return { type: "error", message: `Unknown tool call: ${name || "(unnamed)"}` };
       return {
         type: "tool_call",
         call: { call_id: callId, name, arguments: parseToolArgs(message.arguments) }
@@ -2001,25 +2041,25 @@ var RealtimeClient = class {
     this.utteranceStart = null;
     this.utteranceEnd = null;
     this.spans = /* @__PURE__ */ new Map();
-    const deps = _nullishCoalesce(options.deps, () => ( {}));
-    this.fetchImpl = _nullishCoalesce(deps.fetchImpl, () => ( ((input, init) => fetch(input, init))));
-    this.createPeerConnection = _nullishCoalesce(deps.createPeerConnection, () => ( (() => new RTCPeerConnection())));
-    this.createAudioElement = _nullishCoalesce(deps.createAudioElement, () => ( (() => {
+    const deps = options.deps ?? {};
+    this.fetchImpl = deps.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.createPeerConnection = deps.createPeerConnection ?? (() => new RTCPeerConnection());
+    this.createAudioElement = deps.createAudioElement ?? (() => {
       const element = document.createElement("audio");
       element.autoplay = true;
       return element;
-    })));
-    this.baseUrl = _nullishCoalesce(deps.baseUrl, () => ( REALTIME_CALLS_URL));
+    });
+    this.baseUrl = deps.baseUrl ?? REALTIME_CALLS_URL;
     const builtAt = Date.now();
-    this.elapsed = _nullishCoalesce(deps.elapsed, () => ( (() => Date.now() - builtAt)));
-    this.schedule = _nullishCoalesce(deps.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(deps.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.textRole = _nullishCoalesce(deps.textRole, () => ( "system"));
-    this.onParseError = _nullishCoalesce(deps.onParseError, () => ( null));
+    this.elapsed = deps.elapsed ?? (() => Date.now() - builtAt);
+    this.schedule = deps.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = deps.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.textRole = deps.textRole ?? "system";
+    this.onParseError = deps.onParseError ?? null;
     this.muted = options.micStream.getAudioTracks().some((track) => !track.enabled);
   }
   get connected() {
-    return _optionalChain([this, 'access', _55 => _55.dataChannel, 'optionalAccess', _56 => _56.readyState]) === "open";
+    return this.dataChannel?.readyState === "open";
   }
   get isMuted() {
     return this.muted;
@@ -2037,14 +2077,14 @@ var RealtimeClient = class {
       pc.addTrack(track, micStream);
     }
     pc.ontrack = (event) => {
-      const stream = _nullishCoalesce(event.streams[0], () => ( new MediaStream([event.track])));
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
       const element = this.createAudioElement();
       this.audioElement = element;
       element.muted = true;
       element.srcObject = stream;
       void Promise.resolve(element.play()).catch(() => {
       });
-      _optionalChain([this, 'access', _57 => _57.options, 'access', _58 => _58.onRemoteTrack, 'optionalCall', _59 => _59(stream)]);
+      this.options.onRemoteTrack?.(stream);
     };
     const channel = pc.createDataChannel("oai-events");
     this.dataChannel = channel;
@@ -2109,7 +2149,7 @@ var RealtimeClient = class {
       const response = await this.fetchImpl(`${this.baseUrl}?model=${encodeURIComponent(this.options.model)}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.options.secret}`, "Content-Type": "application/sdp" },
-        body: _nullishCoalesce(offer.sdp, () => ( ""))
+        body: offer.sdp ?? ""
       });
       if (!response.ok) throw new Error(`Realtime SDP exchange failed: ${response.status}`);
       const answerSdp = await response.text();
@@ -2178,7 +2218,7 @@ var RealtimeClient = class {
     for (const track of this.options.micStream.getAudioTracks()) track.enabled = !muted;
     if (!this.pc) return;
     for (const sender of this.pc.getSenders()) {
-      if (_optionalChain([sender, 'access', _60 => _60.track, 'optionalAccess', _61 => _61.kind]) === "audio") sender.track.enabled = !muted;
+      if (sender.track?.kind === "audio") sender.track.enabled = !muted;
     }
   }
   close() {
@@ -2190,7 +2230,7 @@ var RealtimeClient = class {
     try {
       raw = JSON.parse(String(data));
     } catch (error) {
-      _optionalChain([this, 'access', _62 => _62.onParseError, 'optionalCall', _63 => _63(error, data)]);
+      this.onParseError?.(error, data);
       return;
     }
     const t = this.elapsed();
@@ -2222,10 +2262,10 @@ var RealtimeClient = class {
     try {
       const result = handlers.onEvent(event);
       if (result && typeof result.catch === "function") {
-        result.catch((error) => _optionalChain([this, 'access', _64 => _64.onParseError, 'optionalCall', _65 => _65(error, event)]));
+        result.catch((error) => this.onParseError?.(error, event));
       }
     } catch (error) {
-      _optionalChain([this, 'access', _66 => _66.onParseError, 'optionalCall', _67 => _67(error, event)]);
+      this.onParseError?.(error, event);
     }
   }
   rememberSpan(itemId, span) {
@@ -2259,7 +2299,7 @@ var RealtimeClient = class {
       channel.onclose = null;
       try {
         channel.close();
-      } catch (e6) {
+      } catch {
       }
     }
     const pc = this.pc;
@@ -2269,7 +2309,7 @@ var RealtimeClient = class {
       pc.onconnectionstatechange = null;
       try {
         pc.close();
-      } catch (e7) {
+      } catch {
       }
     }
     if (this.audioElement) {
@@ -2289,12 +2329,12 @@ function createRealtimeConnector(options) {
   let route = null;
   let client = null;
   const disposeRoute = () => {
-    _optionalChain([route, 'optionalAccess', _68 => _68.dispose, 'call', _69 => _69()]);
+    route?.dispose();
     route = null;
   };
   return {
     connect: (secret) => {
-      _optionalChain([client, 'optionalAccess', _70 => _70.close, 'call', _71 => _71()]);
+      client?.close();
       disposeRoute();
       const micStream = options.microphone.clone("realtime");
       client = new RealtimeClient({
@@ -2316,7 +2356,7 @@ function createRealtimeConnector(options) {
       return client;
     },
     dispose: () => {
-      _optionalChain([client, 'optionalAccess', _72 => _72.close, 'call', _73 => _73()]);
+      client?.close();
       client = null;
       disposeRoute();
       options.microphone.release("realtime");
@@ -2335,20 +2375,20 @@ async function readJson(response) {
   try {
     const body = await response.json();
     return isRecord2(body) ? body : null;
-  } catch (e8) {
+  } catch {
     return null;
   }
 }
 function retryAfterMs(body, response) {
-  const fromBody = _optionalChain([body, 'optionalAccess', _74 => _74.retry_after]);
+  const fromBody = body?.retry_after;
   if (typeof fromBody === "number" && Number.isFinite(fromBody) && fromBody >= 0) return fromBody * 1e3;
-  const header = _optionalChain([response, 'access', _75 => _75.headers, 'optionalAccess', _76 => _76.get, 'optionalCall', _77 => _77("Retry-After")]);
+  const header = response.headers?.get?.("Retry-After");
   const fromHeader = header ? Number(header) : NaN;
   if (Number.isFinite(fromHeader) && fromHeader >= 0) return fromHeader * 1e3;
   return MINT_DEFAULT_RETRY_AFTER_S * 1e3;
 }
 function refusalReason(status, body) {
-  const reason = _optionalChain([body, 'optionalAccess', _78 => _78.reason]);
+  const reason = body?.reason;
   switch (reason) {
     case "tls_required":
     case "openai_error":
@@ -2370,7 +2410,7 @@ function parseSecret(body) {
   return { client_secret, expires_at, model };
 }
 async function mint(options) {
-  const fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
+  const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   const request = { session_id: options.sessionId };
   let response;
   try {
@@ -2378,7 +2418,8 @@ async function mint(options) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${options.token}`,
-        [_chunk4XWUXLDEcjs.LIVE_SESSION_HEADER]: options.sessionId,
+        [LIVE_SESSION_HEADER]: options.sessionId,
+        ...options.openaiKey ? { [LIVE_OPENAI_KEY_HEADER]: options.openaiKey } : {},
         "Content-Type": "application/json"
       },
       body: JSON.stringify(request)
@@ -2395,7 +2436,7 @@ async function mint(options) {
   if (response.status === 429) {
     return { ok: false, retryable: true, kind: "throttled", status: 429, retryAfterMs: retryAfterMs(body, response) };
   }
-  const upstream = _optionalChain([body, 'optionalAccess', _79 => _79.upstream_status]);
+  const upstream = body?.upstream_status;
   return {
     ok: false,
     retryable: false,
@@ -2406,9 +2447,9 @@ async function mint(options) {
   };
 }
 async function mintWithRetry(options) {
-  const max = _nullishCoalesce(options.maxConsecutiveRetryable, () => ( MINT_MAX_CONSECUTIVE_THROTTLES));
-  const schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-  const shouldContinue = _nullishCoalesce(options.shouldContinue, () => ( (() => true)));
+  const max = options.maxConsecutiveRetryable ?? MINT_MAX_CONSECUTIVE_THROTTLES;
+  const schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+  const shouldContinue = options.shouldContinue ?? (() => true);
   let attempts = 0;
   let consecutive = 0;
   for (; ; ) {
@@ -2428,10 +2469,32 @@ async function mintWithRetry(options) {
     }
     consecutive += 1;
     if (consecutive >= max) return { ok: false, kind: "exhausted", reason: outcome.kind, attempts };
-    _optionalChain([options, 'access', _80 => _80.onRetry, 'optionalCall', _81 => _81(outcome, attempts)]);
+    options.onRetry?.(outcome, attempts);
     await new Promise((resolve) => {
       schedule(resolve, outcome.retryAfterMs);
     });
+  }
+}
+
+// src/live/realtime/openaiKey.ts
+var OPENAI_KEY_STORAGE_KEY = "riffrec:openai_key";
+function readStoredOpenAIKey() {
+  try {
+    return window.localStorage.getItem(OPENAI_KEY_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+function storeOpenAIKey(key) {
+  try {
+    window.localStorage.setItem(OPENAI_KEY_STORAGE_KEY, key);
+  } catch {
+  }
+}
+function clearStoredOpenAIKey() {
+  try {
+    window.localStorage.removeItem(OPENAI_KEY_STORAGE_KEY);
+  } catch {
   }
 }
 
@@ -2626,7 +2689,7 @@ var CHANGE_VERBS = /* @__PURE__ */ new Set([
   "wrap"
 ]);
 function words(text) {
-  return (_nullishCoalesce(text.toLowerCase().match(/[\p{L}\p{N}']+/gu), () => ( []))).filter((word) => word.length > 0);
+  return (text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).filter((word) => word.length > 0);
 }
 function isNoiseTranscript(text) {
   const tokens = words(text);
@@ -2635,8 +2698,8 @@ function isNoiseTranscript(text) {
   return !tokens.some((token) => CHANGE_VERBS.has(token));
 }
 function buildReseedText(input) {
-  const windowMs = _nullishCoalesce(input.windowMs, () => ( RESEED_WINDOW_MS));
-  const maxChars = _nullishCoalesce(input.maxChars, () => ( RESEED_MAX_CHARS));
+  const windowMs = input.windowMs ?? RESEED_WINDOW_MS;
+  const maxChars = input.maxChars ?? RESEED_MAX_CHARS;
   const header = "[RECONNECT] Your connection was replaced mid-session. Do not greet or recap aloud. Continue listening. Context so far:";
   const unitLines = input.units.filter((unit) => unit.status !== "withdrawn").map((unit) => `- ${unit.id} (${unit.status}): ${unit.statement}`);
   const transcriptLines = input.transcript.filter((entry) => entry.final && entry.text.trim().length > 0 && entry.t_end >= input.t - windowMs).map((entry) => `${entry.role}: ${entry.text.trim()}`);
@@ -2716,22 +2779,22 @@ var Interviewer = class {
     this.unsubscribe = [];
     this.session = options.session;
     this.connectTransport = options.connect;
-    this.microphone = _nullishCoalesce(options.microphone, () => ( null));
-    this.evidence = _nullishCoalesce(options.evidence, () => ( null));
+    this.microphone = options.microphone ?? null;
+    this.evidence = options.evidence ?? null;
     this.fetchImpl = options.fetch;
-    this.now = _nullishCoalesce(options.now, () => ( (() => Date.now())));
-    this.schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.questionSilenceMs = _nullishCoalesce(options.questionSilenceMs, () => ( QUESTION_SILENCE_MS));
-    this.reseedMaxChars = _nullishCoalesce(options.reseedMaxChars, () => ( RESEED_MAX_CHARS));
-    this.reseedWindowMs = _nullishCoalesce(options.reseedWindowMs, () => ( RESEED_WINDOW_MS));
-    this.anchorRecencyMs = _nullishCoalesce(options.anchorRecencyMs, () => ( ANCHOR_RECENCY_MS));
-    this.screenFrames = _nullishCoalesce(options.screenFrames, () => ( true));
-    this.proactiveFrameMinIntervalMs = _nullishCoalesce(options.proactiveFrameMinIntervalMs, () => ( PROACTIVE_FRAME_MIN_INTERVAL_MS));
+    this.now = options.now ?? (() => Date.now());
+    this.schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.questionSilenceMs = options.questionSilenceMs ?? QUESTION_SILENCE_MS;
+    this.reseedMaxChars = options.reseedMaxChars ?? RESEED_MAX_CHARS;
+    this.reseedWindowMs = options.reseedWindowMs ?? RESEED_WINDOW_MS;
+    this.anchorRecencyMs = options.anchorRecencyMs ?? ANCHOR_RECENCY_MS;
+    this.screenFrames = options.screenFrames ?? true;
+    this.proactiveFrameMinIntervalMs = options.proactiveFrameMinIntervalMs ?? PROACTIVE_FRAME_MIN_INTERVAL_MS;
     this.resolveAnchorOverride = options.resolveAnchor;
-    this.onError = _nullishCoalesce(options.onError, () => ( (() => {
-    })));
-    this.onStatus = _nullishCoalesce(options.onStatus, () => ( null));
+    this.onError = options.onError ?? (() => {
+    });
+    this.onStatus = options.onStatus ?? null;
     this.silenceAnchor = this.now();
     this.unsubscribe.push(
       this.session.on("ask", ({ question }) => this.enqueueQuestion(question)),
@@ -2769,7 +2832,7 @@ var Interviewer = class {
         this.onError(error);
       }
     }
-    _optionalChain([this, 'access', _82 => _82.microphone, 'optionalAccess', _83 => _83.release, 'call', _84 => _84("realtime")]);
+    this.microphone?.release("realtime");
     this.emitStatus();
   }
   get status() {
@@ -2778,8 +2841,8 @@ var Interviewer = class {
       connecting: this.connecting,
       responseActive: this.responseActive,
       rifferSpeaking: this.rifferSpeaking,
-      queuedQuestions: this.queue.map((entry) => _nullishCoalesce(this.session.questionFor(entry.unit_id), () => ( toUnitQuestion(entry)))),
-      voicing: this.voicing ? _nullishCoalesce(this.session.questionFor(this.voicing.unit_id), () => ( toUnitQuestion(this.voicing))) : null,
+      queuedQuestions: this.queue.map((entry) => this.session.questionFor(entry.unit_id) ?? toUnitQuestion(entry)),
+      voicing: this.voicing ? this.session.questionFor(this.voicing.unit_id) ?? toUnitQuestion(this.voicing) : null,
       unavailable: this.unavailable,
       mintAttempts: this.mintAttempts,
       connections: this.connections,
@@ -2792,7 +2855,7 @@ var Interviewer = class {
   /** The mute hook: flips every microphone clone, the Realtime sender, and the session's mic state together (KTD21). */
   setMuted(muted) {
     if (this.session.isMuted === muted) return;
-    _optionalChain([this, 'access', _85 => _85.microphone, 'optionalAccess', _86 => _86.setMuted, 'call', _87 => _87(muted)]);
+    this.microphone?.setMuted(muted);
     if (this.transport) {
       try {
         this.transport.setMuted(muted);
@@ -2825,7 +2888,7 @@ var Interviewer = class {
     const now = this.elapsed();
     const last = this.lastAnnouncedClick;
     const repeat = last !== null && last.selector === anchor.selector && now - last.t <= CLICK_ANNOUNCE_DEDUPE_MS;
-    const entry = this.rememberAnchor(anchor, description, _nullishCoalesce(anchorId, () => ( (repeat ? last.id : void 0))));
+    const entry = this.rememberAnchor(anchor, description, anchorId ?? (repeat ? last.id : void 0));
     this.lastAnnouncedClick = { selector: anchor.selector, t: now, id: entry.id };
     if (!repeat) {
       this.announce(`The riffer clicked ${description} (anchor id: ${entry.id}).`);
@@ -2852,7 +2915,7 @@ var Interviewer = class {
    * in flight, so a click burst or a long sentence costs one image.
    */
   async attachFrame(trigger) {
-    if (!this.screenFrames || !_optionalChain([this, 'access', _88 => _88.evidence, 'optionalAccess', _89 => _89.lookAtScreen]) || this.stopped || !this.transport) return;
+    if (!this.screenFrames || !this.evidence?.lookAtScreen || this.stopped || !this.transport) return;
     if (this.frameInFlight || this.now() - this.lastFrameAt < this.proactiveFrameMinIntervalMs) return;
     this.frameInFlight = true;
     try {
@@ -2904,7 +2967,7 @@ var Interviewer = class {
     }
     this.lastFrameAt = this.now();
     this.framesShown += 1;
-    _optionalChain([this, 'access', _90 => _90.evidence, 'optionalAccess', _91 => _91.frameShown, 'optionalCall', _92 => _92(item.frameId)]);
+    this.evidence?.frameShown?.(item.frameId);
     return true;
   }
   // ---------------------------------------------------------------------
@@ -2916,7 +2979,7 @@ var Interviewer = class {
     const token = this.session.pageToken;
     if (!endpoint || !token) {
       this.unavailable = { kind: "no_endpoint" };
-      this.session.voiceUnavailable();
+      this.session.voiceUnavailable(this.unavailable);
       this.emitStatus();
       return;
     }
@@ -2952,7 +3015,7 @@ var Interviewer = class {
           this.onError(error);
           if (attempt === CONNECT_MAX_ATTEMPTS) {
             this.unavailable = { kind: "connect_failed", message: error instanceof Error ? error.message : String(error) };
-            this.session.voiceUnavailable();
+            this.session.voiceUnavailable(this.unavailable);
             return;
           }
         }
@@ -2967,6 +3030,7 @@ var Interviewer = class {
       endpoint: this.session.endpoint,
       token: this.session.pageToken,
       sessionId: this.session.id,
+      openaiKey: readStoredOpenAIKey(),
       fetch: this.fetchImpl,
       setTimeout: this.schedule,
       clearTimeout: this.cancel,
@@ -2996,7 +3060,7 @@ var Interviewer = class {
         return exhaustive;
       }
     }
-    this.session.voiceUnavailable();
+    this.session.voiceUnavailable(this.unavailable);
   }
   becomeConnected(transport, reconnect) {
     this.transport = transport;
@@ -3068,13 +3132,13 @@ var Interviewer = class {
         this.clearFlushTimer();
         if (this.voicing) this.voicingInterrupted = true;
         this.session.speechStarted();
-        _optionalChain([this, 'access', _93 => _93.evidence, 'optionalAccess', _94 => _94.speechStarted, 'optionalCall', _95 => _95()]);
+        this.evidence?.speechStarted?.();
         break;
       case "speech_stopped":
         this.rifferSpeaking = false;
         this.silenceAnchor = this.now();
         this.session.speechStopped();
-        _optionalChain([this, 'access', _96 => _96.evidence, 'optionalAccess', _97 => _97.speechStopped, 'optionalCall', _98 => _98()]);
+        this.evidence?.speechStopped?.();
         this.scheduleFlush();
         break;
       case "transcript":
@@ -3197,7 +3261,7 @@ var Interviewer = class {
     let look = null;
     if (this.screenFrames) {
       try {
-        look = await _asyncNullishCoalesce(await _optionalChain([this, 'access', _99 => _99.evidence, 'optionalAccess', _100 => _100.lookAtScreen, 'optionalCall', _101 => _101()]), async () => ( null));
+        look = await this.evidence?.lookAtScreen?.() ?? null;
       } catch (error) {
         this.onError(error);
       }
@@ -3265,7 +3329,7 @@ var Interviewer = class {
       anchors,
       ...span ? { evidence: { transcript_span: span } } : {}
     };
-    const unit = _optionalChain([this, 'access', _102 => _102.evidence, 'optionalAccess', _103 => _103.recordUnit]) ? this.evidence.recordUnit(input) : this.session.recordUnit(input);
+    const unit = this.evidence?.recordUnit ? this.evidence.recordUnit(input) : this.session.recordUnit(input);
     return {
       ok: true,
       unit_id: unit.id,
@@ -3321,7 +3385,7 @@ var Interviewer = class {
   // Anchors
   // ---------------------------------------------------------------------
   rememberAnchor(anchor, description, anchorId) {
-    const id = _nullishCoalesce(anchorId, () => ( `anchor_${String(this.nextAnchorId++).padStart(4, "0")}`));
+    const id = anchorId ?? `anchor_${String(this.nextAnchorId++).padStart(4, "0")}`;
     const entry = { id, anchor, description, t: this.elapsed() };
     const index = this.announced.findIndex((existing) => existing.id === id);
     if (index === -1) this.announced.push(entry);
@@ -3359,7 +3423,7 @@ var Interviewer = class {
   enqueueQuestion(question) {
     if (question.answered) return;
     if (this.queue.some((entry) => entry.unit_id === question.unit_id)) return;
-    if (_optionalChain([this, 'access', _104 => _104.voicing, 'optionalAccess', _105 => _105.unit_id]) === question.unit_id) return;
+    if (this.voicing?.unit_id === question.unit_id) return;
     this.queue.push({ unit_id: question.unit_id, question: question.question, requeued: 0 });
     this.scheduleFlush();
     this.emitStatus();
@@ -3462,7 +3526,7 @@ var Interviewer = class {
     return Math.max(0, this.now() - this.session.startedAt);
   }
   emitStatus() {
-    _optionalChain([this, 'access', _106 => _106.onStatus, 'optionalCall', _107 => _107(this.status)]);
+    this.onStatus?.(this.status);
   }
 };
 function toUnitQuestion(entry) {
@@ -3482,7 +3546,7 @@ function frameKey(sessionId, frameId) {
 function requestToPromise2(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("IndexedDB request failed."))));
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
   });
 }
 function openFrameDb() {
@@ -3495,7 +3559,7 @@ function openFrameDb() {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(_nullishCoalesce(request.error, () => ( new Error("Failed to open riffrec live frame store."))));
+    request.onerror = () => reject(request.error ?? new Error("Failed to open riffrec live frame store."));
   });
 }
 var IndexedDbFrameStore = class {
@@ -3538,7 +3602,7 @@ var MemoryFrameStore = class {
     this.entries.set(frameKey(sessionId, frameId), jpegBase64);
   }
   async get(sessionId, frameId) {
-    return _nullishCoalesce(this.entries.get(frameKey(sessionId, frameId)), () => ( null));
+    return this.entries.get(frameKey(sessionId, frameId)) ?? null;
   }
   async delete(sessionId, frameId) {
     this.entries.delete(frameKey(sessionId, frameId));
@@ -3564,7 +3628,7 @@ function tombstoneFrame(envelope, reason) {
   return { ...envelope, payload };
 }
 function fillerEnvelope(sessionId, seq, t) {
-  return { schema_version: _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION, session_id: sessionId, seq, t, type: "stream_state", payload: { state: "buffering" } };
+  return { schema_version: LIVE_SCHEMA_VERSION, session_id: sessionId, seq, t, type: "stream_state", payload: { state: "buffering" } };
 }
 function isPlaceholder(envelope) {
   if (isFrameEnvelope(envelope)) return envelope.payload.dropped !== void 0;
@@ -3591,10 +3655,10 @@ var UnsentQueue = class _UnsentQueue {
     this.pendingPuts = /* @__PURE__ */ new Set();
     /** Envelopes replaced by a filler or tombstone since construction. */
     this.evictions = 0;
-    this.onStoreError = _nullishCoalesce(options.onStoreError, () => ( (() => {
-    })));
-    this.onStoreSettled = _nullishCoalesce(options.onStoreSettled, () => ( (() => {
-    })));
+    this.onStoreError = options.onStoreError ?? (() => {
+    });
+    this.onStoreSettled = options.onStoreSettled ?? (() => {
+    });
   }
   /**
    * Rebuilds the queue from `sessionStorage`. `entries` is null when the last
@@ -3605,12 +3669,12 @@ var UnsentQueue = class _UnsentQueue {
   static fromPersisted(sessionId, entries, range, frameStore, options) {
     const queue = new _UnsentQueue(sessionId, frameStore, options);
     const bySeq = /* @__PURE__ */ new Map();
-    for (const entry of _nullishCoalesce(entries, () => ( []))) {
+    for (const entry of entries ?? []) {
       if (entry.seq <= range.ackedSeq || entry.seq >= range.nextSeq) continue;
       bySeq.set(entry.seq, entry);
     }
     for (let seq = range.ackedSeq + 1; seq < range.nextSeq; seq += 1) {
-      const entry = _nullishCoalesce(bySeq.get(seq), () => ( fillerEnvelope(sessionId, seq, range.t)));
+      const entry = bySeq.get(seq) ?? fillerEnvelope(sessionId, seq, range.t);
       queue.entries.push(entry);
       if (!isFrameEnvelope(entry) || entry.payload.dropped) continue;
       if (entry.payload.jpeg_base64 === "") {
@@ -3629,7 +3693,7 @@ var UnsentQueue = class _UnsentQueue {
   }
   /** Lowest queued `seq`, or null when empty. */
   get headSeq() {
-    return _nullishCoalesce(_optionalChain([this, 'access', _108 => _108.entries, 'access', _109 => _109[0], 'optionalAccess', _110 => _110.seq]), () => ( null));
+    return this.entries[0]?.seq ?? null;
   }
   all() {
     return [...this.entries];
@@ -3694,7 +3758,7 @@ var UnsentQueue = class _UnsentQueue {
     for (const entry of this.entries) {
       if (isFrameEnvelope(entry) || envelopes.length >= limit) break;
       const size = byteLength(JSON.stringify(entry)) + 1;
-      if (envelopes.length > 0 && bytes + size > _chunk4XWUXLDEcjs.LIVE_EVENTS_BODY_MAX_BYTES) break;
+      if (envelopes.length > 0 && bytes + size > LIVE_EVENTS_BODY_MAX_BYTES) break;
       envelopes.push(entry);
       bytes += size;
     }
@@ -3736,7 +3800,7 @@ var UnsentQueue = class _UnsentQueue {
     const entry = this.entries.find((candidate) => candidate.seq === seq);
     if (!entry) return null;
     if (isFrameEnvelope(entry)) return this.dropFrame(seq, "oversize");
-    const replacement = _nullishCoalesce(shrinkEnvelope(entry), () => ( fillerEnvelope(this.sessionId, seq, t)));
+    const replacement = shrinkEnvelope(entry) ?? fillerEnvelope(this.sessionId, seq, t);
     this.replace(seq, replacement);
     this.evictions += 1;
     return replacement;
@@ -3759,7 +3823,7 @@ var UnsentQueue = class _UnsentQueue {
       return filler;
     }
     if (isPlaceholder(entry)) return null;
-    const replacement = _nullishCoalesce(shrinkEnvelope(entry), () => ( fillerEnvelope(this.sessionId, seq, t)));
+    const replacement = shrinkEnvelope(entry) ?? fillerEnvelope(this.sessionId, seq, t);
     this.replace(seq, replacement);
     this.evictions += 1;
     return replacement;
@@ -3815,7 +3879,7 @@ function isQuotaExceededError(error) {
   return candidate.name === "QuotaExceededError" || candidate.name === "NS_ERROR_DOM_QUOTA_REACHED" || candidate.code === 22 || candidate.code === 1014;
 }
 function persistWithQuotaGuard(storage, key, queue, build, options) {
-  const fraction = _nullishCoalesce(options.evictFraction, () => ( 0.25));
+  const fraction = options.evictFraction ?? 0.25;
   let evicted = false;
   for (; ; ) {
     try {
@@ -3823,7 +3887,7 @@ function persistWithQuotaGuard(storage, key, queue, build, options) {
       return evicted ? "stored_after_eviction" : "stored";
     } catch (error) {
       if (!isQuotaExceededError(error)) return "failed";
-      const evictable = _nullishCoalesce(_optionalChain([queue, 'optionalAccess', _111 => _111.evictableCount, 'call', _112 => _112()]), () => ( 0));
+      const evictable = queue?.evictableCount() ?? 0;
       if (queue && evictable > 0) {
         queue.evictOldest(Math.max(1, Math.ceil(evictable * fraction)), options.t);
         evicted = true;
@@ -3841,7 +3905,7 @@ function persistWithQuotaGuard(storage, key, queue, build, options) {
   try {
     storage.setItem(key, build("minimal", null));
     return "stored_minimal";
-  } catch (e9) {
+  } catch {
     return "failed";
   }
 }
@@ -3856,10 +3920,10 @@ var CheckpointEmitter = class {
     this.speaking = false;
     this.pendingSend = null;
     this.disposed = false;
-    this.silenceMs = _nullishCoalesce(options.silenceMs, () => ( SILENCE_CHECKPOINT_MS));
-    this.sendWaitMs = _nullishCoalesce(options.sendWaitMs, () => ( SEND_TURN_WAIT_MS));
-    this.schedule = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.cancel = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
+    this.silenceMs = options.silenceMs ?? SILENCE_CHECKPOINT_MS;
+    this.sendWaitMs = options.sendWaitMs ?? SEND_TURN_WAIT_MS;
+    this.schedule = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.cancel = options.clearTimeout ?? ((handle) => clearTimeout(handle));
   }
   get isSpeaking() {
     return this.speaking;
@@ -3977,7 +4041,7 @@ async function readJson2(response) {
   try {
     const value = await response.json();
     return isRecord4(value) ? value : null;
-  } catch (e10) {
+  } catch {
     return null;
   }
 }
@@ -3998,7 +4062,7 @@ function parseServerEventBlock(block) {
   let data;
   try {
     data = dataLines.length > 0 ? JSON.parse(dataLines.join("\n")) : {};
-  } catch (e11) {
+  } catch {
     return null;
   }
   if (!isRecord4(data)) return null;
@@ -4021,13 +4085,13 @@ var StreamClient = class {
     this.streamRetryTimer = null;
     this.streamFailures = 0;
     this.closed = false;
-    this.fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
-    this.schedule = _nullishCoalesce(options.schedule, () => ( defaultSchedule));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.failureThreshold = _nullishCoalesce(options.failureThreshold, () => ( DEFAULT_FAILURE_THRESHOLD));
-    this.backoffMs = _nullishCoalesce(options.backoffMs, () => ( DEFAULT_BACKOFF_MS));
-    this.postTimeoutMs = _nullishCoalesce(options.postTimeoutMs, () => ( DEFAULT_POST_TIMEOUT_MS));
+    this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
+    this.schedule = options.schedule ?? defaultSchedule;
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.failureThreshold = options.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
+    this.backoffMs = options.backoffMs ?? DEFAULT_BACKOFF_MS;
+    this.postTimeoutMs = options.postTimeoutMs ?? DEFAULT_POST_TIMEOUT_MS;
   }
   get queue() {
     return this.options.queue;
@@ -4038,7 +4102,7 @@ var StreamClient = class {
   headers(extra = {}) {
     return {
       Authorization: `Bearer ${this.options.token}`,
-      [_chunk4XWUXLDEcjs.LIVE_SESSION_HEADER]: this.options.sessionId,
+      [LIVE_SESSION_HEADER]: this.options.sessionId,
       ...extra
     };
   }
@@ -4052,7 +4116,7 @@ var StreamClient = class {
   enqueue(envelope) {
     if (this.closed) return;
     this.queue.enqueue(envelope);
-    _optionalChain([this, 'access', _113 => _113.options, 'access', _114 => _114.onQueueChange, 'optionalCall', _115 => _115()]);
+    this.options.onQueueChange?.();
     this.scheduleFlush();
   }
   /** Forces a flush attempt now (used by tests and by `final`). */
@@ -4067,7 +4131,7 @@ var StreamClient = class {
   sendUnloading(envelope) {
     if (this.closed) return;
     this.queue.enqueue(envelope);
-    _optionalChain([this, 'access', _116 => _116.options, 'access', _117 => _117.onQueueChange, 'optionalCall', _118 => _118()]);
+    this.options.onQueueChange?.();
     try {
       const result = this.fetchImpl(`${this.options.endpoint}/events`, {
         method: "POST",
@@ -4081,7 +4145,7 @@ var StreamClient = class {
         if (body && typeof body.acked_seq === "number") this.applyAck(body.acked_seq);
       }).catch(() => {
       });
-    } catch (e12) {
+    } catch {
     }
   }
   close() {
@@ -4091,7 +4155,7 @@ var StreamClient = class {
     if (this.streamRetryTimer !== null) this.clearTimer(this.streamRetryTimer);
     this.retryTimer = null;
     this.streamRetryTimer = null;
-    _optionalChain([this, 'access', _119 => _119.streamAbort, 'optionalAccess', _120 => _120.abort, 'call', _121 => _121()]);
+    this.streamAbort?.abort();
     this.streamAbort = null;
     if (!this.isTerminal) this.setState("closed");
   }
@@ -4128,7 +4192,7 @@ var StreamClient = class {
     let timedOut = false;
     const timer = this.setTimer(() => {
       timedOut = true;
-      _optionalChain([abort, 'optionalAccess', _122 => _122.abort, 'call', _123 => _123()]);
+      abort?.abort();
     }, this.postTimeoutMs);
     let response;
     try {
@@ -4157,21 +4221,21 @@ var StreamClient = class {
       case 413: {
         if (frame) {
           const dropped = this.queue.dropFrame(envelopes[0].seq, "oversize");
-          if (dropped) _optionalChain([this, 'access', _124 => _124.options, 'access', _125 => _125.onFrameDropped, 'optionalCall', _126 => _126(dropped)]);
-          _optionalChain([this, 'access', _127 => _127.options, 'access', _128 => _128.onQueueChange, 'optionalCall', _129 => _129()]);
+          if (dropped) this.options.onFrameDropped?.(dropped);
+          this.options.onQueueChange?.();
           return "continue";
         }
         if (envelopes.length > 1) {
           this.batchLimit = Math.max(1, Math.floor(envelopes.length / 2));
           return "continue";
         }
-        const replaced = this.queue.shrinkOrFill(envelopes[0].seq, _nullishCoalesce(_optionalChain([this, 'access', _130 => _130.options, 'access', _131 => _131.elapsed, 'optionalCall', _132 => _132()]), () => ( 0)));
-        _optionalChain([this, 'access', _133 => _133.options, 'access', _134 => _134.onError, 'optionalCall', _135 => _135(
+        const replaced = this.queue.shrinkOrFill(envelopes[0].seq, this.options.elapsed?.() ?? 0);
+        this.options.onError?.(
           new Error(
-            `riffrec live: ${envelopes[0].type} envelope seq ${envelopes[0].seq} exceeded ${String(_optionalChain([body, 'optionalAccess', _136 => _136.max_bytes]))} bytes; ` + (replaced && replaced.type === envelopes[0].type ? "retrying without its unbounded evidence" : "replaced by a filler")
+            `riffrec live: ${envelopes[0].type} envelope seq ${envelopes[0].seq} exceeded ${String(body?.max_bytes)} bytes; ` + (replaced && replaced.type === envelopes[0].type ? "retrying without its unbounded evidence" : "replaced by a filler")
           )
-        )]);
-        _optionalChain([this, 'access', _137 => _137.options, 'access', _138 => _138.onQueueChange, 'optionalCall', _139 => _139()]);
+        );
+        this.options.onQueueChange?.();
         return "continue";
       }
       case 409: {
@@ -4199,15 +4263,15 @@ var StreamClient = class {
           this.recordFailure(new Error(`riffrec live: POST /events returned 400${reason ? ` (${reason})` : ""}`));
           return "stop";
         }
-        const replaced = this.queue.replaceRejected(seq, _nullishCoalesce(_optionalChain([this, 'access', _140 => _140.options, 'access', _141 => _141.elapsed, 'optionalCall', _142 => _142()]), () => ( 0)));
+        const replaced = this.queue.replaceRejected(seq, this.options.elapsed?.() ?? 0);
         if (!replaced) {
-          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting seq ${seq} as ${_nullishCoalesce(reason, () => ( "invalid"))}`));
+          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting seq ${seq} as ${reason ?? "invalid"}`));
           return "stop";
         }
-        _optionalChain([this, 'access', _143 => _143.options, 'access', _144 => _144.onError, 'optionalCall', _145 => _145(
-          new Error(`riffrec live: the endpoint rejected seq ${seq} as ${_nullishCoalesce(reason, () => ( "invalid"))}; replaced with a placeholder so the stream keeps moving`)
-        )]);
-        _optionalChain([this, 'access', _146 => _146.options, 'access', _147 => _147.onQueueChange, 'optionalCall', _148 => _148()]);
+        this.options.onError?.(
+          new Error(`riffrec live: the endpoint rejected seq ${seq} as ${reason ?? "invalid"}; replaced with a placeholder so the stream keeps moving`)
+        );
+        this.options.onQueueChange?.();
         return "continue";
       }
       default:
@@ -4219,16 +4283,16 @@ var StreamClient = class {
     if (ackedSeq <= this.ackedSeq) return;
     this.ackedSeq = ackedSeq;
     this.queue.ackThrough(ackedSeq);
-    _optionalChain([this, 'access', _149 => _149.options, 'access', _150 => _150.onQueueChange, 'optionalCall', _151 => _151()]);
-    _optionalChain([this, 'access', _152 => _152.options, 'access', _153 => _153.onAck, 'optionalCall', _154 => _154(ackedSeq)]);
+    this.options.onQueueChange?.();
+    this.options.onAck?.(ackedSeq);
   }
   recordFailure(error) {
     this.consecutiveFailures += 1;
-    if (error) _optionalChain([this, 'access', _155 => _155.options, 'access', _156 => _156.onError, 'optionalCall', _157 => _157(error)]);
+    if (error) this.options.onError?.(error);
     if (this.consecutiveFailures >= this.failureThreshold && this.state === "streaming") {
       this.setState("buffering");
     }
-    const delay = _nullishCoalesce(this.backoffMs[Math.min(this.consecutiveFailures - 1, this.backoffMs.length - 1)], () => ( 1e3));
+    const delay = this.backoffMs[Math.min(this.consecutiveFailures - 1, this.backoffMs.length - 1)] ?? 1e3;
     if (this.retryTimer !== null) this.clearTimer(this.retryTimer);
     this.retryTimer = this.setTimer(() => {
       this.retryTimer = null;
@@ -4331,7 +4395,7 @@ var StreamClient = class {
         this.applyAck(event.data.acked_seq);
         break;
       case "session_ended":
-        _optionalChain([this, 'access', _158 => _158.options, 'access', _159 => _159.onServerEvent, 'optionalCall', _160 => _160(event)]);
+        this.options.onServerEvent?.(event);
         this.markEnded(event.data.reason);
         return;
       case "unit_status":
@@ -4343,13 +4407,13 @@ var StreamClient = class {
         return exhaustive;
       }
     }
-    _optionalChain([this, 'access', _161 => _161.options, 'access', _162 => _162.onServerEvent, 'optionalCall', _163 => _163(event)]);
+    this.options.onServerEvent?.(event);
   }
   scheduleStreamRetry(error) {
     if (this.closed || this.isTerminal) return;
-    if (error) _optionalChain([this, 'access', _164 => _164.options, 'access', _165 => _165.onError, 'optionalCall', _166 => _166(error)]);
+    if (error) this.options.onError?.(error);
     this.streamFailures += 1;
-    const delay = _nullishCoalesce(this.backoffMs[Math.min(this.streamFailures - 1, this.backoffMs.length - 1)], () => ( 1e3));
+    const delay = this.backoffMs[Math.min(this.streamFailures - 1, this.backoffMs.length - 1)] ?? 1e3;
     if (this.streamRetryTimer !== null) this.clearTimer(this.streamRetryTimer);
     this.streamRetryTimer = this.setTimer(() => {
       this.streamRetryTimer = null;
@@ -4359,15 +4423,15 @@ var StreamClient = class {
   markEnded(reason) {
     if (this.state === "ended") return;
     this.setState("ended");
-    _optionalChain([this, 'access', _167 => _167.options, 'access', _168 => _168.onEnded, 'optionalCall', _169 => _169(reason)]);
+    this.options.onEnded?.(reason);
     this.close();
   }
   setState(state, detail = {}) {
     if (this.state === state) return;
     this.state = state;
-    _optionalChain([this, 'access', _170 => _170.options, 'access', _171 => _171.onStateChange, 'optionalCall', _172 => _172(state, detail)]);
+    this.options.onStateChange?.(state, detail);
     if (this.isTerminal && state !== "closed") {
-      _optionalChain([this, 'access', _173 => _173.streamAbort, 'optionalAccess', _174 => _174.abort, 'call', _175 => _175()]);
+      this.streamAbort?.abort();
       this.streamAbort = null;
     }
   }
@@ -4417,7 +4481,7 @@ var UnitStore = class _UnitStore {
     return unit;
   }
   get(id) {
-    return _nullishCoalesce(this.units.get(id), () => ( null));
+    return this.units.get(id) ?? null;
   }
   all() {
     return this.order.map((id) => this.units.get(id)).filter(Boolean);
@@ -4443,13 +4507,13 @@ var UnitStore = class _UnitStore {
     const unit = this.units.get(id);
     if (!unit) return { ok: false, reason: "unknown_unit", unit: null };
     if (unit.status === "withdrawn") return { ok: false, reason: "withdrawn", unit };
-    const wantsContent = patch.statement !== void 0 || (_nullishCoalesce(_optionalChain([patch, 'access', _176 => _176.anchors_add, 'optionalAccess', _177 => _177.length]), () => ( 0))) > 0;
+    const wantsContent = patch.statement !== void 0 || (patch.anchors_add?.length ?? 0) > 0;
     if (wantsContent && (unit.status !== "initial" || this.released.has(id))) {
       return { ok: false, reason: "released", unit };
     }
     const next = {
       ...unit,
-      statement: _nullishCoalesce(patch.statement, () => ( unit.statement)),
+      statement: patch.statement ?? unit.statement,
       anchors: patch.anchors_add ? [...unit.anchors, ...patch.anchors_add] : unit.anchors,
       ...patch.confirmed ? { confirmed: patch.confirmed } : {}
     };
@@ -4521,16 +4585,16 @@ var UnitStore = class _UnitStore {
     return answered;
   }
   question(id) {
-    return _nullishCoalesce(this.questions.get(id), () => ( null));
+    return this.questions.get(id) ?? null;
   }
   openQuestions() {
     return [...this.questions.values()].filter((question) => !question.answered);
   }
   note(id) {
-    return _nullishCoalesce(this.notes.get(id), () => ( null));
+    return this.notes.get(id) ?? null;
   }
   guess(id) {
-    return _nullishCoalesce(this.guesses.get(id), () => ( null));
+    return this.guesses.get(id) ?? null;
   }
 };
 
@@ -4544,7 +4608,7 @@ function liveSessionStorageKey(sessionId) {
 function defaultStorage() {
   try {
     return typeof sessionStorage !== "undefined" ? sessionStorage : null;
-  } catch (e13) {
+  } catch {
     return null;
   }
 }
@@ -4566,7 +4630,7 @@ function base64ToBlob(base64, type) {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type });
-  } catch (e14) {
+  } catch {
     return null;
   }
 }
@@ -4578,6 +4642,7 @@ var LiveSession = class _LiveSession {
   constructor(options, persisted) {
     this.phase = "idle";
     this.voice = "none";
+    this.voiceReason = null;
     this.pendingMode = null;
     this.pendingModeSeq = null;
     this.voiceRan = false;
@@ -4611,16 +4676,16 @@ var LiveSession = class _LiveSession {
     this.listeners = /* @__PURE__ */ new Map();
     this.ackWaiters = [];
     this.persistOutcome = "stored";
-    this.now = _nullishCoalesce(options.now, () => ( (() => Date.now())));
-    this.route = _nullishCoalesce(options.route, () => ( currentRoute2));
+    this.now = options.now ?? (() => Date.now());
+    this.route = options.route ?? currentRoute2;
     this.storage = options.storage === void 0 ? defaultStorage() : options.storage;
-    this.frameStore = _nullishCoalesce(options.frameStore, () => ( createDefaultFrameStore()));
-    this.setTimer = _nullishCoalesce(options.setTimeout, () => ( ((callback, ms) => setTimeout(callback, ms))));
-    this.clearTimer = _nullishCoalesce(options.clearTimeout, () => ( ((handle) => clearTimeout(handle))));
-    this.finalAckTimeoutMs = _nullishCoalesce(options.finalAckTimeoutMs, () => ( 15e3));
-    this.keepFrames = _nullishCoalesce(options.keepFramesForArchive, () => ( true));
+    this.frameStore = options.frameStore ?? createDefaultFrameStore();
+    this.setTimer = options.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle));
+    this.finalAckTimeoutMs = options.finalAckTimeoutMs ?? 15e3;
+    this.keepFrames = options.keepFramesForArchive ?? true;
     this.profile = options.evidenceProfile ? resolveEvidenceProfile(options.evidenceProfile) : FULL_EVIDENCE_PROFILE;
-    this.fetchImpl = _nullishCoalesce(options.fetch, () => ( ((input, init) => fetch(input, init))));
+    this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
     this.pageHideTarget = options.pageHideTarget === void 0 ? typeof window !== "undefined" ? window : null : options.pageHideTarget;
     if (persisted) {
       this.rehydrated = true;
@@ -4632,6 +4697,7 @@ var LiveSession = class _LiveSession {
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
       this.voiceRan = persisted.voice_ran;
+      if (persisted.frames_off) this.profile = { ...this.profile, frames: "none" };
       this.muted = persisted.muted;
       this.mic = persisted.mic;
       this.nextSeq = persisted.next_seq;
@@ -4649,19 +4715,19 @@ var LiveSession = class _LiveSession {
       this.phase = "running";
       this.voice = this.voiceRan ? "reconnecting" : "novoice";
     } else {
-      const bootstrap = options.bootstrap === void 0 ? _chunkOGVGX2XHcjs.readStoredBootstrap.call(void 0, this.storage) : options.bootstrap;
-      this.id = _nullishCoalesce(options.sessionId, () => ( mintSessionId()));
-      this.token = _nullishCoalesce(_optionalChain([bootstrap, 'optionalAccess', _178 => _178.token]), () => ( null));
-      this.endpointOrigin = _nullishCoalesce(_nullishCoalesce(_optionalChain([bootstrap, 'optionalAccess', _179 => _179.endpoint]), () => ( options.endpoint)), () => ( null));
+      const bootstrap = options.bootstrap === void 0 ? readStoredBootstrap(this.storage) : options.bootstrap;
+      this.id = options.sessionId ?? mintSessionId();
+      this.token = bootstrap?.token ?? null;
+      this.endpointOrigin = bootstrap?.endpoint ?? options.endpoint ?? null;
       this.startedAt = this.now();
-      this.mode = _nullishCoalesce(options.mode, () => ( _chunk4XWUXLDEcjs.DEFAULT_EXECUTION_MODE));
+      this.mode = options.mode ?? DEFAULT_EXECUTION_MODE;
       this.units = new UnitStore();
     }
     const canStream = this.endpointOrigin !== null && this.token !== null;
     this.streamStatus = canStream ? "idle" : "offline";
     if (canStream) {
       const queueOptions = {
-        onStoreError: (error) => _optionalChain([options, 'access', _180 => _180.onError, 'optionalCall', _181 => _181(error)]),
+        onStoreError: (error) => options.onError?.(error),
         onStoreSettled: () => this.persist()
       };
       this.queue = persisted ? UnsentQueue.fromPersisted(
@@ -4687,7 +4753,7 @@ var LiveSession = class _LiveSession {
         onServerEvent: (event) => this.handleServerEvent(event),
         onEnded: (reason) => this.handleEnded(reason),
         onFrameDropped: (envelope) => this.handleFrameDropped(envelope),
-        onError: (error) => _optionalChain([options, 'access', _182 => _182.onError, 'optionalCall', _183 => _183(error)]),
+        onError: (error) => options.onError?.(error),
         onQueueChange: () => this.persist()
       });
       this.client.ackedSeq = this.ackedSeq;
@@ -4719,14 +4785,14 @@ var LiveSession = class _LiveSession {
       id = storage.getItem(LIVE_CURRENT_SESSION_KEY);
       if (!id) return null;
       raw = storage.getItem(liveSessionStorageKey(id));
-    } catch (e15) {
+    } catch {
       return null;
     }
     if (!raw) return null;
     let persisted;
     try {
       persisted = JSON.parse(raw);
-    } catch (e16) {
+    } catch {
       return null;
     }
     if (!persisted || persisted.version !== 1 || persisted.session_id !== id) return null;
@@ -4796,7 +4862,7 @@ var LiveSession = class _LiveSession {
     return this.streamStatus;
   }
   get sequence() {
-    return { nextSeq: this.nextSeq, ackedSeq: this.ackedSeq, queueLength: _nullishCoalesce(_optionalChain([this, 'access', _184 => _184.queue, 'optionalAccess', _185 => _185.length]), () => ( 0)) };
+    return { nextSeq: this.nextSeq, ackedSeq: this.ackedSeq, queueLength: this.queue?.length ?? 0 };
   }
   get lastPersistOutcome() {
     return this.persistOutcome;
@@ -4847,7 +4913,7 @@ var LiveSession = class _LiveSession {
     this.persist();
     this.emitter.dispose();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
-    _optionalChain([this, 'access', _186 => _186.client, 'optionalAccess', _187 => _187.close, 'call', _188 => _188()]);
+    this.client?.close();
     this.detachPageHide();
     this.notify();
   }
@@ -4864,7 +4930,7 @@ var LiveSession = class _LiveSession {
     }
     this.emitter.dispose();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
-    _optionalChain([this, 'access', _189 => _189.client, 'optionalAccess', _190 => _190.close, 'call', _191 => _191()]);
+    this.client?.close();
     this.detachPageHide();
     this.clearStorage();
     if (this.queue) await this.queue.clearStore();
@@ -4879,6 +4945,7 @@ var LiveSession = class _LiveSession {
   voiceConnecting() {
     if (this.phase !== "running") return;
     this.voice = this.voiceRan ? "reconnecting" : "connecting";
+    this.voiceReason = null;
     this.notify();
   }
   voiceConnected() {
@@ -4894,9 +4961,10 @@ var LiveSession = class _LiveSession {
     this.notify();
   }
   /** Mint refused for good, mic denied, or no endpoint: a one-way move to `live_novoice`. */
-  voiceUnavailable() {
+  voiceUnavailable(reason = null) {
     if (this.phase !== "running") return;
     this.voice = "novoice";
+    this.voiceReason = reason;
     this.notify();
   }
   speechStarted() {
@@ -4931,19 +4999,19 @@ var LiveSession = class _LiveSession {
   // Units (tool intake and board actions)
   // ---------------------------------------------------------------------
   recordUnit(input) {
-    const id = _nullishCoalesce(input.id, () => ( `unit_${pad(this.nextUnit++)}`));
-    const firstAnchorT = _nullishCoalesce(_optionalChain([input, 'access', _192 => _192.anchors, 'access', _193 => _193[0], 'optionalAccess', _194 => _194.t]), () => ( this.elapsed()));
+    const id = input.id ?? `unit_${pad(this.nextUnit++)}`;
+    const firstAnchorT = input.anchors[0]?.t ?? this.elapsed();
     const unit = {
       id,
       statement: input.statement,
       transcript_excerpt: input.transcript_excerpt,
       anchors: input.anchors,
       evidence: {
-        frame_ids: _nullishCoalesce(_optionalChain([input, 'access', _195 => _195.evidence, 'optionalAccess', _196 => _196.frame_ids]), () => ( [])),
-        annotation_ids: _nullishCoalesce(_optionalChain([input, 'access', _197 => _197.evidence, 'optionalAccess', _198 => _198.annotation_ids]), () => ( [])),
-        transcript_span: _nullishCoalesce(_optionalChain([input, 'access', _199 => _199.evidence, 'optionalAccess', _200 => _200.transcript_span]), () => ( { t_start: firstAnchorT, t_end: this.elapsed() })),
-        ..._optionalChain([input, 'access', _201 => _201.evidence, 'optionalAccess', _202 => _202.telemetry_window]) ? { telemetry_window: input.evidence.telemetry_window } : {},
-        ..._optionalChain([input, 'access', _203 => _203.evidence, 'optionalAccess', _204 => _204.audio_clip_id]) ? { audio_clip_id: input.evidence.audio_clip_id } : {}
+        frame_ids: input.evidence?.frame_ids ?? [],
+        annotation_ids: input.evidence?.annotation_ids ?? [],
+        transcript_span: input.evidence?.transcript_span ?? { t_start: firstAnchorT, t_end: this.elapsed() },
+        ...input.evidence?.telemetry_window ? { telemetry_window: input.evidence.telemetry_window } : {},
+        ...input.evidence?.audio_clip_id ? { audio_clip_id: input.evidence.audio_clip_id } : {}
       },
       status: "initial"
     };
@@ -5083,6 +5151,11 @@ var LiveSession = class _LiveSession {
   releaseFrame(frameId) {
     this.postHeldFrame(frameId);
   }
+  /** The riffer turned screenshots off at consent: no frame leaves the page for the rest of the session. */
+  disableFrames() {
+    this.profile = { ...this.profile, frames: "none" };
+    this.persist();
+  }
   /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
   get framesLeavePage() {
     return this.profile.frames !== "none";
@@ -5161,7 +5234,7 @@ var LiveSession = class _LiveSession {
     }
     if (ended && this.phase !== "ended") this.handleEnded("riffer_done");
     if (!this.client || ended) return { checkpoint, finalAcked, ended };
-    return { checkpoint, finalAcked, ended, failure: _nullishCoalesce(failure, () => ( "the endpoint did not confirm the session end")) };
+    return { checkpoint, finalAcked, ended, failure: failure ?? "the endpoint did not confirm the session end" };
   }
   allCheckpoints() {
     return [...this.checkpoints];
@@ -5174,7 +5247,7 @@ var LiveSession = class _LiveSession {
     return () => this.changeListeners.delete(listener);
   }
   on(name, listener) {
-    const set = _nullishCoalesce(this.listeners.get(name), () => ( /* @__PURE__ */ new Set()));
+    const set = this.listeners.get(name) ?? /* @__PURE__ */ new Set();
     set.add(listener);
     this.listeners.set(name, set);
     return () => set.delete(listener);
@@ -5185,6 +5258,7 @@ var LiveSession = class _LiveSession {
       status: this.status,
       phase: this.phase,
       voice: this.voice,
+      voiceUnavailable: this.voiceReason,
       stream: this.streamStatus,
       endpoint: this.endpointOrigin,
       mode: this.mode,
@@ -5198,7 +5272,7 @@ var LiveSession = class _LiveSession {
       checkpoints: [...this.checkpoints],
       nextSeq: this.nextSeq,
       ackedSeq: this.ackedSeq,
-      queueLength: _nullishCoalesce(_optionalChain([this, 'access', _205 => _205.queue, 'optionalAccess', _206 => _206.length]), () => ( 0)),
+      queueLength: this.queue?.length ?? 0,
       expectedSchemaVersion: this.expectedSchemaVersion,
       error: this.error,
       finalEmitted: this.finalSeq !== null
@@ -5244,8 +5318,8 @@ var LiveSession = class _LiveSession {
    * the frame store.
    */
   async restoreFrameBytes(onError) {
-    for (const entry of _nullishCoalesce(_optionalChain([this, 'access', _207 => _207.queue, 'optionalAccess', _208 => _208.all, 'call', _209 => _209()]), () => ( []))) {
-      if (!_chunk4XWUXLDEcjs.isLiveEnvelopeOfType.call(void 0, entry, "frame") || entry.payload.dropped) continue;
+    for (const entry of this.queue?.all() ?? []) {
+      if (!isLiveEnvelopeOfType(entry, "frame") || entry.payload.dropped) continue;
       if (entry.payload.jpeg_base64 !== "") this.frameBytes.set(entry.payload.id, entry.payload.jpeg_base64);
     }
     await Promise.all(
@@ -5254,14 +5328,14 @@ var LiveSession = class _LiveSession {
           const bytes = await this.frameStore.get(this.id, frame.id);
           if (bytes) this.frameBytes.set(frame.id, bytes);
         } catch (error) {
-          _optionalChain([onError, 'optionalCall', _210 => _210(error)]);
+          onError?.(error);
         }
       })
     );
   }
   emit(type, payload) {
     const envelope = {
-      schema_version: _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       seq: this.nextSeq++,
       t: this.elapsed(),
@@ -5271,7 +5345,7 @@ var LiveSession = class _LiveSession {
     if (this.client && this.phase === "running") {
       this.client.enqueue(envelope);
     } else if (this.client) {
-      _optionalChain([this, 'access', _211 => _211.queue, 'optionalAccess', _212 => _212.enqueue, 'call', _213 => _213(envelope)]);
+      this.queue?.enqueue(envelope);
     }
     this.persist();
     this.notify();
@@ -5298,7 +5372,7 @@ var LiveSession = class _LiveSession {
     this.units.addAnnotationId(unitId, annotationId);
   }
   frameKind(frameId) {
-    return _nullishCoalesce(_optionalChain([this, 'access', _214 => _214.frames, 'access', _215 => _215.find, 'call', _216 => _216((frame) => frame.id === frameId), 'optionalAccess', _217 => _217.kind]), () => ( null));
+    return this.frames.find((frame) => frame.id === frameId)?.kind ?? null;
   }
   /** Only the most recent held frames can still be picked by a unit (the U6 ring buffer keeps 12). */
   holdFrame(frameId, jpeg) {
@@ -5342,7 +5416,7 @@ var LiveSession = class _LiveSession {
         break;
       case "incompatible":
         this.streamStatus = "incompatible";
-        this.expectedSchemaVersion = _nullishCoalesce(detail.expectedSchemaVersion, () => ( null));
+        this.expectedSchemaVersion = detail.expectedSchemaVersion ?? null;
         break;
       case "conflict":
         this.streamStatus = "conflict";
@@ -5416,7 +5490,7 @@ var LiveSession = class _LiveSession {
     this.phase = "ended";
     this.streamStatus = "ended";
     this.emitter.dispose();
-    _optionalChain([this, 'access', _218 => _218.client, 'optionalAccess', _219 => _219.close, 'call', _220 => _220()]);
+    this.client?.close();
     this.detachPageHide();
     for (const waiter of this.ackWaiters.splice(0)) waiter.resolve(false);
     this.clearStorage();
@@ -5467,7 +5541,7 @@ var LiveSession = class _LiveSession {
   async postSessionEnd() {
     if (!this.client) return { ok: false, failure: "no endpoint is configured" };
     const body = {
-      schema_version: _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       mode: this.mode,
       transcript: this.transcript,
@@ -5506,7 +5580,7 @@ var LiveSession = class _LiveSession {
       return;
     }
     const envelope = {
-      schema_version: _chunk4XWUXLDEcjs.LIVE_SCHEMA_VERSION,
+      schema_version: LIVE_SCHEMA_VERSION,
       session_id: this.id,
       seq: this.nextSeq++,
       t: this.elapsed(),
@@ -5543,6 +5617,7 @@ var LiveSession = class _LiveSession {
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
       pending_mode_seq: this.pendingModeSeq,
+      ...this.profile.frames === "none" ? { frames_off: true } : {},
       ...tier === "full" ? {} : { degraded: tier }
     };
   }
@@ -5551,7 +5626,7 @@ var LiveSession = class _LiveSession {
     const key = liveSessionStorageKey(this.id);
     try {
       this.storage.setItem(LIVE_CURRENT_SESSION_KEY, this.id);
-    } catch (e17) {
+    } catch {
     }
     this.persistOutcome = persistWithQuotaGuard(
       this.storage,
@@ -5568,9 +5643,9 @@ var LiveSession = class _LiveSession {
     if (!this.storage) return;
     try {
       for (const key of this.storageKeys()) this.storage.removeItem(key);
-    } catch (e18) {
+    } catch {
     }
-    _chunkOGVGX2XHcjs.clearStoredBootstrap.call(void 0, this.storage);
+    clearStoredBootstrap(this.storage);
   }
   emitEvent(name, payload) {
     const set = this.listeners.get(name);
@@ -5611,8 +5686,8 @@ function truncate2(text, max) {
 }
 function describeClick(event, route) {
   const { element } = event;
-  const label = _optionalChain([element, 'access', _221 => _221.ariaLabel, 'optionalAccess', _222 => _222.trim, 'call', _223 => _223()]) || _optionalChain([element, 'access', _224 => _224.name, 'optionalAccess', _225 => _225.trim, 'call', _226 => _226()]) || element.tag;
-  const text = _optionalChain([element, 'access', _227 => _227.text, 'optionalAccess', _228 => _228.trim, 'call', _229 => _229()]) ? truncate2(element.text, CLICK_TEXT_MAX_CHARS) : "";
+  const label = element.ariaLabel?.trim() || element.name?.trim() || element.tag;
+  const text = element.text?.trim() ? truncate2(element.text, CLICK_TEXT_MAX_CHARS) : "";
   const parts = [label];
   if (text && !label.includes(text)) parts.push(`with text "${text}"`);
   if (event.component) parts.push(`in component ${event.component}`);
@@ -5631,7 +5706,7 @@ function clickAnchor(event, route) {
   };
 }
 function defaultGetUserMedia(constraints) {
-  if (typeof navigator === "undefined" || !_optionalChain([navigator, 'access', _230 => _230.mediaDevices, 'optionalAccess', _231 => _231.getUserMedia])) {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error("Microphone capture is not supported in this browser."));
   }
   return navigator.mediaDevices.getUserMedia(constraints);
@@ -5652,22 +5727,22 @@ var LiveRuntime = class {
         return;
       }
       void active.evidence.annotationCompleted(annotation).catch((error) => this.callbacks.onError(toError(error)));
-      _optionalChain([active, 'access', _232 => _232.interviewer, 'optionalAccess', _233 => _233.announceDrawing, 'call', _234 => _234({
+      active.interviewer?.announceDrawing({
         anchor: annotation.anchor,
         description: describeAnchor(annotation.anchor),
         kind: annotation.kind
-      })]);
+      });
     };
     this.config = options.config;
     this.capture = options.capture;
     this.callbacks = options.callbacks;
-    this.getUserMedia = _nullishCoalesce(options.getUserMedia, () => ( defaultGetUserMedia));
+    this.getUserMedia = options.getUserMedia ?? defaultGetUserMedia;
     this.fetchImpl = options.fetch;
-    this.profile = resolveEvidenceProfile(_nullishCoalesce(options.config.profile, () => ( "default")));
+    this.profile = resolveEvidenceProfile(options.config.profile ?? "default");
     this.consentProfile = toConsentProfile(this.profile);
-    _chunkOGVGX2XHcjs.bootstrapLiveToken.call(void 0, );
+    bootstrapLiveToken();
     const rehydrated = LiveSession.rehydrate(this.sessionOptions());
-    this.current = _nullishCoalesce(rehydrated, () => ( LiveSession.create(this.sessionOptions())));
+    this.current = rehydrated ?? LiveSession.create(this.sessionOptions());
     this.attachSession(this.current);
     if (rehydrated) this.resume(rehydrated);
   }
@@ -5680,7 +5755,9 @@ var LiveRuntime = class {
   /** Riffer or host asked to go live: the overlay shows the consent step. */
   begin(options = {}) {
     if (this.suspended) return;
-    if (this.current.status === "ended" || this.current.status === "error") {
+    const spent = this.current.status === "ended" || this.current.status === "error";
+    const restored = (spent || this.current.status === "idle" && this.current.pageToken === null) && restoreRememberedBootstrap();
+    if (spent || restored) {
       this.current = LiveSession.create(this.sessionOptions());
       this.attachSession(this.current);
     }
@@ -5710,13 +5787,17 @@ var LiveRuntime = class {
   setMode(mode) {
     this.current.setMode(mode);
   }
+  /** Re-mints after a settled refusal, e.g. once the riffer pasted an OpenAI key. */
+  retryVoice() {
+    void this.active?.interviewer?.retryVoice().catch((error) => this.callbacks.onError(toError(error)));
+  }
   setMuted(muted) {
     const active = this.active;
-    if (_optionalChain([active, 'optionalAccess', _235 => _235.interviewer])) {
+    if (active?.interviewer) {
       active.interviewer.setMuted(muted);
       return;
     }
-    _optionalChain([active, 'optionalAccess', _236 => _236.microphone, 'optionalAccess', _237 => _237.setMuted, 'call', _238 => _238(muted)]);
+    active?.microphone?.setMuted(muted);
     this.current.setMuted(muted);
   }
   send() {
@@ -5725,8 +5806,8 @@ var LiveRuntime = class {
   /** R25: frames, composites, and the event stream pause; the screen recording never does. */
   setPaused(paused) {
     this.paused = paused;
-    if (paused) _optionalChain([this, 'access', _239 => _239.active, 'optionalAccess', _240 => _240.evidence, 'access', _241 => _241.pause, 'call', _242 => _242()]);
-    else _optionalChain([this, 'access', _243 => _243.active, 'optionalAccess', _244 => _244.evidence, 'access', _245 => _245.resume, 'call', _246 => _246()]);
+    if (paused) this.active?.evidence.pause();
+    else this.active?.evidence.resume();
   }
   /** After a reload: the riffer agreed to share the screen again. */
   async reshare() {
@@ -5756,7 +5837,7 @@ var LiveRuntime = class {
       this.releaseCaptures(active);
       void active.screen.stop().catch((error) => this.callbacks.onError(toError(error)));
       void active.voice.stop().catch((error) => this.callbacks.onError(toError(error)));
-      _optionalChain([active, 'access', _247 => _247.microphone, 'optionalAccess', _248 => _248.stop, 'call', _249 => _249()]);
+      active.microphone?.stop();
     }
     if (this.current.status === "consenting") this.current.declineConsent();
     this.current.suspend();
@@ -5764,7 +5845,7 @@ var LiveRuntime = class {
   }
   sessionOptions() {
     return {
-      endpoint: _nullishCoalesce(this.config.endpoint, () => ( null)),
+      endpoint: this.config.endpoint ?? null,
       evidenceProfile: this.profile,
       ...this.fetchImpl ? { fetch: this.fetchImpl } : {},
       onError: (error) => this.callbacks.onError(toError(error))
@@ -5807,19 +5888,19 @@ var LiveRuntime = class {
       recentEvents: () => events,
       onError: (error) => this.callbacks.onError(toError(error))
     });
-    const screen = new (0, _chunkOGVGX2XHcjs.ScreenCapture)(this.capture.displayMedia, this.capture.displayMediaVideo, {
+    const screen = new ScreenCapture(this.capture.displayMedia, this.capture.displayMediaVideo, {
       segmentStore: createDefaultSegmentStore(),
       sessionId: session.id,
       onStreamEnded: () => {
         evidence.setDisplayStream(null);
-        if (_optionalChain([this, 'access', _250 => _250.active, 'optionalAccess', _251 => _251.screen]) === screen && session.status !== "ended") this.callbacks.onReshareNeeded(true);
+        if (this.active?.screen === screen && session.status !== "ended") this.callbacks.onReshareNeeded(true);
       },
       onError: (error) => this.callbacks.onError(toError(error))
     });
-    const voice = new (0, _chunkOGVGX2XHcjs.VoiceCapture)();
-    const eventCapture = new (0, _chunkOGVGX2XHcjs.EventCapture)();
-    const networkCapture = new (0, _chunkOGVGX2XHcjs.NetworkCapture)();
-    const consoleCapture = new (0, _chunkOGVGX2XHcjs.ConsoleCapture)();
+    const voice = new VoiceCapture();
+    const eventCapture = new EventCapture();
+    const networkCapture = new NetworkCapture();
+    const consoleCapture = new ConsoleCapture();
     const ownsGlobalPatchMarker = typeof window !== "undefined" && !window.__RIFFREC_PATCHED__;
     if (ownsGlobalPatchMarker) window.__RIFFREC_PATCHED__ = true;
     else if (typeof console !== "undefined") {
@@ -5911,8 +5992,8 @@ var LiveRuntime = class {
     active.networkCapture.stop();
     active.consoleCapture.stop();
     if (active.ownsGlobalPatchMarker && typeof window !== "undefined") delete window.__RIFFREC_PATCHED__;
-    _optionalChain([active, 'access', _252 => _252.interviewer, 'optionalAccess', _253 => _253.stop, 'call', _254 => _254()]);
-    _optionalChain([active, 'access', _255 => _255.connector, 'optionalAccess', _256 => _256.dispose, 'call', _257 => _257()]);
+    active.interviewer?.stop();
+    active.connector?.dispose();
     active.evidence.dispose();
   }
   async doStop() {
@@ -5928,7 +6009,7 @@ var LiveRuntime = class {
     this.callbacks.onReshareNeeded(false);
     let recordingSegments = [];
     let voiceBlob = null;
-    const events = _nullishCoalesce(_optionalChain([active, 'optionalAccess', _258 => _258.events]), () => ( []));
+    const events = active?.events ?? [];
     if (active) {
       this.releaseCaptures(active);
       const [, voice] = await Promise.all([
@@ -5937,7 +6018,7 @@ var LiveRuntime = class {
       ]);
       voiceBlob = voice;
       recordingSegments = await active.screen.collectSegments();
-      _optionalChain([active, 'access', _259 => _259.microphone, 'optionalAccess', _260 => _260.stop, 'call', _261 => _261()]);
+      active.microphone?.stop();
     }
     const live = await session.stop();
     if (active) await active.screen.clearSegments().catch(() => {
@@ -5957,11 +6038,11 @@ var LiveRuntime = class {
 };
 
 // src/live/overlay/LiveOverlay.tsx
-
+import { useCallback as useCallback2, useEffect as useEffect4, useMemo, useRef as useRef5, useState as useState7 } from "react";
 
 // src/live/overlay/Board.tsx
-
-
+import { useState as useState3 } from "react";
+import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 var STATUS_LABELS = {
   initial: "Heard",
   triaging: "Triaging",
@@ -5994,14 +6075,14 @@ var listStyle = {
 };
 var itemStyle = {
   border: "1px solid #eaecf0",
-  borderRadius: 6,
+  borderRadius: 8,
   padding: "8px 10px",
   background: "#ffffff"
 };
 var badgeStyle = {
   display: "inline-block",
   fontSize: 11,
-  fontWeight: 600,
+  fontWeight: 500,
   padding: "1px 6px",
   borderRadius: 4,
   color: "#ffffff",
@@ -6009,8 +6090,8 @@ var badgeStyle = {
   verticalAlign: "middle"
 };
 var smallButtonStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -6021,14 +6102,15 @@ var smallButtonStyle = {
 var primaryButtonStyle = {
   ...smallButtonStyle,
   background: "#101828",
-  borderColor: "#344054",
-  color: "#ffffff"
+  borderColor: "#101828",
+  color: "#ffffff",
+  fontWeight: 500
 };
 var inputStyle = {
   flex: 1,
   minWidth: 0,
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   padding: "4px 8px",
   font: "inherit",
   fontSize: 12
@@ -6041,7 +6123,8 @@ var noteStyle = {
 var emptyStyle = {
   ...itemStyle,
   color: "#667085",
-  fontStyle: "italic",
+  borderStyle: "dashed",
+  fontSize: 12,
   textAlign: "center"
 };
 function describeAnchor2(unit) {
@@ -6051,7 +6134,7 @@ function describeAnchor2(unit) {
   return `${target} on ${anchor.route}`;
 }
 function ReplyField({ unitId, primary, onAnswer }) {
-  const [text, setText] = _react.useState.call(void 0, "");
+  const [text, setText] = useState3("");
   const submit = (event) => {
     event.preventDefault();
     const trimmed = text.trim();
@@ -6059,8 +6142,8 @@ function ReplyField({ unitId, primary, onAnswer }) {
     onAnswer(unitId, trimmed);
     setText("");
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "form", { "data-riffrec-unit-reply": "", onSubmit: submit, style: { display: "flex", gap: 6, marginTop: 6 }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs3("form", { "data-riffrec-unit-reply": "", onSubmit: submit, style: { display: "flex", gap: 6, marginTop: 6 }, children: [
+    /* @__PURE__ */ jsx3(
       "input",
       {
         type: "text",
@@ -6071,7 +6154,7 @@ function ReplyField({ unitId, primary, onAnswer }) {
         style: inputStyle
       }
     ),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "submit", disabled: text.trim().length === 0, style: primary ? primaryButtonStyle : smallButtonStyle, children: "Reply" })
+    /* @__PURE__ */ jsx3("button", { type: "submit", disabled: text.trim().length === 0, style: primary ? primaryButtonStyle : smallButtonStyle, children: "Reply" })
   ] });
 }
 function Board({
@@ -6085,22 +6168,22 @@ function Board({
   onWithdraw,
   onAnswer
 }) {
-  const openQuestion = (unitId) => _nullishCoalesce(questions.find((question) => question.unit_id === unitId && !question.answered), () => ( null));
+  const openQuestion = (unitId) => questions.find((question) => question.unit_id === unitId && !question.answered) ?? null;
   if (units.length === 0) {
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "li", { "data-riffrec-board-empty": "", style: emptyStyle, children: "Say what should change, or draw on the page." }) });
+    return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: /* @__PURE__ */ jsx3("li", { "data-riffrec-board-empty": "", style: emptyStyle, children: "Say what should change, or draw on the page." }) });
   }
-  return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: units.map((unit) => {
+  return /* @__PURE__ */ jsx3("ul", { "data-riffrec-board": "", "data-riffrec-board-mode": mode, style: listStyle, children: units.map((unit) => {
     const withdrawn = unit.status === "withdrawn";
     const question = openQuestion(unit.id);
     const guess = guesses[unit.id];
     const note = notes[unit.id];
     const canWithdraw = onWithdraw && unit.status === "initial" && !isReleased(unit.id);
     const anchor = describeAnchor2(unit);
-    return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-unit": unit.id, "data-riffrec-unit-status": unit.status, style: itemStyle, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", alignItems: "flex-start", gap: 6 }, children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { style: { flex: 1, minWidth: 0 }, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { ...badgeStyle, background: STATUS_COLORS[unit.status] }, children: STATUS_LABELS[unit.status] }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    return /* @__PURE__ */ jsxs3("li", { "data-riffrec-unit": unit.id, "data-riffrec-unit-status": unit.status, style: itemStyle, children: [
+      /* @__PURE__ */ jsxs3("div", { style: { display: "flex", alignItems: "flex-start", gap: 6 }, children: [
+        /* @__PURE__ */ jsxs3("span", { style: { flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ jsx3("span", { style: { ...badgeStyle, background: STATUS_COLORS[unit.status] }, children: STATUS_LABELS[unit.status] }),
+          /* @__PURE__ */ jsx3(
             "span",
             {
               "data-riffrec-unit-statement": "",
@@ -6109,7 +6192,7 @@ function Board({
             }
           )
         ] }),
-        canWithdraw ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+        canWithdraw ? /* @__PURE__ */ jsx3(
           "button",
           {
             type: "button",
@@ -6121,30 +6204,30 @@ function Board({
           }
         ) : null
       ] }),
-      anchor && !withdrawn ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
-      guess ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Guess:" }),
+      anchor && !withdrawn ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-anchor": "", style: { ...noteStyle, color: "#667085" }, children: anchor }) : null,
+      guess ? /* @__PURE__ */ jsxs3("p", { "data-riffrec-unit-guess": "", style: noteStyle, children: [
+        /* @__PURE__ */ jsx3("strong", { children: "Guess:" }),
         " ",
         guess
       ] }) : null,
-      note ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
-      question ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-unit-question": "", style: { marginTop: 6 }, children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { style: { ...noteStyle, margin: 0, color: "#c11574" }, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Agent asks:" }),
+      note ? /* @__PURE__ */ jsx3("p", { "data-riffrec-unit-note": "", style: noteStyle, children: note }) : null,
+      question ? /* @__PURE__ */ jsxs3("div", { "data-riffrec-unit-question": "", style: { marginTop: 6 }, children: [
+        /* @__PURE__ */ jsxs3("p", { style: { ...noteStyle, margin: 0, color: "#c11574" }, children: [
+          /* @__PURE__ */ jsx3("strong", { children: "Agent asks:" }),
           " ",
           question.question
         ] }),
-        onAnswer ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, ReplyField, { unitId: unit.id, primary: !voice, onAnswer }) : null
+        onAnswer ? /* @__PURE__ */ jsx3(ReplyField, { unitId: unit.id, primary: !voice, onAnswer }) : null
       ] }) : null
     ] }, unit.id);
   }) });
 }
 function defaultConfirmation(unit) {
-  return _nullishCoalesce(unit.confirmed, () => ( { element: true, change: true }));
+  return unit.confirmed ?? { element: true, change: true };
 }
 function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
-  const [edits, setEdits] = _react.useState.call(void 0, {});
-  const confirmationFor = (unit) => _nullishCoalesce(edits[unit.id], () => ( defaultConfirmation(unit)));
+  const [edits, setEdits] = useState3({});
+  const confirmationFor = (unit) => edits[unit.id] ?? defaultConfirmation(unit);
   const toggle = (unit, field, value) => {
     setEdits((current) => ({ ...current, [unit.id]: { ...confirmationFor(unit), [field]: value } }));
   };
@@ -6153,17 +6236,17 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
     for (const unit of units) confirmations[unit.id] = confirmationFor(unit);
     onComplete(confirmations);
   };
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-confirmation": "", style: { fontFamily: FONT, fontSize: 13, color: "#101828" }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 8px", fontWeight: 600 }, children: "Before you go: did we get each one right?" }),
-    units.length === 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { ...noteStyle, marginBottom: 8 }, children: "No units this session. Finishing releases anything the agent still holds." }) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { style: listStyle, children: units.map((unit) => {
+  return /* @__PURE__ */ jsxs3("div", { "data-riffrec-confirmation": "", style: { fontFamily: FONT, fontSize: 13, color: "#101828" }, children: [
+    /* @__PURE__ */ jsx3("p", { style: { margin: "0 0 8px", fontWeight: 500 }, children: "Before you go: did we get each one right?" }),
+    units.length === 0 ? /* @__PURE__ */ jsx3("p", { style: { ...noteStyle, marginBottom: 8 }, children: "No units this session. Finishing releases anything the agent still holds." }) : /* @__PURE__ */ jsx3("ul", { style: listStyle, children: units.map((unit) => {
       const confirmation = confirmationFor(unit);
       const anchor = describeAnchor2(unit);
-      return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-confirm-unit": unit.id, style: itemStyle, children: [
-        /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { children: unit.statement }),
-        anchor ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { ...noteStyle, marginTop: 2 }, children: anchor }) : null,
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", gap: 14, marginTop: 6, fontSize: 12 }, children: [
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-            /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      return /* @__PURE__ */ jsxs3("li", { "data-riffrec-confirm-unit": unit.id, style: itemStyle, children: [
+        /* @__PURE__ */ jsx3("div", { children: unit.statement }),
+        anchor ? /* @__PURE__ */ jsx3("p", { style: { ...noteStyle, marginTop: 2 }, children: anchor }) : null,
+        /* @__PURE__ */ jsxs3("div", { style: { display: "flex", gap: 14, marginTop: 6, fontSize: 12 }, children: [
+          /* @__PURE__ */ jsxs3("label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+            /* @__PURE__ */ jsx3(
               "input",
               {
                 type: "checkbox",
@@ -6174,8 +6257,8 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
             ),
             "Right element"
           ] }),
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-            /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+          /* @__PURE__ */ jsxs3("label", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+            /* @__PURE__ */ jsx3(
               "input",
               {
                 type: "checkbox",
@@ -6189,9 +6272,9 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
         ] })
       ] }, unit.id);
     }) }),
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-confirm-cancel": "", disabled: busy, style: smallButtonStyle, onClick: onCancel, children: "Keep riffing" }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    /* @__PURE__ */ jsxs3("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }, children: [
+      /* @__PURE__ */ jsx3("button", { type: "button", "data-riffrec-confirm-cancel": "", disabled: busy, style: smallButtonStyle, onClick: onCancel, children: "Keep riffing" }),
+      /* @__PURE__ */ jsx3(
         "button",
         {
           type: "button",
@@ -6207,7 +6290,118 @@ function ConfirmationPass({ units, onComplete, onCancel, busy = false }) {
 }
 
 // src/live/overlay/ConsentDialog.tsx
+import { useEffect as useEffect3, useRef as useRef3, useState as useState4 } from "react";
 
+// src/live/overlay/Kbd.tsx
+import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
+var kbdStyle = {
+  display: "inline-block",
+  fontFamily: "inherit",
+  fontSize: 10,
+  fontWeight: 400,
+  lineHeight: 1,
+  padding: "2px 5px",
+  borderRadius: 4,
+  border: "1px solid #e4e7ec",
+  color: "#667085",
+  background: "#ffffff",
+  flex: "none"
+};
+var kbdDarkStyle = {
+  ...kbdStyle,
+  border: "none",
+  padding: "3px 6px",
+  background: "rgba(255, 255, 255, 0.14)",
+  color: "#e4e7ec"
+};
+function Kbd({ children, dark = false }) {
+  return /* @__PURE__ */ jsx4("kbd", { "aria-hidden": "true", style: dark ? kbdDarkStyle : kbdStyle, children });
+}
+function Wordmark() {
+  return /* @__PURE__ */ jsxs4("span", { style: { fontSize: 13, letterSpacing: "-0.01em", color: "#101828", whiteSpace: "nowrap" }, children: [
+    /* @__PURE__ */ jsx4("span", { style: { fontWeight: 600 }, children: "/ce-polish" }),
+    " ",
+    /* @__PURE__ */ jsx4("span", { style: { fontWeight: 400, color: "#667085" }, children: "live" })
+  ] });
+}
+
+// src/live/overlay/ModeSwitch.tsx
+import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
+var MODE_LABELS = {
+  instant: "Instant",
+  smart: "Smart",
+  collect: "Collect"
+};
+var MODE_DESCRIPTIONS = {
+  instant: "Applies everything it can at each checkpoint, guessing on ambiguous units and noting the guess.",
+  smart: "Applies clear bounded edits, asks about ambiguous ones, sends anything larger to the residual list.",
+  collect: "Applies nothing during the riff; the accepted batch lands as one pass when you say done."
+};
+var MODE_SUMMARIES = {
+  instant: "Applies everything it can at each checkpoint, noting its guesses.",
+  smart: "Applies clear edits, asks about ambiguous ones, lists bigger ones.",
+  collect: "Applies nothing live. One pass when you say done."
+};
+var PENDING_MODE_HINT = "Pending until next checkpoint";
+var groupStyle = {
+  display: "inline-flex",
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  overflow: "hidden",
+  background: "#ffffff"
+};
+var optionStyle = {
+  border: "none",
+  borderRight: "1px solid #e4e7ec",
+  background: "#ffffff",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 10px",
+  cursor: "pointer"
+};
+var optionSelectedStyle = {
+  ...optionStyle,
+  background: "#101828",
+  color: "#ffffff"
+};
+var hintStyle = {
+  display: "block",
+  marginTop: 4,
+  fontSize: 11,
+  color: "#b54708"
+};
+function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
+  return /* @__PURE__ */ jsxs5("div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
+    /* @__PURE__ */ jsx5("div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: EXECUTION_MODES.map((option, index) => {
+      const selected = option === mode;
+      const last = index === EXECUTION_MODES.length - 1;
+      return /* @__PURE__ */ jsx5(
+        "button",
+        {
+          type: "button",
+          role: "radio",
+          "aria-checked": selected,
+          "data-riffrec-mode-option": option,
+          title: MODE_DESCRIPTIONS[option],
+          disabled,
+          style: { ...selected ? optionSelectedStyle : optionStyle, ...last ? { borderRight: "none" } : {} },
+          onClick: () => {
+            if (!selected) onChange(option);
+          },
+          children: MODE_LABELS[option]
+        },
+        option
+      );
+    }) }),
+    pendingMode !== null ? /* @__PURE__ */ jsxs5("span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
+      MODE_LABELS[pendingMode],
+      ": ",
+      PENDING_MODE_HINT.toLowerCase()
+    ] }) : null
+  ] });
+}
 
 // src/live/overlay/consentCopy.ts
 var DEFAULT_CONSENT_PROFILE = {
@@ -6217,61 +6411,64 @@ var DEFAULT_CONSENT_PROFILE = {
   audio_clip: false,
   telemetry_window: false
 };
-var OPENAI_DESTINATION = "OpenAI Realtime (the voice interviewer)";
+var OPENAI_DESTINATION = "OpenAI, for the voice interviewer";
 function resolveConsentProfile(profile) {
-  return { ...DEFAULT_CONSENT_PROFILE, ..._nullishCoalesce(profile, () => ( {})) };
+  return { ...DEFAULT_CONSENT_PROFILE, ...profile ?? {} };
 }
 function describeEndpoint(endpoint, owner) {
   if (owner && endpoint) return `${owner} (${endpoint})`;
   if (owner) return owner;
-  return _nullishCoalesce(endpoint, () => ( "no endpoint"));
+  return endpoint ?? "no endpoint";
 }
-function endpointItems(profile) {
-  const items = [];
-  if (profile.transcript) items.push("the transcript of what you say");
-  items.push("units: each change you ask for, with the element it points at");
+function endpointItems(profile, voice) {
+  const items = ["each change you ask for, with the element it points at"];
+  if (profile.transcript && voice) items.push("the transcript of what you say");
   items.push("clicks, navigation, network URLs and statuses, console errors");
-  if (profile.strokes) items.push("your drawings and pins, with the element under them");
-  if (profile.frames) items.push("screenshots and annotated frames of the page");
-  if (profile.audio_clip) items.push("short audio clips of each request");
+  if (profile.strokes) items.push("your drawings and pins");
+  if (profile.frames) items.push("screenshots and annotated frames");
+  if (profile.audio_clip && voice) items.push("short audio clips of each request");
   if (profile.telemetry_window) items.push("network and console telemetry around each request");
   return items;
 }
 function buildConsentCopy(input) {
   const profile = resolveConsentProfile(input.profile);
   const streams = input.endpoint !== null;
-  const voice = _nullishCoalesce(input.voice, () => ( streams));
+  const microphone = input.microphone ?? true;
+  const voice = (input.voice ?? streams) && streams && microphone;
   const endpointName = describeEndpoint(input.endpoint, input.endpointOwner);
   const destinations = [];
-  if (voice && streams) {
-    const items = ["microphone audio while the session is live", "the session brief the endpoint wrote about this app"];
-    if (profile.frames) items.push("what you click, draw on, and pin, and screenshots of the page when you point at something or ask the interviewer to look");
-    else items.push("what you click, draw on, and pin");
+  if (voice) {
+    const items = ["your microphone audio while live", "the session brief about this app", "what you click, draw and pin"];
+    if (profile.frames) items.push("screenshots when you point at something");
     destinations.push({ id: "openai", to: OPENAI_DESTINATION, items });
   }
   if (streams) {
-    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile) });
+    destinations.push({ id: "endpoint", to: endpointName, items: endpointItems(profile, voice) });
   } else {
     destinations.push({
       id: "local",
       to: "a local archive on this device",
-      items: ["screen recording and microphone audio", "clicks, navigation, network URLs and statuses, console errors", "your drawings and pins"]
+      items: [
+        microphone ? "screen recording and microphone audio" : "screen recording",
+        "clicks, navigation, network URLs and statuses, console errors",
+        "your drawings and pins"
+      ]
     });
   }
   return {
-    title: "Start a live session?",
-    intro: streams ? "While the session is live, riffrec streams what you say and do on this page as it happens." : "No endpoint is configured, so nothing streams: the session is saved as a local archive when you stop.",
+    title: "Start a live session",
+    intro: streams ? "Talk through what you want changed and point at it. The agent picks it up as you go." : "No endpoint is configured, so nothing streams: the session is saved as a local archive when you stop.",
     destinations,
-    retention: streams ? `${endpointName} keeps a local session log with everything listed above until you delete it.` : null,
-    noExclusions: "Screenshots and frames exclude nothing automatically: anything visible on the page can appear in them. You can pause frame and stream capture at any time from the live indicator.",
-    microphone: voice ? "Accepting asks your browser for microphone access. If you decline the microphone, the session continues with drawing and the board only." : "Accepting asks your browser for microphone access for the local recording. If you decline the microphone, the session continues with drawing and the board only.",
-    acceptLabel: "Accept and start",
+    retention: streams ? `Kept in a local session log at ${endpointName} until you delete it.` : null,
+    noExclusions: profile.frames ? "Screenshots don't blur anything: whatever is visible can appear. Press P any time to pause capture." : "Press P any time to pause capture.",
+    microphone: voice ? "Your browser will ask for microphone access. Say no and the session still runs with drawing and the board; the interviewer just won't listen." : microphone ? "Your browser will ask for microphone access for the local recording. Say no and the session still runs with drawing and the board." : "Voice is off, so no microphone needed. You'll draw and pin; the board collects what you ask for.",
+    acceptLabel: microphone ? "Allow microphone & start" : "Start session",
     declineLabel: "Not now"
   };
 }
 
 // src/live/overlay/ConsentDialog.tsx
-
+import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
 var FONT2 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var backdropStyle = {
   position: "fixed",
@@ -6279,53 +6476,118 @@ var backdropStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(12, 18, 28, 0.56)",
+  background: "rgba(16, 24, 40, 0.28)",
   padding: 16
 };
 var dialogStyle = {
-  width: "min(560px, 100%)",
-  maxHeight: "calc(100vh - 32px)",
-  overflowY: "auto",
+  width: "min(520px, 100%)",
+  maxHeight: "calc(100% - 32px)",
+  display: "flex",
+  flexDirection: "column",
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 24px 80px rgba(16, 24, 40, 0.28)",
-  padding: 24,
+  border: "1px solid #eaecf0",
+  borderRadius: 14,
+  boxShadow: "0 12px 32px rgba(16, 24, 40, 0.12)",
   fontFamily: FONT2,
-  fontSize: 14,
-  lineHeight: 1.5
+  fontSize: 13,
+  lineHeight: 1.5,
+  outline: "none",
+  overflow: "hidden"
 };
-var buttonStyle2 = {
-  border: "1px solid #344054",
+var closeButtonStyle = {
+  width: 26,
+  height: 26,
+  border: 0,
   borderRadius: 6,
-  padding: "9px 14px",
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 15,
+  lineHeight: 1,
+  cursor: "pointer"
+};
+var sectionLabelStyle = {
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#667085"
+};
+var rowButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #e4e7ec",
+  borderRadius: 8,
+  background: "#ffffff",
+  color: "#101828",
+  font: "inherit",
+  textAlign: "left",
+  cursor: "pointer"
+};
+var boxStyle = {
+  padding: "12px 14px",
+  border: "1px solid #eaecf0",
+  borderRadius: 8
+};
+var chipStyle = {
+  fontSize: 11,
+  color: "#667085",
+  padding: "2px 8px",
+  borderRadius: 999,
+  background: "#f2f4f7"
+};
+var ghostButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  border: 0,
+  background: "transparent",
+  padding: "6px 8px",
+  marginLeft: -8,
+  borderRadius: 6,
+  color: "#475467",
+  font: "inherit",
+  fontSize: 13,
+  cursor: "pointer"
+};
+var primaryButtonStyle2 = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  height: 36,
+  padding: "0 10px 0 14px",
+  border: "1px solid #101828",
+  borderRadius: 8,
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
-  cursor: "pointer"
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
 };
-var secondaryButtonStyle2 = {
-  ...buttonStyle2,
-  background: "#ffffff",
-  color: "#344054",
-  borderColor: "#d0d5dd"
+var primaryBlockedStyle = {
+  ...primaryButtonStyle2,
+  background: "#f2f4f7",
+  color: "#98a2b3",
+  borderColor: "#e4e7ec",
+  cursor: "not-allowed"
 };
-var disabledButtonStyle = {
-  ...buttonStyle2,
-  cursor: "not-allowed",
-  opacity: 0.56
-};
-var noticeStyle = {
-  marginTop: 16,
-  padding: "10px 12px",
-  borderRadius: 6,
-  background: "#fffaeb",
-  border: "1px solid #fedf89",
-  color: "#7a2e0e"
-};
+var shortcutLegend = [
+  ["D", "Draw tool"],
+  ["N", "Pin tool"],
+  ["V", "Cursor (use the page normally)"],
+  ["M", "Mute mic"],
+  ["P", "Pause capture"],
+  ["S", "Send to agent"],
+  ["C", "Collapse panel"],
+  ["E", "End session"]
+];
 function defaultGetUserMedia2(constraints) {
-  if (typeof navigator === "undefined" || !_optionalChain([navigator, 'access', _262 => _262.mediaDevices, 'optionalAccess', _263 => _263.getUserMedia])) {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error("Microphone access is not available in this browser."));
   }
   return navigator.mediaDevices.getUserMedia(constraints);
@@ -6335,112 +6597,528 @@ function errorMessage(error) {
   const message = error.message;
   return typeof message === "string" && message.length > 0 ? message : null;
 }
+function Switch({ on }) {
+  return /* @__PURE__ */ jsx6(
+    "span",
+    {
+      "aria-hidden": "true",
+      style: {
+        position: "relative",
+        flex: "none",
+        width: 30,
+        height: 18,
+        borderRadius: 999,
+        background: on ? "#101828" : "#e4e7ec",
+        transition: "background 120ms"
+      },
+      children: /* @__PURE__ */ jsx6(
+        "span",
+        {
+          style: {
+            position: "absolute",
+            top: 2,
+            left: on ? 14 : 2,
+            width: 14,
+            height: 14,
+            borderRadius: 999,
+            background: "#ffffff",
+            boxShadow: "0 1px 2px rgba(16, 24, 40, 0.15)",
+            transition: "left 120ms"
+          }
+        }
+      )
+    }
+  );
+}
+function SwitchRow({
+  on,
+  onToggle,
+  name,
+  shortcut,
+  children,
+  attribute
+}) {
+  return /* @__PURE__ */ jsxs6("button", { type: "button", role: "switch", "aria-checked": on, ...{ [attribute]: on ? "on" : "off" }, style: rowButtonStyle, onClick: onToggle, children: [
+    /* @__PURE__ */ jsxs6("span", { style: { flex: 1, minWidth: 0 }, children: [
+      /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }, children: [
+        name,
+        /* @__PURE__ */ jsx6(Kbd, { children: shortcut })
+      ] }),
+      /* @__PURE__ */ jsx6("span", { style: { display: "block", fontSize: 12, color: "#475467" }, children })
+    ] }),
+    /* @__PURE__ */ jsx6(Switch, { on })
+  ] });
+}
+function Stepper({ step, voice }) {
+  const steps = [1, 2, 3];
+  const names = { 1: "Set up", 2: "What's shared", 3: voice ? "Microphone" : "Ready" };
+  return /* @__PURE__ */ jsx6(
+    "ol",
+    {
+      "aria-label": "Steps",
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        margin: 0,
+        padding: "16px 20px",
+        listStyle: "none",
+        borderBottom: "1px solid #f2f4f7",
+        fontSize: 12
+      },
+      children: steps.map((item) => {
+        const done = item < step;
+        const active = item === step;
+        return /* @__PURE__ */ jsxs6("li", { "aria-current": active ? "step" : void 0, style: { display: "contents" }, children: [
+          item > 1 ? /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { flex: 1, minWidth: 12, height: 1, background: "#eaecf0" } }) : null,
+          /* @__PURE__ */ jsxs6("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ jsx6(
+              "span",
+              {
+                "aria-hidden": "true",
+                style: {
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 20,
+                  height: 20,
+                  boxSizing: "border-box",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  ...active ? { background: "#101828", color: "#ffffff" } : done ? { background: "#ecfdf3", color: "#067647", border: "1px solid #abefc6" } : { background: "#ffffff", color: "#98a2b3", border: "1px solid #e4e7ec" }
+                },
+                children: done ? "\u2713" : item
+              }
+            ),
+            /* @__PURE__ */ jsx6("span", { style: active ? { color: "#101828", fontWeight: 500 } : { color: done ? "#475467" : "#98a2b3" }, children: names[item] })
+          ] })
+        ] }, item);
+      })
+    }
+  );
+}
 function ConsentDialog({
   onAccept,
   onDecline,
+  mode: initialMode = "smart",
   getUserMedia = defaultGetUserMedia2,
   zIndex = 2147483647,
   ...copyInput
 }) {
-  const copy = buildConsentCopy(copyInput);
-  const [checked, setChecked] = _react.useState.call(void 0, false);
-  const [stage, setStage] = _react.useState.call(void 0, "reading");
-  const [denialReason, setDenialReason] = _react.useState.call(void 0, null);
-  const requestInFlight = _react.useRef.call(void 0, false);
-  const accept = async () => {
+  const [step, setStep] = useState4(1);
+  const [mode, setMode] = useState4(initialMode);
+  const [voiceOn, setVoiceOn] = useState4(true);
+  const [framesOn, setFramesOn] = useState4(() => resolveConsentProfile(copyInput.profile).frames);
+  const [agreed, setAgreed] = useState4(false);
+  const [mic, setMic] = useState4("idle");
+  const [denialReason, setDenialReason] = useState4(null);
+  const dialogRef = useRef3(null);
+  const copy = buildConsentCopy({
+    ...copyInput,
+    profile: { ...copyInput.profile, frames: framesOn },
+    microphone: voiceOn
+  });
+  useEffect3(() => {
+    dialogRef.current?.focus();
+  }, []);
+  const requestInFlight = useRef3(false);
+  const requestMic = async () => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
-    setStage("requesting");
+    setMic("asking");
     try {
       const stream = await getUserMedia({ audio: true });
-      onAccept({ stream, mic: "granted" });
+      onAccept({ stream, mic: "granted", mode, frames: framesOn });
     } catch (error) {
-      setDenialReason(_nullishCoalesce(errorMessage(error), () => ( "Microphone access was denied.")));
-      setStage("denied");
+      setDenialReason(errorMessage(error) ?? "Microphone access was denied.");
+      setMic("denied");
     } finally {
       requestInFlight.current = false;
     }
   };
-  const busy = stage === "requesting";
-  return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "dialog", "aria-modal": "true", "aria-label": copy.title, style: dialogStyle, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "h2", { style: { margin: "0 0 12px", fontSize: 20, lineHeight: 1.2 }, children: copy.title }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 12px" }, children: copy.intro }),
-    copy.destinations.map((destination) => /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-consent-destination": destination.id, style: { marginBottom: 12 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { style: { margin: "0 0 4px", fontWeight: 600 }, children: [
-        "To ",
-        destination.to,
-        ":"
-      ] }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { style: { margin: 0, paddingLeft: 20 }, children: destination.items.map((item) => /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "li", { children: item }, item)) })
-    ] }, destination.id)),
-    copy.retention ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-consent-retention": "", style: { margin: "0 0 12px" }, children: copy.retention }) : null,
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "0 0 12px" }, children: copy.noExclusions }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: 0 }, children: copy.microphone }),
-    stage === "denied" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "status", "data-riffrec-consent-mic-denied": "", style: noticeStyle, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "strong", { children: "Microphone unavailable." }),
-      " ",
-      denialReason,
-      " You can continue with drawing and the board; the interviewer will not run."
-    ] }) : null,
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "label", { style: { display: "flex", gap: 10, alignItems: "flex-start", marginTop: 18 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        "input",
-        {
-          type: "checkbox",
-          checked,
-          disabled: busy,
-          onChange: (event) => setChecked(event.currentTarget.checked)
-        }
-      ),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: "I understand what is streamed and to whom, and I consent to this live session." })
-    ] }),
-    /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-consent-decline": "", style: secondaryButtonStyle2, disabled: busy, onClick: onDecline, children: copy.declineLabel }),
-      stage === "denied" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  const withoutVoice = !voiceOn || mic === "denied";
+  const blocked = step === 2 && !agreed;
+  const next = () => {
+    if (step === 1) setStep(2);
+    else if (step === 2) {
+      if (agreed) setStep(3);
+    } else if (withoutVoice) {
+      onAccept({ stream: null, mic: "denied", mode, frames: framesOn });
+    } else if (mic !== "asking") {
+      void requestMic();
+    }
+  };
+  const back = () => {
+    if (mic === "asking") return;
+    if (step === 1) {
+      onDecline();
+      return;
+    }
+    setStep((current) => current - 1);
+    setMic("idle");
+  };
+  const change = () => {
+    if (mic === "asking") return;
+    setStep(1);
+    setMic("idle");
+  };
+  const actions = useRef3({ next, back, setMode, setVoiceOn, setFramesOn, setAgreed, step });
+  actions.current = { next, back, setMode, setVoiceOn, setFramesOn, setAgreed, step };
+  useEffect3(() => {
+    const onKeyDown = (event) => {
+      if (!isPlainKey(event)) return;
+      const key = event.key.toLowerCase();
+      const onControl = event.target instanceof HTMLButtonElement;
+      if (onControl && (key === "enter" || key === " ")) return;
+      const current = actions.current;
+      let handled = true;
+      if (key === "enter") current.next();
+      else if (key === "escape") current.back();
+      else if (current.step === 1 && (key === "1" || key === "2" || key === "3")) current.setMode(EXECUTION_MODES[Number(key) - 1]);
+      else if (current.step === 1 && key === "v") current.setVoiceOn((on) => !on);
+      else if (current.step === 1 && key === "f") current.setFramesOn((on) => !on);
+      else if (current.step === 2 && key === " ") current.setAgreed((on) => !on);
+      else handled = false;
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+  const primaryLabel = step < 3 ? "Continue" : !voiceOn ? "Start session" : mic === "denied" ? "Start without voice" : mic === "asking" ? "Waiting\u2026" : copy.acceptLabel;
+  const primaryAttribute = step < 3 ? "data-riffrec-consent-next" : withoutVoice ? "data-riffrec-consent-continue-novoice" : "data-riffrec-consent-accept";
+  return /* @__PURE__ */ jsx6("div", { "data-riffrec-consent": "", style: { ...backdropStyle, zIndex }, children: /* @__PURE__ */ jsxs6("div", { ref: dialogRef, role: "dialog", "aria-modal": "true", "aria-label": copy.title, tabIndex: -1, style: dialogStyle, children: [
+    /* @__PURE__ */ jsxs6("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 12px 0 20px" }, children: [
+      /* @__PURE__ */ jsx6(Wordmark, {}),
+      /* @__PURE__ */ jsx6(
         "button",
         {
           type: "button",
-          "data-riffrec-consent-continue-novoice": "",
-          style: checked ? buttonStyle2 : disabledButtonStyle,
-          disabled: !checked,
-          onClick: () => onAccept({ stream: null, mic: "denied" }),
-          children: "Continue without microphone"
-        }
-      ) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        "button",
-        {
-          type: "button",
-          "data-riffrec-consent-accept": "",
-          style: !checked || busy ? disabledButtonStyle : buttonStyle2,
-          disabled: !checked || busy,
-          onClick: accept,
-          children: busy ? "Requesting microphone\u2026" : copy.acceptLabel
+          "data-riffrec-consent-close": "",
+          "aria-label": "Not now",
+          title: "Not now (Esc)",
+          disabled: mic === "asking",
+          style: closeButtonStyle,
+          onClick: onDecline,
+          children: "\u2715"
         }
       )
-    ] })
+    ] }),
+    /* @__PURE__ */ jsxs6("div", { style: { padding: "10px 20px 0" }, children: [
+      /* @__PURE__ */ jsx6("h2", { style: { margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.25 }, children: copy.title }),
+      /* @__PURE__ */ jsx6("p", { style: { margin: "4px 0 0", color: "#475467" }, children: copy.intro })
+    ] }),
+    /* @__PURE__ */ jsx6(Stepper, { step, voice: voiceOn }),
+    /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-step": step, style: { padding: "16px 20px", overflowY: "auto", minHeight: 0 }, children: [
+      step === 1 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+        /* @__PURE__ */ jsx6("span", { style: sectionLabelStyle, children: "When the agent applies changes" }),
+        /* @__PURE__ */ jsx6("div", { role: "radiogroup", "aria-label": "Execution mode", style: { display: "flex", gap: 8 }, children: EXECUTION_MODES.map((option, index) => {
+          const selected = option === mode;
+          return /* @__PURE__ */ jsxs6(
+            "button",
+            {
+              type: "button",
+              role: "radio",
+              "aria-checked": selected,
+              "data-riffrec-consent-mode": option,
+              style: {
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: selected ? "1.5px solid #101828" : "1px solid #e4e7ec",
+                background: "#ffffff",
+                color: "#101828",
+                font: "inherit",
+                textAlign: "left",
+                cursor: "pointer"
+              },
+              onClick: () => setMode(option),
+              children: [
+                /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontWeight: 500 }, children: [
+                  MODE_LABELS[option],
+                  /* @__PURE__ */ jsx6(Kbd, { children: index + 1 })
+                ] }),
+                /* @__PURE__ */ jsx6("span", { style: { fontSize: 11, lineHeight: 1.4, color: "#475467" }, children: MODE_SUMMARIES[option] })
+              ]
+            },
+            option
+          );
+        }) }),
+        /* @__PURE__ */ jsx6("span", { style: { fontSize: 11, color: "#667085" }, children: "You can change this later from the panel footer." }),
+        /* @__PURE__ */ jsx6("span", { style: { ...sectionLabelStyle, marginTop: 8 }, children: "Capture" }),
+        /* @__PURE__ */ jsx6(
+          SwitchRow,
+          {
+            on: voiceOn,
+            onToggle: () => setVoiceOn((on) => !on),
+            name: "Voice interviewer",
+            shortcut: "V",
+            attribute: "data-riffrec-consent-voice",
+            children: "Talk instead of type. It listens and asks follow-ups. Needs your microphone."
+          }
+        ),
+        /* @__PURE__ */ jsx6(
+          SwitchRow,
+          {
+            on: framesOn,
+            onToggle: () => setFramesOn((on) => !on),
+            name: "Screenshots of the page",
+            shortcut: "F",
+            attribute: "data-riffrec-consent-frames",
+            children: "Taken when you point at something, so the agent sees what you see."
+          }
+        )
+      ] }) : null,
+      step === 2 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
+        copy.destinations.map((destination) => /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-destination": destination.id, style: boxStyle, children: [
+          /* @__PURE__ */ jsxs6("p", { style: { margin: "0 0 6px", fontWeight: 500 }, children: [
+            "To ",
+            destination.to
+          ] }),
+          /* @__PURE__ */ jsx6("ul", { style: { margin: 0, paddingLeft: 18, color: "#475467" }, children: destination.items.map((item) => /* @__PURE__ */ jsx6("li", { style: { margin: "0 0 3px" }, children: item }, item)) }),
+          destination.id === "endpoint" && copy.retention ? /* @__PURE__ */ jsx6("p", { "data-riffrec-consent-retention": "", style: { margin: "8px 0 0", fontSize: 12, color: "#667085" }, children: copy.retention }) : null
+        ] }, destination.id)),
+        /* @__PURE__ */ jsx6("p", { style: { margin: 0, fontSize: 12, color: "#475467" }, children: copy.noExclusions }),
+        /* @__PURE__ */ jsxs6(
+          "button",
+          {
+            type: "button",
+            role: "checkbox",
+            "aria-checked": agreed,
+            "data-riffrec-consent-agree": agreed ? "on" : "off",
+            style: { ...rowButtonStyle, gap: 10, alignItems: "flex-start", borderColor: agreed ? "#101828" : "#e4e7ec" },
+            onClick: () => setAgreed((on) => !on),
+            children: [
+              /* @__PURE__ */ jsx6(
+                "span",
+                {
+                  "aria-hidden": "true",
+                  style: {
+                    flex: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 16,
+                    height: 16,
+                    marginTop: 2,
+                    boxSizing: "border-box",
+                    borderRadius: 4,
+                    background: agreed ? "#101828" : "#ffffff",
+                    border: agreed ? "none" : "1px solid #d0d5dd",
+                    color: "#ffffff",
+                    fontSize: 11
+                  },
+                  children: agreed ? "\u2713" : null
+                }
+              ),
+              /* @__PURE__ */ jsx6("span", { style: { flex: 1 }, children: "I understand what is shared and with whom, and I consent to this live session." }),
+              /* @__PURE__ */ jsx6(Kbd, { children: "Space" })
+            ]
+          }
+        )
+      ] }) : null,
+      step === 3 ? /* @__PURE__ */ jsxs6("div", { style: { display: "flex", flexDirection: "column", gap: 12 }, children: [
+        mic === "asking" ? /* @__PURE__ */ jsxs6("div", { style: { ...boxStyle, display: "flex", alignItems: "center", gap: 8 }, children: [
+          /* @__PURE__ */ jsx6("span", { "aria-hidden": "true", style: { width: 7, height: 7, borderRadius: 999, background: "#f79009" } }),
+          "Waiting for your browser's microphone prompt\u2026"
+        ] }) : mic === "denied" ? /* @__PURE__ */ jsxs6(
+          "div",
+          {
+            role: "status",
+            "data-riffrec-consent-mic-denied": "",
+            style: { ...boxStyle, background: "#fffaeb", borderColor: "#fedf89", color: "#7a2e0e" },
+            children: [
+              /* @__PURE__ */ jsx6("strong", { style: { fontWeight: 600 }, children: "Microphone unavailable." }),
+              " ",
+              denialReason,
+              " You can still start with drawing and the board. The voice interviewer won't run."
+            ]
+          }
+        ) : /* @__PURE__ */ jsx6("p", { style: { margin: 0 }, children: copy.microphone }),
+        /* @__PURE__ */ jsxs6("div", { style: { padding: "12px 14px", borderRadius: 8, background: "#f9fafb" }, children: [
+          /* @__PURE__ */ jsx6("span", { style: sectionLabelStyle, children: "Once you're live" }),
+          /* @__PURE__ */ jsx6(
+            "div",
+            {
+              style: {
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px 16px",
+                marginTop: 8,
+                fontSize: 12,
+                color: "#344054"
+              },
+              children: shortcutLegend.map(([key, label]) => /* @__PURE__ */ jsxs6("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                /* @__PURE__ */ jsx6(Kbd, { children: key }),
+                label
+              ] }, key))
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxs6("div", { "data-riffrec-consent-summary": "", style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }, children: [
+          /* @__PURE__ */ jsxs6("span", { style: chipStyle, children: [
+            MODE_LABELS[mode],
+            " mode"
+          ] }),
+          /* @__PURE__ */ jsx6("span", { style: chipStyle, children: !voiceOn ? "Voice off" : mic === "denied" ? "Voice unavailable" : "Voice on" }),
+          /* @__PURE__ */ jsx6("span", { style: chipStyle, children: framesOn ? "Screenshots on" : "Screenshots off" }),
+          /* @__PURE__ */ jsx6(
+            "button",
+            {
+              type: "button",
+              "data-riffrec-consent-change": "",
+              disabled: mic === "asking",
+              style: {
+                border: 0,
+                background: "transparent",
+                padding: "2px 4px",
+                color: "#475467",
+                font: "inherit",
+                fontSize: 11,
+                textDecoration: "underline",
+                cursor: "pointer"
+              },
+              onClick: change,
+              children: "Change"
+            }
+          )
+        ] })
+      ] }) : null
+    ] }),
+    /* @__PURE__ */ jsxs6(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "12px 16px 12px 20px",
+          borderTop: "1px solid #f2f4f7"
+        },
+        children: [
+          step === 1 ? /* @__PURE__ */ jsxs6("button", { type: "button", "data-riffrec-consent-decline": "", style: ghostButtonStyle, onClick: onDecline, children: [
+            copy.declineLabel,
+            /* @__PURE__ */ jsx6(Kbd, { children: "Esc" })
+          ] }) : /* @__PURE__ */ jsxs6("button", { type: "button", "data-riffrec-consent-back": "", disabled: mic === "asking", style: ghostButtonStyle, onClick: back, children: [
+            "\u2190 Back",
+            /* @__PURE__ */ jsx6(Kbd, { children: "Esc" })
+          ] }),
+          /* @__PURE__ */ jsxs6(
+            "button",
+            {
+              type: "button",
+              ...{ [primaryAttribute]: "" },
+              disabled: blocked || mic === "asking",
+              title: blocked ? "Tick the consent box first" : void 0,
+              style: blocked ? primaryBlockedStyle : primaryButtonStyle2,
+              onClick: next,
+              children: [
+                primaryLabel,
+                blocked ? null : /* @__PURE__ */ jsx6(Kbd, { dark: true, children: "\u21B5" })
+              ]
+            }
+          )
+        ]
+      }
+    )
   ] }) });
 }
 
-// src/live/overlay/EndedCard.tsx
+// src/live/overlay/NextSessionLauncher.tsx
+import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
+var FONT3 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var pillStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "6px 6px 6px 12px",
+  background: "#ffffff",
+  color: "#101828",
+  border: "1px solid #eaecf0",
+  borderRadius: 999,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT3,
+  fontSize: 13
+};
+var dotStyle = (color) => ({
+  width: 6,
+  height: 6,
+  borderRadius: 999,
+  background: color,
+  flex: "none"
+});
+var startButtonStyle = {
+  border: "1px solid #101828",
+  borderRadius: 999,
+  background: "#101828",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 12px",
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var startButtonDisabledStyle = {
+  ...startButtonStyle,
+  borderColor: "#e4e7ec",
+  background: "#f2f4f7",
+  color: "#667085",
+  cursor: "default"
+};
+function endpointHost(endpoint) {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint;
+  }
+}
+function NextSessionLauncher({ next, onStart }) {
+  const ready = next.state === "ready";
+  return /* @__PURE__ */ jsxs7("div", { role: "status", "aria-live": "polite", "data-riffrec-next-session": next.state, style: pillStyle, children: [
+    /* @__PURE__ */ jsx7("span", { "aria-hidden": "true", style: dotStyle(ready ? "#12b76a" : "#f79009") }),
+    /* @__PURE__ */ jsxs7("span", { style: { display: "flex", flexDirection: "column", lineHeight: 1.25 }, children: [
+      /* @__PURE__ */ jsx7("span", { style: { fontWeight: 500 }, children: ready ? "Endpoint ready" : "Agent is wrapping up" }),
+      /* @__PURE__ */ jsx7("span", { style: { fontSize: 11, color: "#667085" }, children: endpointHost(next.endpoint) })
+    ] }),
+    /* @__PURE__ */ jsx7(
+      "button",
+      {
+        type: "button",
+        "data-riffrec-next-session-start": "",
+        disabled: !ready,
+        style: ready ? startButtonStyle : startButtonDisabledStyle,
+        onClick: onStart,
+        children: "Start live session"
+      }
+    )
+  ] });
+}
 
+// src/live/overlay/EndedCard.tsx
+import { jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
 var RESIDUAL_STATUSES = ["needs_info", "blocked"];
 function countByStatus(units) {
-  const counts = Object.fromEntries(_chunk4XWUXLDEcjs.UNIT_STATUSES.map((status) => [status, 0]));
+  const counts = Object.fromEntries(UNIT_STATUSES.map((status) => [status, 0]));
   for (const unit of units) counts[unit.status] += 1;
   return counts;
 }
 function residualCount(counts) {
   return RESIDUAL_STATUSES.reduce((total, status) => total + counts[status], 0);
 }
-var FONT3 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var FONT4 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var cardStyle = {
-  fontFamily: FONT3,
+  fontFamily: FONT4,
   fontSize: 13,
   color: "#101828",
   background: "#ffffff",
-  border: "1px solid #d0d5dd",
-  borderRadius: 8,
-  boxShadow: "0 12px 40px rgba(16, 24, 40, 0.18)",
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
   padding: 16,
   width: 300
 };
@@ -6453,9 +7131,9 @@ var countsStyle = {
   rowGap: 4,
   columnGap: 12
 };
-var buttonStyle3 = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
+var buttonStyle2 = {
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#344054",
   font: "inherit",
@@ -6463,34 +7141,166 @@ var buttonStyle3 = {
   padding: "5px 10px",
   cursor: "pointer"
 };
-function EndedCard({ units, reason, residualHint, onDismiss }) {
+function EndedCard({ units, reason, residualHint, onDismiss, next, onStartNext }) {
   const counts = countByStatus(units);
   const residuals = residualCount(counts);
-  const shown = _chunk4XWUXLDEcjs.UNIT_STATUSES.filter((status) => counts[status] > 0);
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
-    shown.length > 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: STATUS_LABELS[status] }),
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { fontWeight: 600, textAlign: "right" }, children: counts[status] })
+  const shown = UNIT_STATUSES.filter((status) => counts[status] > 0);
+  return /* @__PURE__ */ jsxs8("div", { role: "status", "data-riffrec-ended-card": "", style: cardStyle, children: [
+    /* @__PURE__ */ jsx8("p", { style: { margin: 0, fontWeight: 600, fontSize: 15 }, children: "Live session ended" }),
+    /* @__PURE__ */ jsx8("p", { style: { margin: "4px 0 0", color: "#475467" }, children: units.length === 0 ? "No units were recorded. Everything you streamed is in the endpoint's session log." : `${units.length} ${units.length === 1 ? "unit" : "units"} streamed to the endpoint as they happened; the session log is there.` }),
+    shown.length > 0 ? /* @__PURE__ */ jsx8("ul", { "data-riffrec-ended-counts": "", style: countsStyle, children: shown.map((status) => /* @__PURE__ */ jsxs8("li", { "data-riffrec-ended-count": status, style: { display: "contents" }, children: [
+      /* @__PURE__ */ jsx8("span", { children: STATUS_LABELS[status] }),
+      /* @__PURE__ */ jsx8("span", { style: { fontWeight: 500, textAlign: "right" }, children: counts[status] })
     ] }, status)) }) : null,
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${_nullishCoalesce(residualHint, () => ( "Your agent's residual list has them, ready to hand to planning."))}` : _nullishCoalesce(residualHint, () => ( "Anything beyond this session is in your agent's residual list.")) }),
-    reason && reason !== "riffer_done" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
+    /* @__PURE__ */ jsx8("p", { "data-riffrec-ended-residual": "", style: { margin: "10px 0 0", color: "#475467" }, children: residuals > 0 ? `${residuals} ${residuals === 1 ? "unit needs" : "units need"} follow-up. ${residualHint ?? "Your agent's residual list has them, ready to hand to planning."}` : residualHint ?? "Anything beyond this session is in your agent's residual list." }),
+    reason && reason !== "riffer_done" ? /* @__PURE__ */ jsxs8("p", { "data-riffrec-ended-reason": "", style: { margin: "6px 0 0", fontSize: 12, color: "#667085" }, children: [
       "Ended by the endpoint: ",
       reason
     ] }) : null,
-    onDismiss ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 12 }, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle3, onClick: onDismiss, children: "Close" }) }) : null
+    onDismiss || next && onStartNext ? /* @__PURE__ */ jsxs8("div", { style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 12 }, children: [
+      next && onStartNext ? /* @__PURE__ */ jsx8(
+        "button",
+        {
+          type: "button",
+          "data-riffrec-ended-start-next": next,
+          disabled: next !== "ready",
+          title: next === "ready" ? void 0 : "The agent is still finishing this session",
+          style: next === "ready" ? startButtonStyle : startButtonDisabledStyle,
+          onClick: onStartNext,
+          children: next === "ready" ? "Start another session" : "Agent wrapping up\u2026"
+        }
+      ) : null,
+      onDismiss ? /* @__PURE__ */ jsx8("button", { type: "button", "data-riffrec-ended-dismiss": "", style: buttonStyle2, onClick: onDismiss, children: "Close" }) : null
+    ] }) : null
+  ] });
+}
+
+// src/live/overlay/KeyPrompt.tsx
+import { useState as useState5 } from "react";
+import { jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
+function needsOpenAIKey(reason) {
+  if (reason?.kind !== "refused") return false;
+  return reason.reason === "no_key" || reason.reason === "openai_error" && reason.upstreamStatus === 401;
+}
+var wrapStyle = {
+  margin: "0 0 12px",
+  padding: 10,
+  border: "1px solid #fedf89",
+  borderRadius: 8,
+  background: "#fffaeb",
+  color: "#101828"
+};
+var inputStyle2 = {
+  flex: 1,
+  minWidth: 0,
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  padding: "5px 8px",
+  font: "inherit",
+  fontSize: 12
+};
+var buttonStyle3 = {
+  border: "1px solid #101828",
+  borderRadius: 7,
+  background: "#101828",
+  color: "#ffffff",
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  padding: "5px 10px",
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var linkButtonStyle = {
+  border: 0,
+  background: "none",
+  padding: 0,
+  color: "#475467",
+  font: "inherit",
+  fontSize: 11,
+  textDecoration: "underline",
+  cursor: "pointer"
+};
+function KeyPrompt({ reason, onRetry }) {
+  const [value, setValue] = useState5("");
+  const [stored, setStored] = useState5(() => readStoredOpenAIKey() !== null);
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const key = value.trim();
+    if (!key) return;
+    storeOpenAIKey(key);
+    setStored(true);
+    setValue("");
+    onRetry();
+  };
+  const handleForget = () => {
+    clearStoredOpenAIKey();
+    setStored(false);
+  };
+  return /* @__PURE__ */ jsxs9("form", { "data-riffrec-live-key-prompt": "", style: wrapStyle, onSubmit: handleSubmit, children: [
+    /* @__PURE__ */ jsx9("p", { style: { margin: "0 0 8px", fontSize: 12, lineHeight: 1.4 }, children: stored && reason?.kind === "refused" && reason.reason === "openai_error" ? "OpenAI rejected the saved key. Paste a different one to turn voice on." : "Paste an OpenAI API key to turn voice on. It is kept in this browser and sent only to the endpoint." }),
+    /* @__PURE__ */ jsxs9("div", { style: { display: "flex", gap: 6 }, children: [
+      /* @__PURE__ */ jsx9(
+        "input",
+        {
+          type: "password",
+          "data-riffrec-live-key-input": "",
+          "aria-label": "OpenAI API key",
+          placeholder: "sk-...",
+          autoComplete: "off",
+          spellCheck: false,
+          value,
+          onChange: (event) => setValue(event.target.value),
+          style: inputStyle2
+        }
+      ),
+      /* @__PURE__ */ jsx9("button", { type: "submit", "data-riffrec-live-key-save": "", disabled: !value.trim(), style: buttonStyle3, children: "Save and retry" })
+    ] }),
+    stored ? /* @__PURE__ */ jsx9("button", { type: "button", "data-riffrec-live-key-forget": "", style: { ...linkButtonStyle, marginTop: 6 }, onClick: handleForget, children: "Forget saved key" }) : null
   ] });
 }
 
 // src/live/overlay/LiveIndicator.tsx
-
+import { jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
 function hostOf(endpoint) {
   if (!endpoint) return null;
   try {
     return new URL(endpoint).host;
-  } catch (e19) {
+  } catch {
     return endpoint;
+  }
+}
+function voiceUnavailableCause(reason) {
+  if (!reason) return null;
+  switch (reason.kind) {
+    case "no_endpoint":
+      return "no endpoint configured";
+    case "connect_failed":
+      return "couldn't connect to OpenAI Realtime";
+    case "exhausted":
+      return reason.reason === "throttled" ? "the endpoint is throttling voice requests" : "couldn't reach the endpoint";
+    case "refused":
+      switch (reason.reason) {
+        case "openai_error":
+          if (reason.upstreamStatus === 401) return "OpenAI rejected the API key";
+          if (reason.upstreamStatus === 429) return "OpenAI rate limit or quota reached";
+          if (reason.upstreamStatus === void 0) return "couldn't reach OpenAI";
+          return `OpenAI returned an error (${reason.upstreamStatus})`;
+        case "no_key":
+          return "the endpoint has no OpenAI key";
+        case "brief_contains_secret":
+          return "the session brief looked like it held a secret";
+        case "unauthorized":
+          return "the endpoint rejected this page's token";
+        case "tls_required":
+          return "the endpoint requires HTTPS";
+        default:
+          return "the endpoint refused to start voice";
+      }
+    default: {
+      const exhaustive = reason;
+      return exhaustive;
+    }
   }
 }
 function deriveIndicatorState(input) {
@@ -6528,26 +7338,6 @@ function baseIndicatorState(status) {
     }
   }
 }
-function isRunning(status) {
-  switch (status) {
-    case "connecting":
-    case "live":
-    case "live_novoice":
-    case "buffering":
-    case "reconnecting":
-    case "incompatible":
-      return true;
-    case "idle":
-    case "consenting":
-    case "ended":
-    case "error":
-      return false;
-    default: {
-      const exhaustive = status;
-      return exhaustive;
-    }
-  }
-}
 function describeIndicator(input) {
   const state = deriveIndicatorState(input);
   const host = hostOf(input.endpoint);
@@ -6568,14 +7358,18 @@ function describeIndicator(input) {
         color: "#12b76a",
         pulse: true
       };
-    case "novoice":
+    case "novoice": {
+      const cause = voiceUnavailableCause(input.voiceUnavailable);
+      const where = host ? `Clicks, drawings, and the board still stream to ${host}.` : "Clicks, drawings, and the board are saved locally.";
       return {
         state,
-        label: host ? `Live \xB7 no voice \xB7 streaming to ${host}` : "Live \xB7 no voice \xB7 saving locally",
-        short: "Live \xB7 no voice",
-        color: "#12b76a",
-        pulse: true
+        label: cause ? `Voice off \xB7 ${cause}` : host ? `Voice off \xB7 streaming to ${host}` : "Voice off \xB7 saving locally",
+        short: "Voice off",
+        color: "#f79009",
+        pulse: false,
+        detail: `The voice interviewer is not running${cause ? `: ${cause}` : ""}. ${where}`
       };
+    }
     case "buffering":
       return {
         state,
@@ -6615,166 +7409,52 @@ function describeIndicator(input) {
 var rootStyle2 = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#101828",
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 500,
+  color: "#344054",
   minWidth: 0
 };
-var dotStyle = {
-  width: 9,
-  height: 9,
+var dotStyle2 = {
+  width: 6,
+  height: 6,
   borderRadius: "50%",
   flex: "none"
 };
-var iconButtonStyle = {
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
-  background: "#ffffff",
-  color: "#344054",
-  font: "inherit",
-  fontSize: 12,
-  padding: "3px 8px",
-  cursor: "pointer"
-};
-var iconButtonPressedStyle = {
-  ...iconButtonStyle,
-  background: "#344054",
-  borderColor: "#344054",
-  color: "#ffffff"
-};
-function LiveIndicator({ onToggleMute, onTogglePause, compact = false, ...input }) {
+function LiveIndicator({ compact = false, ...input }) {
   const view = describeIndicator(input);
-  const running = isRunning(input.status);
-  const micDenied = input.mic === "denied";
-  const showControls = !compact && running && (onToggleMute || onTogglePause);
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", style: rootStyle2, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "aria-hidden": "true", style: { ...dotStyle, background: view.color, boxShadow: view.pulse ? `0 0 0 3px ${view.color}33` : void 0 } }),
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label }),
-    showControls ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { style: { display: "inline-flex", gap: 6, marginLeft: 4 }, children: [
-      onToggleMute ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        "button",
-        {
-          type: "button",
-          "data-riffrec-live-mute": "",
-          "aria-pressed": input.muted,
-          "aria-label": input.muted ? "Unmute microphone" : "Mute microphone",
-          disabled: micDenied,
-          title: micDenied ? "Microphone was denied" : void 0,
-          style: input.muted ? iconButtonPressedStyle : iconButtonStyle,
-          onClick: onToggleMute,
-          children: input.muted ? "Unmute" : "Mute"
-        }
-      ) : null,
-      onTogglePause ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        "button",
-        {
-          type: "button",
-          "data-riffrec-live-pause": "",
-          "aria-pressed": _nullishCoalesce(input.paused, () => ( false)),
-          "aria-label": input.paused ? "Resume frame and stream capture" : "Pause frame and stream capture",
-          style: input.paused ? iconButtonPressedStyle : iconButtonStyle,
-          onClick: onTogglePause,
-          children: input.paused ? "Resume" : "Pause"
-        }
-      ) : null
-    ] }) : null
-  ] });
-}
-
-// src/live/overlay/ModeSwitch.tsx
-
-var MODE_LABELS = {
-  instant: "Instant",
-  smart: "Smart",
-  collect: "Collect"
-};
-var MODE_DESCRIPTIONS = {
-  instant: "Applies everything it can at each checkpoint, guessing on ambiguous units and noting the guess.",
-  smart: "Applies clear bounded edits, asks about ambiguous ones, sends anything larger to the residual list.",
-  collect: "Applies nothing during the riff; the accepted batch lands as one pass when you say done."
-};
-var PENDING_MODE_HINT = "Pending until next checkpoint";
-var groupStyle = {
-  display: "inline-flex",
-  border: "1px solid #d0d5dd",
-  borderRadius: 6,
-  overflow: "hidden",
-  background: "#ffffff"
-};
-var optionStyle = {
-  border: "none",
-  borderRight: "1px solid #d0d5dd",
-  background: "#ffffff",
-  color: "#344054",
-  font: "inherit",
-  fontSize: 12,
-  fontWeight: 600,
-  padding: "5px 10px",
-  cursor: "pointer"
-};
-var optionSelectedStyle = {
-  ...optionStyle,
-  background: "#101828",
-  color: "#ffffff"
-};
-var hintStyle = {
-  display: "block",
-  marginTop: 4,
-  fontSize: 11,
-  color: "#b54708"
-};
-function ModeSwitch({ mode, pendingMode, onChange, disabled = false }) {
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-mode-switch": "", style: { display: "inline-block" }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { role: "radiogroup", "aria-label": "Execution mode", style: { ...groupStyle, opacity: disabled ? 0.56 : 1 }, children: _chunk4XWUXLDEcjs.EXECUTION_MODES.map((option, index) => {
-      const selected = option === mode;
-      const last = index === _chunk4XWUXLDEcjs.EXECUTION_MODES.length - 1;
-      return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        "button",
-        {
-          type: "button",
-          role: "radio",
-          "aria-checked": selected,
-          "data-riffrec-mode-option": option,
-          title: MODE_DESCRIPTIONS[option],
-          disabled,
-          style: { ...selected ? optionSelectedStyle : optionStyle, ...last ? { borderRight: "none" } : {} },
-          onClick: () => {
-            if (!selected) onChange(option);
-          },
-          children: MODE_LABELS[option]
-        },
-        option
-      );
-    }) }),
-    pendingMode !== null ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-mode-pending": pendingMode, role: "status", style: hintStyle, children: [
-      MODE_LABELS[pendingMode],
-      ": ",
-      PENDING_MODE_HINT.toLowerCase()
-    ] }) : null
+  return /* @__PURE__ */ jsxs10("span", { "data-riffrec-live-indicator": view.state, "aria-live": "polite", title: view.detail ?? view.label, style: rootStyle2, children: [
+    /* @__PURE__ */ jsx10(
+      "span",
+      {
+        "aria-hidden": "true",
+        style: { ...dotStyle2, background: view.color, boxShadow: view.state === "streaming" ? `0 0 0 3px ${view.color}26` : void 0 }
+      }
+    ),
+    /* @__PURE__ */ jsx10("span", { "data-riffrec-live-indicator-label": "", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: compact ? view.short : view.label })
   ] });
 }
 
 // src/live/overlay/SendControl.tsx
-
-
+import { useRef as useRef4, useState as useState6 } from "react";
+import { jsx as jsx11, jsxs as jsxs11 } from "react/jsx-runtime";
 var buttonStyle4 = {
-  border: "1px solid #344054",
-  borderRadius: 6,
+  border: "1px solid #101828",
+  borderRadius: 7,
   padding: "5px 12px",
   background: "#101828",
   color: "#ffffff",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 500,
   cursor: "pointer",
   whiteSpace: "nowrap"
 };
-var secondaryButtonStyle3 = {
+var secondaryButtonStyle2 = {
   ...buttonStyle4,
   background: "#ffffff",
   color: "#344054",
-  borderColor: "#d0d5dd"
+  borderColor: "#e4e7ec"
 };
 var disabledStyle = {
   cursor: "not-allowed",
@@ -6786,9 +7466,9 @@ var noteStyle2 = {
   marginLeft: 6
 };
 function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact = false }) {
-  const [sending, setSending] = _react.useState.call(void 0, false);
-  const [lastSend, setLastSend] = _react.useState.call(void 0, null);
-  const sendInFlight = _react.useRef.call(void 0, false);
+  const [sending, setSending] = useState6(false);
+  const [lastSend, setLastSend] = useState6(null);
+  const sendInFlight = useRef4(false);
   const send = async () => {
     if (sendInFlight.current) return;
     sendInFlight.current = true;
@@ -6803,8 +7483,8 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
     }
   };
   const busy = disabled || sending;
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs11("span", { "data-riffrec-send-control": "", style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+    /* @__PURE__ */ jsx11(
       "button",
       {
         type: "button",
@@ -6817,34 +7497,35 @@ function SendControl({ onSend, onDone, heldCount = 0, disabled = false, compact 
         children: sending ? "Sending\u2026" : heldCount > 0 ? `Send (${heldCount})` : "Send"
       }
     ),
-    !compact ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    !compact && onDone ? /* @__PURE__ */ jsx11(
       "button",
       {
         type: "button",
         "data-riffrec-done": "",
         title: "Confirm each unit, then end the session",
         disabled,
-        style: disabled ? { ...secondaryButtonStyle3, ...disabledStyle } : secondaryButtonStyle3,
+        style: disabled ? { ...secondaryButtonStyle2, ...disabledStyle } : secondaryButtonStyle2,
         onClick: onDone,
         children: "Done"
       }
     ) : null,
-    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
+    !compact && lastSend === "nothing" && heldCount === 0 ? /* @__PURE__ */ jsx11("span", { "data-riffrec-send-note": "nothing", role: "status", style: noteStyle2, children: "Nothing held" }) : null
   ] });
 }
 
 // src/live/overlay/LiveOverlay.tsx
-
+import { Fragment, jsx as jsx12, jsxs as jsxs12 } from "react/jsx-runtime";
 function useLiveSnapshot(session) {
-  const [snapshot, setSnapshot] = _react.useState.call(void 0, () => session.snapshot());
-  _react.useEffect.call(void 0, () => {
+  const [snapshot, setSnapshot] = useState7(() => session.snapshot());
+  useEffect4(() => {
     setSnapshot(session.snapshot());
     return session.subscribe(setSnapshot);
   }, [session]);
   return snapshot;
 }
 var PANEL_WIDTH = 320;
-var FONT4 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+var TOAST_MS = 900;
+var FONT5 = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 var panelStyle = {
   position: "fixed",
   top: 16,
@@ -6853,30 +7534,30 @@ var panelStyle = {
   maxHeight: "calc(100vh - 32px)",
   display: "flex",
   flexDirection: "column",
-  background: "#f9fafb",
+  background: "#fcfcfd",
   color: "#101828",
-  border: "1px solid #d0d5dd",
-  borderRadius: 10,
-  boxShadow: "0 16px 48px rgba(16, 24, 40, 0.22)",
-  fontFamily: FONT4,
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT5,
   fontSize: 13,
   pointerEvents: "auto",
   overflow: "hidden"
 };
-var pillStyle = {
+var pillStyle2 = {
   position: "fixed",
   top: 16,
   right: 16,
   display: "inline-flex",
   alignItems: "center",
   gap: 10,
-  padding: "6px 8px 6px 12px",
+  padding: "6px 6px 6px 12px",
   background: "#ffffff",
   color: "#101828",
-  border: "1px solid #d0d5dd",
+  border: "1px solid #eaecf0",
   borderRadius: 999,
-  boxShadow: "0 8px 24px rgba(16, 24, 40, 0.18)",
-  fontFamily: FONT4,
+  boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+  fontFamily: FONT5,
   fontSize: 13,
   pointerEvents: "auto"
 };
@@ -6885,51 +7566,105 @@ var headerStyle = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 8,
-  padding: "10px 12px",
-  borderBottom: "1px solid #eaecf0",
+  padding: "10px 8px 10px 14px",
   background: "#ffffff"
 };
-var toolbarStyle = {
+var headerButtonStyle = {
+  width: 26,
+  height: 26,
+  border: 0,
+  borderRadius: 6,
+  background: "transparent",
+  color: "#667085",
+  font: "inherit",
+  fontSize: 12,
+  lineHeight: 1,
+  cursor: "pointer"
+};
+var voiceRowStyle = {
   display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 8,
-  padding: "8px 12px",
-  borderBottom: "1px solid #eaecf0",
-  flexWrap: "wrap"
+  gap: 6,
+  padding: "2px 12px 12px",
+  background: "#ffffff",
+  borderBottom: "1px solid #f2f4f7"
+};
+var rowButtonStyle2 = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  height: 32,
+  padding: "0 10px",
+  border: "1px solid #e4e7ec",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer",
+  whiteSpace: "nowrap"
+};
+var sectionLabelStyle2 = {
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#667085"
 };
 var bodyStyle = {
-  padding: 12,
+  padding: "8px 12px 12px",
   overflowY: "auto",
   flex: 1,
   minHeight: 0
+};
+var settingsStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: "10px 12px",
+  borderTop: "1px solid #f2f4f7",
+  background: "#f9fafb"
 };
 var footerStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 8,
-  padding: "10px 12px",
-  borderTop: "1px solid #eaecf0",
+  padding: "8px 8px 8px 12px",
+  borderTop: "1px solid #f2f4f7",
   background: "#ffffff"
 };
-var iconButtonStyle2 = {
-  border: "1px solid #d0d5dd",
+var settingsToggleStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  border: 0,
+  background: "transparent",
+  padding: "4px 6px",
+  marginLeft: -6,
   borderRadius: 6,
-  background: "#ffffff",
-  color: "#344054",
+  color: "#667085",
   font: "inherit",
   fontSize: 12,
-  fontWeight: 600,
-  padding: "4px 8px",
-  cursor: "pointer",
-  whiteSpace: "nowrap"
+  cursor: "pointer"
 };
-var iconButtonPressedStyle2 = {
-  ...iconButtonStyle2,
-  background: "#d92d20",
-  borderColor: "#d92d20",
-  color: "#ffffff"
+var legendStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "4px 10px",
+  marginTop: 4,
+  paddingTop: 8,
+  borderTop: "1px solid #eaecf0",
+  fontSize: 11,
+  color: "#667085"
+};
+var hintRowStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  marginBottom: 6,
+  fontFamily: FONT5,
+  fontSize: 11,
+  color: "#667085"
 };
 var endedWrapStyle = {
   position: "fixed",
@@ -6937,6 +7672,92 @@ var endedWrapStyle = {
   right: 16,
   pointerEvents: "auto"
 };
+var toolbarWrapStyle = {
+  position: "fixed",
+  left: "50%",
+  bottom: 20,
+  transform: "translateX(-50%)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 8,
+  fontFamily: FONT5,
+  pointerEvents: "none"
+};
+var toolbarStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 2,
+  padding: 4,
+  background: "#ffffff",
+  border: "1px solid #d0d5dd",
+  borderRadius: 12,
+  boxShadow: "0 4px 16px rgba(16, 24, 40, 0.08)",
+  pointerEvents: "auto"
+};
+var toolButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  height: 34,
+  padding: "0 8px 0 10px",
+  border: 0,
+  borderRadius: 8,
+  background: "transparent",
+  color: "#344054",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer"
+};
+var captionStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  whiteSpace: "nowrap"
+};
+var toastStyle = {
+  position: "fixed",
+  left: "50%",
+  bottom: 120,
+  transform: "translateX(-50%)",
+  padding: "6px 12px",
+  borderRadius: 999,
+  background: "#101828",
+  color: "#ffffff",
+  fontFamily: FONT5,
+  fontSize: 12,
+  pointerEvents: "none"
+};
+var dot = (color, halo = false) => ({
+  width: 6,
+  height: 6,
+  borderRadius: "50%",
+  background: color,
+  flex: "none",
+  boxShadow: halo ? "0 0 0 3px rgba(18, 183, 106, 0.15)" : void 0
+});
+var TOOLS = [
+  { tool: "cursor", icon: "\u2196", label: "Cursor", key: "V", title: "Cursor: use the page normally (V)" },
+  { tool: "draw", icon: "\u270E", label: "Draw", key: "D", title: "Draw: mark up the page (D)" },
+  { tool: "pin", icon: "\u2316", label: "Pin", key: "N", title: "Pin: drop a numbered pin (N)" }
+];
+var TOOL_HINTS = {
+  draw: ["Draw mode", "drag to circle or underline \xB7 Esc for cursor"],
+  pin: ["Pin mode", "click to drop a pin \xB7 Esc for cursor"]
+};
+var LEGEND = [
+  ["V", "cursor"],
+  ["D", "draw"],
+  ["N", "pin"],
+  ["M", "mute"],
+  ["P", "pause"],
+  ["S", "send"],
+  ["C", "collapse"],
+  ["E", "end"]
+];
 function agentNotes(snapshot, session) {
   const guesses = {};
   const notes = {};
@@ -6947,6 +7768,28 @@ function agentNotes(snapshot, session) {
     if (note) notes[unit.id] = note;
   }
   return { guesses, notes };
+}
+function voiceRunning(snapshot) {
+  return snapshot.voice === "live" || snapshot.voice === "connecting" || snapshot.voice === "reconnecting";
+}
+function streamStatus(snapshot, paused) {
+  if (paused) return { label: "Paused", color: "#98a2b3", halo: false };
+  switch (snapshot.status) {
+    case "incompatible":
+      return { label: "Incompatible", color: "#d92d20", halo: false };
+    case "error":
+      return { label: "Error", color: "#d92d20", halo: false };
+    case "buffering":
+      return { label: "Buffering", color: "#f79009", halo: false };
+    default:
+      return { label: "Live", color: "#12b76a", halo: true };
+  }
+}
+function KeyHint({ k, children }) {
+  return /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "center", gap: 4 }, children: [
+    /* @__PURE__ */ jsx12(Kbd, { children: k }),
+    children
+  ] });
 }
 function LiveOverlay({
   session,
@@ -6961,69 +7804,110 @@ function LiveOverlay({
   onFinished,
   paused: controlledPaused,
   onPauseChange,
+  onRetryVoice,
   residualHint,
+  nextSession,
+  onStartNext,
   zIndex = 2147483e3,
   defaultCollapsed = false,
   now
 }) {
   const snapshot = useLiveSnapshot(session);
-  const [collapsed, setCollapsed] = _react.useState.call(void 0, defaultCollapsed);
-  const [drawing, setDrawing] = _react.useState.call(void 0, false);
-  const [view, setView] = _react.useState.call(void 0, "board");
-  const [finishing, setFinishing] = _react.useState.call(void 0, false);
-  const [finished, setFinished] = _react.useState.call(void 0, false);
-  const [uncontrolledPaused, setUncontrolledPaused] = _react.useState.call(void 0, false);
-  const [endedReason, setEndedReason] = _react.useState.call(void 0, null);
-  const [dismissed, setDismissed] = _react.useState.call(void 0, false);
-  const paused = _nullishCoalesce(controlledPaused, () => ( uncontrolledPaused));
-  const onPauseChangeRef = _react.useRef.call(void 0, onPauseChange);
+  const [collapsed, setCollapsed] = useState7(defaultCollapsed);
+  const [tool, setTool] = useState7("cursor");
+  const [settingsOpen, setSettingsOpen] = useState7(false);
+  const [cleared, setCleared] = useState7(() => /* @__PURE__ */ new Set());
+  const [toast, setToast] = useState7(null);
+  const [view, setView] = useState7("board");
+  const [finishing, setFinishing] = useState7(false);
+  const [finished, setFinished] = useState7(false);
+  const [uncontrolledPaused, setUncontrolledPaused] = useState7(false);
+  const [endedReason, setEndedReason] = useState7(null);
+  const [dismissed, setDismissed] = useState7(false);
+  const paused = controlledPaused ?? uncontrolledPaused;
+  const panelRef = useRef5(null);
+  const onPauseChangeRef = useRef5(onPauseChange);
   onPauseChangeRef.current = onPauseChange;
-  const uncontrolledPausedRef = _react.useRef.call(void 0, uncontrolledPaused);
+  const uncontrolledPausedRef = useRef5(uncontrolledPaused);
   uncontrolledPausedRef.current = uncontrolledPaused;
-  _react.useEffect.call(void 0, () => {
+  useEffect4(() => {
     setView("board");
-    setDrawing(false);
+    setTool("cursor");
+    setSettingsOpen(false);
+    setCleared(/* @__PURE__ */ new Set());
     setFinished(false);
     setEndedReason(null);
     setDismissed(false);
-    if (uncontrolledPausedRef.current) _optionalChain([onPauseChangeRef, 'access', _264 => _264.current, 'optionalCall', _265 => _265(false)]);
+    if (uncontrolledPausedRef.current) onPauseChangeRef.current?.(false);
     setUncontrolledPaused(false);
   }, [session]);
-  _react.useEffect.call(void 0, () => {
-    return session.on("ended", ({ reason }) => setEndedReason(_nullishCoalesce(reason, () => ( "ended"))));
+  useEffect4(() => {
+    return session.on("ended", ({ reason }) => setEndedReason(reason ?? "ended"));
   }, [session]);
-  const sessionNow = _react.useMemo.call(void 0, () => _nullishCoalesce(now, () => ( (() => Math.max(0, Date.now() - session.startedAt)))), [now, session]);
-  const handleConsent = _react.useCallback.call(void 0, 
+  useEffect4(() => {
+    if (paused) setTool("cursor");
+  }, [paused]);
+  const toastTimer = useRef5(null);
+  const flash = useCallback2((text) => {
+    setToast(text);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  }, []);
+  useEffect4(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    []
+  );
+  const sessionNow = useMemo(() => now ?? (() => Math.max(0, Date.now() - session.startedAt)), [now, session]);
+  const handleConsent = useCallback2(
     (result) => {
+      if (!result.frames) session.disableFrames();
+      if (result.mode !== session.snapshot().mode) session.setMode(result.mode);
       if (result.mic === "granted") session.micGranted();
       else session.micDenied();
       session.start();
-      _optionalChain([onConsent, 'optionalCall', _266 => _266(result)]);
+      onConsent?.(result);
     },
     [session, onConsent]
   );
-  const handleDecline = _react.useCallback.call(void 0, () => {
+  const handleDecline = useCallback2(() => {
     session.declineConsent();
-    _optionalChain([onDecline, 'optionalCall', _267 => _267()]);
+    onDecline?.();
   }, [session, onDecline]);
-  const handleAnnotation = _react.useCallback.call(void 0, 
+  const visibleAnnotations = useMemo(
+    () => snapshot.annotations.filter((annotation) => !cleared.has(annotation.id)),
+    [snapshot.annotations, cleared]
+  );
+  const handleAnnotation = useCallback2(
     (annotation) => {
       if (onAnnotation) onAnnotation(annotation);
       else session.addAnnotation(annotation);
+      if (annotation.kind === "pin") {
+        const pins = visibleAnnotations.filter((mark) => mark.kind === "pin").length + 1;
+        flash(`Pin ${pins} added`);
+      }
     },
-    [session, onAnnotation]
+    [session, onAnnotation, visibleAnnotations, flash]
   );
-  const togglePause = _react.useCallback.call(void 0, () => {
+  const clearMarks = useCallback2(() => {
+    setCleared(new Set(snapshot.annotations.map((annotation) => annotation.id)));
+  }, [snapshot.annotations]);
+  const togglePause = useCallback2(() => {
     const next = !paused;
     if (controlledPaused === void 0) setUncontrolledPaused(next);
-    _optionalChain([onPauseChangeRef, 'access', _268 => _268.current, 'optionalCall', _269 => _269(next)]);
+    onPauseChangeRef.current?.(next);
   }, [paused, controlledPaused]);
-  const handleMode = _react.useCallback.call(void 0, (mode) => session.setMode(mode), [session]);
-  const handleSend = _react.useCallback.call(void 0, () => session.send(), [session]);
-  const handleWithdraw = _react.useCallback.call(void 0, (unitId) => void session.withdrawUnit(unitId, "riffer"), [session]);
-  const handleAnswer = _react.useCallback.call(void 0, (unitId, text) => void session.answer(unitId, text), [session]);
-  const finishInFlight = _react.useRef.call(void 0, false);
-  const handleConfirmations = _react.useCallback.call(void 0, 
+  const handleMode = useCallback2((mode) => session.setMode(mode), [session]);
+  const handleSend = useCallback2(async () => {
+    const emitted = await session.send();
+    flash(emitted ? "Sent" : "Nothing held to send");
+    return emitted;
+  }, [session, flash]);
+  const handleWithdraw = useCallback2((unitId) => void session.withdrawUnit(unitId, "riffer"), [session]);
+  const handleAnswer = useCallback2((unitId, text) => void session.answer(unitId, text), [session]);
+  const finishInFlight = useRef5(false);
+  const handleConfirmations = useCallback2(
     async (confirmations) => {
       if (finishInFlight.current || finished) return;
       finishInFlight.current = true;
@@ -7034,7 +7918,7 @@ function LiveOverlay({
         }
         setFinished(true);
         const result = await session.finish();
-        _optionalChain([onFinished, 'optionalCall', _270 => _270(result)]);
+        onFinished?.(result);
       } finally {
         finishInFlight.current = false;
         setFinishing(false);
@@ -7044,14 +7928,65 @@ function LiveOverlay({
     [session, onFinished, finished]
   );
   const running = snapshot.phase === "running" && !finished;
+  const toolsOn = running && !paused && view === "board";
+  const activeTool = toolsOn ? tool : "cursor";
+  const canMute = running && voiceRunning(snapshot) && snapshot.mic !== "denied";
+  const endedCardShown = snapshot.phase === "ended" && endedReason !== "stopped" && !dismissed;
+  const pickTool = useCallback2((next) => setTool((current) => current === next ? "cursor" : next), []);
+  const endSession = useCallback2(() => {
+    setTool("cursor");
+    setCollapsed(false);
+    setView("confirming");
+  }, []);
+  const onKey = useRef5(() => void 0);
+  onKey.current = (event) => {
+    if (!isPlainKey(event) || event.repeat) return;
+    const key = event.key.toLowerCase();
+    if (event.target instanceof HTMLButtonElement && (key === "enter" || key === " ")) return;
+    let act;
+    if (snapshot.phase === "ended") {
+      if (key === "escape" && endedCardShown) act = () => setDismissed(true);
+    } else if (snapshot.phase === "running" && view === "confirming") {
+      if (key === "escape" && !finishing) act = () => setView("board");
+      if (key === "enter") act = () => panelRef.current?.querySelector("[data-riffrec-confirm-finish]")?.click();
+    } else if (running) {
+      const keys = {
+        v: () => setTool("cursor"),
+        backspace: clearMarks,
+        p: togglePause,
+        s: () => void handleSend(),
+        c: () => setCollapsed((current) => !current),
+        e: endSession,
+        "1": () => handleMode("instant"),
+        "2": () => handleMode("smart"),
+        "3": () => handleMode("collect")
+      };
+      if (toolsOn) {
+        keys.d = () => pickTool("draw");
+        keys.n = () => pickTool("pin");
+      }
+      if (canMute) keys.m = () => session.setMuted(!snapshot.muted);
+      act = keys[key];
+    }
+    if (!act) return;
+    event.preventDefault();
+    act();
+  };
+  useEffect4(() => {
+    if (typeof window === "undefined") return;
+    const listener = (event) => onKey.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
   if (snapshot.phase === "consenting") {
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+    return /* @__PURE__ */ jsx12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "consenting", children: /* @__PURE__ */ jsx12(
       ConsentDialog,
       {
         profile,
         endpoint: snapshot.endpoint,
         endpointOwner,
         voice: session.hasEndpoint,
+        mode: snapshot.mode,
         getUserMedia,
         onAccept: handleConsent,
         onDecline: handleDecline,
@@ -7059,133 +7994,388 @@ function LiveOverlay({
       }
     ) });
   }
+  const launcher = nextSession && onStartNext ? /* @__PURE__ */ jsx12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "next", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ jsx12(NextSessionLauncher, { next: nextSession, onStart: onStartNext }) }) : null;
   if (snapshot.phase === "ended") {
-    if (endedReason === "stopped" || dismissed) return null;
-    return /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, EndedCard, { units: snapshot.units, reason: endedReason, residualHint, onDismiss: () => setDismissed(true) }) });
+    if (!endedCardShown) return launcher;
+    return /* @__PURE__ */ jsxs12("div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": "ended", style: { ...endedWrapStyle, zIndex: zIndex + 1 }, children: [
+      /* @__PURE__ */ jsx12(
+        EndedCard,
+        {
+          units: snapshot.units,
+          reason: endedReason,
+          residualHint,
+          onDismiss: () => setDismissed(true),
+          next: onStartNext ? nextSession?.state : null,
+          onStartNext
+        }
+      ),
+      /* @__PURE__ */ jsx12("div", { style: { ...hintRowStyle, marginTop: 6, marginBottom: 0 }, children: /* @__PURE__ */ jsx12(KeyHint, { k: "Esc", children: "close" }) })
+    ] });
   }
-  if (snapshot.phase === "idle") return null;
+  if (snapshot.phase === "idle") return launcher;
   const { guesses, notes } = agentNotes(snapshot, session);
   const held = session.heldUnits().length;
   const confirmable = snapshot.units.filter((unit) => unit.status !== "withdrawn");
   const errored = snapshot.phase === "error";
-  const indicator = (compact) => /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-    LiveIndicator,
-    {
-      status: snapshot.status,
-      muted: snapshot.muted,
-      mic: snapshot.mic,
-      paused,
-      expectedSchemaVersion: snapshot.expectedSchemaVersion,
-      endpoint: snapshot.endpoint,
-      error: snapshot.error,
-      compact,
-      onToggleMute: running ? () => session.setMuted(!snapshot.muted) : void 0,
-      onTogglePause: running ? togglePause : void 0
-    }
-  );
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { ...{ [OVERLAY_ATTRIBUTE]: "" }, "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded", children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-      DrawingLayer,
-      {
-        annotations: snapshot.annotations,
-        onAnnotation: handleAnnotation,
-        active: drawing && running,
-        onActiveChange: setDrawing,
-        shortcut: drawShortcut,
-        route,
-        now: sessionNow,
-        showToggle: false,
-        zIndex
-      }
-    ),
-    collapsed && view === "board" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-live-pill": "", style: { ...pillStyle, zIndex: zIndex + 1 }, children: [
-      indicator(true),
-      running ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), compact: true }) : null,
-      /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  const status = streamStatus(snapshot, paused);
+  const indicatorInput = {
+    status: snapshot.status,
+    muted: snapshot.muted,
+    mic: snapshot.mic,
+    paused,
+    expectedSchemaVersion: snapshot.expectedSchemaVersion,
+    endpoint: snapshot.endpoint,
+    error: snapshot.error,
+    voiceUnavailable: snapshot.voiceUnavailable
+  };
+  const indicatorLabel = describeIndicator(indicatorInput).label;
+  const micButton = () => {
+    if (!voiceRunning(snapshot)) {
+      const cause = voiceUnavailableCause(snapshot.voiceUnavailable) ?? (snapshot.mic === "denied" ? "no microphone" : "not running");
+      return /* @__PURE__ */ jsxs12(
         "button",
         {
           type: "button",
-          "data-riffrec-live-expand": "",
-          "aria-label": "Expand live panel",
-          "aria-expanded": false,
-          style: iconButtonStyle2,
-          onClick: () => setCollapsed(false),
-          children: "\u25B8"
+          "data-riffrec-live-mute": "off",
+          disabled: true,
+          title: `The voice interviewer isn't running: ${cause}. Clicks and drawings still stream.`,
+          style: { ...rowButtonStyle2, flex: 1, minWidth: 0, border: "1px dashed #e4e7ec", color: "#667085", cursor: "default" },
+          children: [
+            /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot("#f79009") }),
+            /* @__PURE__ */ jsxs12("span", { style: { flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }, children: [
+              "Voice off \xB7 ",
+              cause
+            ] })
+          ]
         }
-      )
-    ] }) : /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { "data-riffrec-live-panel": "", role: "region", "aria-label": "Riffrec live", style: { ...panelStyle, zIndex: zIndex + 1 }, children: [
-      /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: headerStyle, children: [
-        indicator(false),
-        view === "board" ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+      );
+    }
+    const muted = snapshot.muted;
+    const connecting = snapshot.voice !== "live";
+    const label = muted ? "Mic muted" : !connecting ? "Listening" : snapshot.voice === "reconnecting" ? "Reconnecting voice\u2026" : "Connecting voice\u2026";
+    return /* @__PURE__ */ jsxs12(
+      "button",
+      {
+        type: "button",
+        "data-riffrec-live-mute": muted ? "muted" : connecting ? "connecting" : "listening",
+        "aria-pressed": muted,
+        "aria-label": muted ? "Unmute microphone" : "Mute microphone",
+        title: muted ? "Unmute your mic (M)" : "Mute your mic. The session keeps streaming. (M)",
+        disabled: !canMute,
+        style: { ...rowButtonStyle2, flex: 1, minWidth: 0, background: muted ? "#f2f4f7" : "#ffffff" },
+        onClick: () => session.setMuted(!muted),
+        children: [
+          /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot(muted ? "#98a2b3" : connecting ? "#f79009" : "#12b76a") }),
+          /* @__PURE__ */ jsx12("span", { style: { flex: 1, textAlign: "left" }, children: label }),
+          /* @__PURE__ */ jsx12("span", { style: muted ? { color: "#344054", fontWeight: 500 } : { color: "#667085" }, children: muted ? "Unmute" : "Mute" }),
+          /* @__PURE__ */ jsx12(Kbd, { children: "M" })
+        ]
+      }
+    );
+  };
+  const toolbar = view === "board" && running ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-page-tools": "", style: { ...toolbarWrapStyle, zIndex: zIndex + 1 }, children: [
+    activeTool === "cursor" ? /* @__PURE__ */ jsxs12(
+      "span",
+      {
+        "data-riffrec-tool-caption": "cursor",
+        style: { ...captionStyle, background: "#ffffff", border: "1px solid #eaecf0", color: "#475467" },
+        children: [
+          /* @__PURE__ */ jsx12("b", { style: { fontWeight: 600, color: "#101828" }, children: "Cursor" }),
+          " \xB7",
+          " ",
+          paused ? "capture is paused" : "the page works as normal"
+        ]
+      }
+    ) : /* @__PURE__ */ jsxs12("span", { "data-riffrec-tool-caption": activeTool, style: { ...captionStyle, background: "#d92d20", color: "#ffffff" }, children: [
+      /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot("#ffffff") }),
+      /* @__PURE__ */ jsx12("b", { style: { fontWeight: 600 }, children: TOOL_HINTS[activeTool][0] }),
+      " \xB7 ",
+      TOOL_HINTS[activeTool][1]
+    ] }),
+    /* @__PURE__ */ jsxs12("div", { "data-riffrec-toolbar": "", role: "toolbar", "aria-label": "Page tools", style: toolbarStyle, children: [
+      TOOLS.map((item) => {
+        const selected = activeTool === item.tool;
+        const disabled = item.tool !== "cursor" && !toolsOn;
+        const selectedStyle = selected ? { background: item.tool === "cursor" ? "#101828" : "#d92d20", color: "#ffffff", fontWeight: 500 } : {};
+        return /* @__PURE__ */ jsxs12(
           "button",
           {
             type: "button",
-            "data-riffrec-live-collapse": "",
-            "aria-label": "Collapse live panel",
-            "aria-expanded": true,
-            style: iconButtonStyle2,
-            onClick: () => setCollapsed(true),
-            children: "\u25BE"
+            "data-riffrec-tool": item.tool,
+            "aria-pressed": selected,
+            title: item.title,
+            disabled,
+            style: { ...toolButtonStyle, ...selectedStyle, ...disabled ? { opacity: 0.5, cursor: "default" } : {} },
+            onClick: () => item.tool === "cursor" ? setTool("cursor") : pickTool(item.tool),
+            children: [
+              /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { fontSize: 14, lineHeight: 1 }, children: item.icon }),
+              item.label,
+              /* @__PURE__ */ jsx12(Kbd, { dark: selected, children: item.key })
+            ]
+          },
+          item.tool
+        );
+      }),
+      /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { width: 1, height: 20, background: "#eaecf0", margin: "0 4px" } }),
+      /* @__PURE__ */ jsxs12(
+        "button",
+        {
+          type: "button",
+          "data-riffrec-tool-clear": "",
+          title: "Clear drawings and pins (\u232B)",
+          style: { ...toolButtonStyle, padding: "0 8px", color: "#667085" },
+          onClick: clearMarks,
+          children: [
+            "Clear",
+            /* @__PURE__ */ jsx12(Kbd, { children: "\u232B" })
+          ]
+        }
+      )
+    ] })
+  ] }) : null;
+  return /* @__PURE__ */ jsxs12(
+    "div",
+    {
+      ...{ [OVERLAY_ATTRIBUTE]: "" },
+      "data-riffrec-live-overlay": collapsed ? "collapsed" : "expanded",
+      "data-riffrec-live-tool": activeTool,
+      children: [
+        /* @__PURE__ */ jsx12(
+          DrawingLayer,
+          {
+            annotations: visibleAnnotations,
+            onAnnotation: handleAnnotation,
+            active: activeTool !== "cursor",
+            tool: activeTool === "pin" ? "pin" : "draw",
+            onActiveChange: (on) => {
+              if (!on) setTool("cursor");
+              else if (toolsOn) setTool((current) => current === "pin" ? "pin" : "draw");
+            },
+            shortcut: drawShortcut,
+            route,
+            now: sessionNow,
+            showToggle: false,
+            zIndex
           }
-        ) : null
-      ] }),
-      view === "board" ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, _jsxruntime.Fragment, { children: [
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: toolbarStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
-          /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+        ),
+        collapsed && view === "board" ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-live-pill": "", style: { ...pillStyle2, zIndex: zIndex + 1 }, children: [
+          /* @__PURE__ */ jsx12(Wordmark, {}),
+          /* @__PURE__ */ jsx12(LiveIndicator, { ...indicatorInput, compact: true }),
+          running ? /* @__PURE__ */ jsx12(SendControl, { onSend: handleSend, heldCount: held, compact: true }) : null,
+          /* @__PURE__ */ jsx12(
             "button",
             {
               type: "button",
-              "data-riffrec-draw-toggle": "",
-              "aria-pressed": drawing && running,
-              "aria-label": drawing ? "Stop drawing" : "Draw on the page",
-              title: drawShortcut ? `Draw (${drawShortcut})` : "Draw",
-              disabled: !running,
-              style: drawing && running ? iconButtonPressedStyle2 : iconButtonStyle2,
-              onClick: () => setDrawing((current) => !current),
-              children: [
-                "\u270E ",
-                drawing && running ? "Drawing" : "Draw"
-              ]
+              "data-riffrec-live-expand": "",
+              "aria-label": "Expand live panel",
+              "aria-expanded": false,
+              title: "Expand (C)",
+              style: headerButtonStyle,
+              onClick: () => setCollapsed(false),
+              children: "\u25B8"
             }
           )
-        ] }),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: bodyStyle, children: [
-          errored && snapshot.error ? /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-            Board,
-            {
-              units: snapshot.units,
-              questions: snapshot.openQuestions,
-              guesses,
-              notes,
-              isReleased: (id) => session.isReleased(id),
-              mode: snapshot.mode,
-              voice: snapshot.voice === "live" || snapshot.voice === "connecting" || snapshot.voice === "reconnecting",
-              onWithdraw: running ? handleWithdraw : void 0,
-              onAnswer: running ? handleAnswer : void 0
-            }
-          )
-        ] }),
-        /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, "div", { style: footerStyle, children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { style: { fontSize: 11, color: "#667085" }, children: held > 0 ? `${held} held for the next checkpoint` : "Nothing held" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, SendControl, { onSend: handleSend, heldCount: held, onDone: () => setView("confirming"), disabled: !running })
-        ] })
-      ] }) : /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "div", { style: bodyStyle, children: /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
-        ConfirmationPass,
-        {
-          units: confirmable,
-          busy: finishing,
-          onCancel: () => setView("board"),
-          onComplete: handleConfirmations
-        }
-      ) })
-    ] })
-  ] });
+        ] }) : /* @__PURE__ */ jsxs12(
+          "div",
+          {
+            ref: panelRef,
+            "data-riffrec-live-panel": "",
+            role: "region",
+            "aria-label": "/ce-polish live",
+            style: { ...panelStyle, zIndex: zIndex + 1 },
+            children: [
+              /* @__PURE__ */ jsxs12("div", { style: headerStyle, children: [
+                /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }, children: [
+                  /* @__PURE__ */ jsx12(Wordmark, {}),
+                  /* @__PURE__ */ jsxs12(
+                    "span",
+                    {
+                      "data-riffrec-live-status": status.label.toLowerCase(),
+                      "data-riffrec-live-indicator": deriveIndicatorState(indicatorInput),
+                      title: indicatorLabel,
+                      style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#667085", whiteSpace: "nowrap" },
+                      children: [
+                        /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: dot(status.color, status.halo) }),
+                        status.label
+                      ]
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxs12("span", { style: { display: "flex", gap: 2, flex: "none" }, children: [
+                  view === "board" ? /* @__PURE__ */ jsx12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-collapse": "",
+                      "aria-label": "Collapse live panel",
+                      "aria-expanded": true,
+                      title: "Collapse (C)",
+                      style: headerButtonStyle,
+                      onClick: () => setCollapsed(true),
+                      children: "\u25BE"
+                    }
+                  ) : null,
+                  /* @__PURE__ */ jsx12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-end": "",
+                      "aria-label": "End session",
+                      title: "End session (E)",
+                      disabled: !running || view === "confirming",
+                      style: { ...headerButtonStyle, fontSize: 15 },
+                      onClick: endSession,
+                      children: "\u2715"
+                    }
+                  )
+                ] })
+              ] }),
+              view === "board" ? /* @__PURE__ */ jsxs12(Fragment, { children: [
+                /* @__PURE__ */ jsxs12("div", { "data-riffrec-voice": "", style: voiceRowStyle, children: [
+                  micButton(),
+                  /* @__PURE__ */ jsxs12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-pause": "",
+                      "aria-pressed": paused,
+                      "aria-label": paused ? "Resume frame and stream capture" : "Pause frame and stream capture",
+                      title: paused ? "Resume capture (P)" : "Pause capture: frames and stream are held (P)",
+                      disabled: !running,
+                      style: {
+                        ...rowButtonStyle2,
+                        gap: 6,
+                        padding: "0 8px 0 12px",
+                        ...paused ? { background: "#101828", borderColor: "#101828", color: "#ffffff", fontWeight: 500 } : { color: "#475467" }
+                      },
+                      onClick: togglePause,
+                      children: [
+                        paused ? "Resume" : "Pause",
+                        /* @__PURE__ */ jsx12(Kbd, { dark: paused, children: "P" })
+                      ]
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxs12("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "10px 14px 0" }, children: [
+                  /* @__PURE__ */ jsx12("span", { style: sectionLabelStyle2, children: "What you've asked for" }),
+                  /* @__PURE__ */ jsx12("span", { "data-riffrec-live-count": "", style: { fontSize: 11, color: "#98a2b3" }, children: confirmable.length })
+                ] }),
+                /* @__PURE__ */ jsxs12("div", { style: bodyStyle, children: [
+                  errored && snapshot.error ? /* @__PURE__ */ jsx12("p", { role: "alert", "data-riffrec-live-error": "", style: { margin: "0 0 10px", color: "#b42318" }, children: snapshot.error.message }) : null,
+                  snapshot.status === "incompatible" ? /* @__PURE__ */ jsx12("p", { role: "alert", style: { margin: "0 0 10px", fontSize: 12, color: "#b42318" }, children: indicatorLabel }) : null,
+                  onRetryVoice && running && snapshot.status === "live_novoice" && needsOpenAIKey(snapshot.voiceUnavailable) ? /* @__PURE__ */ jsx12(KeyPrompt, { reason: snapshot.voiceUnavailable, onRetry: onRetryVoice }) : null,
+                  /* @__PURE__ */ jsx12(
+                    Board,
+                    {
+                      units: snapshot.units,
+                      questions: snapshot.openQuestions,
+                      guesses,
+                      notes,
+                      isReleased: (id) => session.isReleased(id),
+                      mode: snapshot.mode,
+                      voice: voiceRunning(snapshot),
+                      onWithdraw: running ? handleWithdraw : void 0,
+                      onAnswer: running ? handleAnswer : void 0
+                    }
+                  )
+                ] }),
+                settingsOpen ? /* @__PURE__ */ jsxs12("div", { "data-riffrec-settings": "", style: settingsStyle, children: [
+                  /* @__PURE__ */ jsxs12("span", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#667085" }, children: [
+                    "When the agent applies changes",
+                    /* @__PURE__ */ jsxs12("span", { style: { display: "flex", gap: 3 }, children: [
+                      /* @__PURE__ */ jsx12(Kbd, { children: "1" }),
+                      /* @__PURE__ */ jsx12(Kbd, { children: "2" }),
+                      /* @__PURE__ */ jsx12(Kbd, { children: "3" })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsx12(ModeSwitch, { mode: snapshot.mode, pendingMode: snapshot.pendingMode, onChange: handleMode, disabled: !running }),
+                  /* @__PURE__ */ jsx12("span", { style: { fontSize: 11, lineHeight: 1.4, color: "#475467" }, children: MODE_DESCRIPTIONS[snapshot.mode] }),
+                  /* @__PURE__ */ jsx12("span", { style: legendStyle, children: LEGEND.map(([key, label]) => /* @__PURE__ */ jsx12(KeyHint, { k: key, children: label }, key)) })
+                ] }) : null,
+                /* @__PURE__ */ jsxs12("div", { style: footerStyle, children: [
+                  /* @__PURE__ */ jsxs12(
+                    "button",
+                    {
+                      type: "button",
+                      "data-riffrec-live-settings": "",
+                      "aria-expanded": settingsOpen,
+                      style: settingsToggleStyle,
+                      onClick: () => setSettingsOpen((open) => !open),
+                      children: [
+                        MODE_LABELS[snapshot.mode],
+                        " mode",
+                        snapshot.pendingMode !== null ? /* @__PURE__ */ jsx12("span", { style: { color: "#b54708" }, children: "\xB7 pending" }) : null,
+                        /* @__PURE__ */ jsx12("span", { "aria-hidden": "true", style: { fontSize: 10 }, children: settingsOpen ? "\u25BE" : "\u25B8" })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxs12("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                    /* @__PURE__ */ jsx12("span", { "data-riffrec-live-held": "", style: { fontSize: 11, color: "#98a2b3" }, children: held > 0 ? `${held} held` : "Nothing held" }),
+                    /* @__PURE__ */ jsx12(SendControl, { onSend: handleSend, heldCount: held, disabled: !running, compact: true }),
+                    /* @__PURE__ */ jsx12(Kbd, { children: "S" })
+                  ] })
+                ] })
+              ] }) : /* @__PURE__ */ jsxs12("div", { style: { padding: 12, overflowY: "auto", borderTop: "1px solid #f2f4f7" }, children: [
+                /* @__PURE__ */ jsxs12("div", { style: hintRowStyle, children: [
+                  /* @__PURE__ */ jsx12(KeyHint, { k: "Esc", children: "keep riffing" }),
+                  /* @__PURE__ */ jsx12(KeyHint, { k: "\u21B5", children: "finish" })
+                ] }),
+                /* @__PURE__ */ jsx12(
+                  ConfirmationPass,
+                  {
+                    units: confirmable,
+                    busy: finishing,
+                    onCancel: () => setView("board"),
+                    onComplete: handleConfirmations
+                  }
+                )
+              ] })
+            ]
+          }
+        ),
+        toolbar,
+        toast ? /* @__PURE__ */ jsx12("div", { "data-riffrec-live-toast": "", role: "status", style: { ...toastStyle, zIndex: zIndex + 1 }, children: toast }) : null
+      ]
+    }
+  );
 }
 
 // src/live/LiveOverlay.tsx
-
+import { Fragment as Fragment2, jsx as jsx13, jsxs as jsxs13 } from "react/jsx-runtime";
+var NEXT_SESSION_PROBE_INTERVAL_MS = 2e4;
+function useNextSession(idle, fetchImpl) {
+  const [next, setNext] = useState8(null);
+  useEffect5(() => {
+    if (!idle) {
+      setNext(null);
+      return;
+    }
+    let cancelled = false;
+    let timer;
+    const probe = async () => {
+      const link = readRememberedBootstrap();
+      if (!link) {
+        setNext(null);
+        return;
+      }
+      const result = await probeEndpoint(link, fetchImpl);
+      if (cancelled) return;
+      if (result === "rejected") {
+        forgetRememberedBootstrap();
+        setNext(null);
+        return;
+      }
+      setNext(result === "ready" || result === "draining" ? { state: result, endpoint: link.endpoint } : null);
+      timer = setTimeout(() => void probe(), NEXT_SESSION_PROBE_INTERVAL_MS);
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [idle, fetchImpl]);
+  return next;
+}
 var resharePromptStyle = {
   position: "fixed",
   left: "50%",
@@ -7226,17 +8416,20 @@ function LiveMount({
   onSnapshot,
   onEnded,
   onError,
+  onStart,
   getUserMedia,
   fetch: fetchImpl
 }) {
-  const runtimeRef = _react.useRef.call(void 0, null);
-  const [session, setSession] = _react.useState.call(void 0, null);
-  const [reshareNeeded, setReshareNeeded] = _react.useState.call(void 0, false);
-  const callbacks = _react.useRef.call(void 0, { onHandle, onSnapshot, onEnded, onError });
+  const runtimeRef = useRef6(null);
+  const [session, setSession] = useState8(null);
+  const [reshareNeeded, setReshareNeeded] = useState8(false);
+  const [phase, setPhase] = useState8(null);
+  const nextSession = useNextSession(onStart !== void 0 && (phase === "idle" || phase === "ended"), fetchImpl);
+  const callbacks = useRef6({ onHandle, onSnapshot, onEnded, onError });
   callbacks.current = { onHandle, onSnapshot, onEnded, onError };
-  const captureRef = _react.useRef.call(void 0, capture);
+  const captureRef = useRef6(capture);
   captureRef.current = capture;
-  _react.useEffect.call(void 0, () => {
+  useEffect5(() => {
     let runtime2 = null;
     runtime2 = new LiveRuntime({
       config,
@@ -7246,6 +8439,7 @@ function LiveMount({
       callbacks: {
         onSnapshot: (snapshot) => {
           if (runtime2) setSession(runtime2.session);
+          setPhase(snapshot.phase);
           callbacks.current.onSnapshot(snapshot);
         },
         onEnded: () => callbacks.current.onEnded(),
@@ -7256,6 +8450,7 @@ function LiveMount({
     const created = runtime2;
     runtimeRef.current = created;
     setSession(created.session);
+    setPhase(created.session.snapshot().phase);
     callbacks.current.onHandle({
       begin: (options) => created.begin(options),
       stop: () => created.stop(),
@@ -7269,25 +8464,28 @@ function LiveMount({
       runtimeRef.current = null;
     };
   }, []);
-  const handlePause = _react.useCallback.call(void 0, (paused) => _optionalChain([runtimeRef, 'access', _271 => _271.current, 'optionalAccess', _272 => _272.setPaused, 'call', _273 => _273(paused)]), []);
+  const handlePause = useCallback3((paused) => runtimeRef.current?.setPaused(paused), []);
   if (!session) return null;
   const runtime = runtimeRef.current;
-  return /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, _jsxruntime.Fragment, { children: [
-    /* @__PURE__ */ _jsxruntime.jsx.call(void 0, 
+  return /* @__PURE__ */ jsxs13(Fragment2, { children: [
+    /* @__PURE__ */ jsx13(
       LiveOverlay,
       {
         session,
-        profile: _optionalChain([runtime, 'optionalAccess', _274 => _274.consentProfile]),
+        profile: runtime?.consentProfile,
         endpointOwner: config.endpointOwner,
         drawShortcut: config.drawShortcut,
         getUserMedia,
-        onConsent: (result) => _optionalChain([runtime, 'optionalAccess', _275 => _275.consent, 'call', _276 => _276(result)]),
-        onAnnotation: _optionalChain([runtime, 'optionalAccess', _277 => _277.annotation]),
-        onFinished: (result) => _optionalChain([runtime, 'optionalAccess', _278 => _278.finished, 'call', _279 => _279(result)]),
-        onPauseChange: handlePause
+        onConsent: (result) => runtime?.consent(result),
+        onAnnotation: runtime?.annotation,
+        onFinished: (result) => runtime?.finished(result),
+        onPauseChange: handlePause,
+        onRetryVoice: () => runtime?.retryVoice(),
+        nextSession,
+        onStartNext: onStart
       }
     ),
-    reshareNeeded && runtime ? /* @__PURE__ */ _jsxruntime.jsxs.call(void 0, 
+    reshareNeeded && runtime ? /* @__PURE__ */ jsxs13(
       "div",
       {
         ...{ [OVERLAY_ATTRIBUTE]: "" },
@@ -7296,15 +8494,16 @@ function LiveMount({
         "data-riffrec-live-reshare": "",
         style: resharePromptStyle,
         children: [
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "span", { children: "The page reloaded. Share your screen again to keep recording." }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
-          /* @__PURE__ */ _jsxruntime.jsx.call(void 0, "button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
+          /* @__PURE__ */ jsx13("span", { children: "The page reloaded. Share your screen again to keep recording." }),
+          /* @__PURE__ */ jsx13("button", { type: "button", style: reshareButtonStyle, onClick: () => void runtime.reshare(), children: "Share screen" }),
+          /* @__PURE__ */ jsx13("button", { type: "button", style: reshareDismissStyle, onClick: () => runtime.dismissReshare(), children: "Not now" })
         ]
       }
     ) : null
   ] });
 }
-
-
-exports.default = LiveMount;
-//# sourceMappingURL=LiveOverlay-QDQCOEXH.cjs.map
+export {
+  NEXT_SESSION_PROBE_INTERVAL_MS,
+  LiveMount as default
+};
+//# sourceMappingURL=LiveOverlay-IRBI5SSB.js.map

@@ -174,6 +174,7 @@ describe("RiffrecProvider live mode (U7)", () => {
     mocks.screenHasPersisted.mockClear();
     onError.mockClear();
     sessionStorage.clear();
+    localStorage.clear();
     window.history.replaceState(null, "", "/settings");
 
     hostFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -231,7 +232,9 @@ describe("RiffrecProvider live mode (U7)", () => {
     await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
     await click("Start test");
     await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
-    await clickSelector("[data-riffrec-consent] input[type=checkbox]");
+    await clickSelector("[data-riffrec-consent-next]");
+    await clickSelector("[data-riffrec-consent-agree]");
+    await clickSelector("[data-riffrec-consent-next]");
     await clickSelector("[data-riffrec-consent-accept]");
     await vi.waitFor(() => expect(text("live-status")).toBe("live"));
     await vi.waitFor(() => expect(mocks.realtime!.connected).toBe(true));
@@ -394,9 +397,36 @@ describe("RiffrecProvider live mode (U7)", () => {
       expect(container.textContent).not.toContain("We downloaded the zip file.");
     });
 
+    it("starts another session on the same link after the endpoint ends one, without the fragment", async () => {
+      await goLive();
+      const firstSessionId = endpoint.sessionId;
+      expect(window.location.hash).toBe("");
+
+      await act(async () => {
+        await endpoint.fetch("/session/end", { method: "POST", headers: endpoint.pageHeaders(), body: "{}" });
+      });
+      await vi.waitFor(() => expect(text("status")).toBe("idle"));
+      await vi.waitFor(() => expect(q<HTMLButtonElement>("[data-riffrec-ended-start-next='ready']")?.disabled).toBe(false));
+
+      await clickSelector("[data-riffrec-ended-start-next]");
+      await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
+      expect(JSON.parse(sessionStorage.getItem(LIVE_BOOTSTRAP_STORAGE_KEY)!)).toEqual({
+        token: endpoint.pageToken,
+        endpoint: endpoint.baseUrl
+      });
+      expect(sessionStorage.getItem(LIVE_CURRENT_SESSION_KEY)).not.toBe(firstSessionId);
+    });
+
+    it("shows no launcher when this browser never opened a link", async () => {
+      await render({ autoStart: false });
+      await vi.waitFor(() => expect(text("live-status")).toBe("idle"));
+      expect(q("[data-riffrec-next-session]")).toBeNull();
+      expect(hostFetch.mock.calls.some(([input]) => String(input).endsWith("/session"))).toBe(false);
+    });
+
     describe("Done with a streaming endpoint (the zip is a stream that was never sent, R4)", () => {
       const finishSession = async () => {
-        await clickSelector("[data-riffrec-done]");
+        await clickSelector("[data-riffrec-live-end]");
         await clickSelector("[data-riffrec-confirm-finish]");
         await vi.waitFor(() => expect(mocks.writerStop).toHaveBeenCalledTimes(1));
         await vi.waitFor(() => expect(text("status")).toBe("idle"));
@@ -475,7 +505,9 @@ describe("RiffrecProvider live mode (U7)", () => {
       await render({});
       await click("Start test");
       await vi.waitFor(() => expect(q("[data-riffrec-consent]")).toBeTruthy());
-      await clickSelector("[data-riffrec-consent] input[type=checkbox]");
+      await clickSelector("[data-riffrec-consent-next]");
+      await clickSelector("[data-riffrec-consent-agree]");
+      await clickSelector("[data-riffrec-consent-next]");
       await clickSelector("[data-riffrec-consent-accept]");
       await vi.waitFor(() => expect(text("live-status")).toBe("live_novoice"));
 
@@ -521,6 +553,7 @@ describe("RiffrecProvider live mode (U7)", () => {
   describe("unmounting mid-session (KTD16, AE13)", () => {
     it("does not call the archive writer and rehydrates on the next mount", async () => {
       await goLive();
+      await vi.waitFor(() => expect(received("mic")).toHaveLength(1));
       const sessionId = received("mic")[0].session_id;
       mocks.screenHasPersisted.mockResolvedValue(true);
 

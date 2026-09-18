@@ -292,8 +292,15 @@ waiting for the page-lost grace window.
 tool definitions (a verbatim copy of `LIVE_TOOLS`) and persona, appends the
 session brief after scanning it for secret shapes, adds semantic turn detection
 and input transcription, calls OpenAI's client-secret endpoint with the key from
-its own environment, and returns the response below. Riffrec never sees the key
-and accepts none in configuration. The page re-mints on every reconnect.
+its own environment, and returns the response below. Riffrec accepts no key in
+configuration. The page re-mints on every reconnect.
+
+**Pasted key.** After a `no_key` refusal, or an `openai_error` with
+`upstream_status` 401, the live panel lets the riffer paste an OpenAI key. The
+page keeps it in `localStorage` (`riffrec:openai_key`) and sends it on every
+mint in the `X-Riffrec-OpenAI-Key` header (`LIVE_OPENAI_KEY_HEADER`). An
+endpoint may use it in place of its own key; it must not persist or log it, and
+must list the header in `Access-Control-Allow-Headers`.
 
 **Reconciliation after connect.** The page answers the tool calls and attaches
 the screenshots, so once the data channel opens it reads the session the
@@ -346,6 +353,13 @@ Every page request also carries `X-Riffrec-Session: <session_id>`. The endpoint
 binds each page token to the first `session_id` it sees and answers any other id
 with `409 { "active_session_id": "<bound id>" }`.
 
+The page token outlives its session. It stays valid after `/session/end` and
+stops working only when the endpoint stops. After a session has ended and the
+agent has drained every batch, a request carrying a **new** `session_id` opens
+a fresh session on the same token. A new id that arrives while the agent is
+still draining gets `409 { "error": "previous_session_draining" }`. The ended
+session's own id keeps getting `410`.
+
 ### Page routes
 
 | Route | Body | Response |
@@ -353,6 +367,7 @@ with `409 { "active_session_id": "<bound id>" }`.
 | `POST /events` | JSON array of envelopes | `200 { "acked_seq": <n> }`. Body cap 64 KB (`LIVE_EVENTS_BODY_MAX_BYTES`), or 2 MB for a body holding a lone `frame` envelope (`LIVE_FRAME_BODY_MAX_BYTES`); oversize returns `413 { "max_bytes": <cap> }` and does not count toward buffering. Any envelope with an unsupported `schema_version` returns `409 { "expected_schema_version": "live/1" }`; any other invalid envelope returns `400 { "reason": <LiveEnvelopeRejection>, "seq": <n> }`. |
 | `GET /stream` | — | `text/event-stream`. Event names: `unit_status`, `applied`, `ask`, `ack`, `session_ended` (data shapes below). Consumed with a fetch-based reader so the bearer header travels with it; never `EventSource`. |
 | `POST /mint` | `mint_request` | `mint_response` or an I2 error. |
+| `GET /session` | — | `200 { "status": "live" \| "ended", "session_id": <id> \| null, "accepts_new_session": <bool> }` (`LiveSessionProbeResponse`). Takes no `X-Riffrec-Session` and does not count as session activity. While no session runs, the page polls this route with the page token it remembers, and offers another session when `accepts_new_session` is true, or when `status` is `live` with no bound `session_id`. `401` means the endpoint no longer knows the token (it restarted), and the page forgets the token. |
 | `POST /session/end` | full-evidence archive | `200 {}`; the session is ended and `session_ended` is broadcast. A `2xx` here (or a `session_ended` event) is the page's signal that the stream was the delivery: it assembles its archive for the host's `onSessionComplete` but does not download the zip unless the host opted in. Any other outcome makes the page fall back to the zip and report the reason. |
 
 Page routes answer `OPTIONS` with `Access-Control-Allow-Origin` equal to the

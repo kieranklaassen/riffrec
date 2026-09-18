@@ -30,6 +30,7 @@ import {
   type PersistTier
 } from "./buffer";
 import { CheckpointEmitter, type PageCheckpointTrigger } from "./checkpoints";
+import type { VoiceUnavailableReason } from "./realtime/interviewer";
 import { clipFileName } from "./evidence/audioClip";
 import {
   FULL_EVIDENCE_PROFILE,
@@ -115,6 +116,8 @@ export interface LiveSessionSnapshot {
   status: LiveSessionStatus;
   phase: Phase;
   voice: LiveVoiceState;
+  /** Why the interviewer is not running, when it settled that way; `null` otherwise. */
+  voiceUnavailable: VoiceUnavailableReason | null;
   stream: LiveStreamStatus;
   endpoint: string | null;
   mode: ExecutionMode;
@@ -226,6 +229,8 @@ interface PersistedLiveSession {
   checkpoints: LiveCheckpoint[];
   final_seq: number | null;
   pending_mode_seq: number | null;
+  /** The riffer turned screenshots off at consent; overrides the profile's `frames`. */
+  frames_off?: boolean;
   /** Set when the quota guard had to shed transcript, annotations, or frames. */
   degraded?: PersistTier;
 }
@@ -287,6 +292,7 @@ export class LiveSession {
 
   private phase: Phase = "idle";
   private voice: LiveVoiceState = "none";
+  private voiceReason: VoiceUnavailableReason | null = null;
   private streamStatus: LiveStreamStatus;
   private readonly token: string | null;
   private readonly endpointOrigin: string | null;
@@ -316,7 +322,7 @@ export class LiveSession {
   /** Frames the profile posts only once a unit references them (`frames: "one"`). */
   private readonly heldFrames = new Map<string, string>();
   private readonly clipBytes = new Map<string, Blob>();
-  private readonly profile: EvidenceProfile;
+  private profile: EvidenceProfile;
   /** Set on a rehydrate: the reload of unacked frame bytes the archive needs. */
   private framesRestored: Promise<void> | null = null;
   private readonly answers: LiveAnswer[] = [];
@@ -371,6 +377,7 @@ export class LiveSession {
       this.pendingMode = persisted.pending_mode;
       this.pendingModeSeq = persisted.pending_mode_seq;
       this.voiceRan = persisted.voice_ran;
+      if (persisted.frames_off) this.profile = { ...this.profile, frames: "none" };
       this.muted = persisted.muted;
       this.mic = persisted.mic;
       this.nextSeq = persisted.next_seq;
@@ -648,6 +655,7 @@ export class LiveSession {
   voiceConnecting(): void {
     if (this.phase !== "running") return;
     this.voice = this.voiceRan ? "reconnecting" : "connecting";
+    this.voiceReason = null;
     this.notify();
   }
 
@@ -666,9 +674,10 @@ export class LiveSession {
   }
 
   /** Mint refused for good, mic denied, or no endpoint: a one-way move to `live_novoice`. */
-  voiceUnavailable(): void {
+  voiceUnavailable(reason: VoiceUnavailableReason | null = null): void {
     if (this.phase !== "running") return;
     this.voice = "novoice";
+    this.voiceReason = reason;
     this.notify();
   }
 
@@ -886,6 +895,12 @@ export class LiveSession {
     this.postHeldFrame(frameId);
   }
 
+  /** The riffer turned screenshots off at consent: no frame leaves the page for the rest of the session. */
+  disableFrames(): void {
+    this.profile = { ...this.profile, frames: "none" };
+    this.persist();
+  }
+
   /** Whether frames may leave the page at all (R25/R19): false under `frames: "none"`. */
   get framesLeavePage(): boolean {
     return this.profile.frames !== "none";
@@ -1006,6 +1021,7 @@ export class LiveSession {
       status: this.status,
       phase: this.phase,
       voice: this.voice,
+      voiceUnavailable: this.voiceReason,
       stream: this.streamStatus,
       endpoint: this.endpointOrigin,
       mode: this.mode,
@@ -1392,6 +1408,7 @@ export class LiveSession {
       checkpoints: this.checkpoints,
       final_seq: this.finalSeq,
       pending_mode_seq: this.pendingModeSeq,
+      ...(this.profile.frames === "none" ? { frames_off: true } : {}),
       ...(tier === "full" ? {} : { degraded: tier })
     };
   }

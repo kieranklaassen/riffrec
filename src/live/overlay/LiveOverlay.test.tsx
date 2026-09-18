@@ -161,7 +161,9 @@ describe("LiveOverlay", () => {
   const consentGranted = async (session: LiveSession, props: Partial<LiveOverlayProps> = {}) => {
     session.beginConsent();
     await render({ session, ...props });
-    await act(async () => q<HTMLInputElement>("[data-riffrec-consent] input[type=checkbox]")!.click());
+    await click("[data-riffrec-consent-next]");
+    await click("[data-riffrec-consent-agree]");
+    await click("[data-riffrec-consent-next]");
     await click("[data-riffrec-consent-accept]");
   };
 
@@ -173,7 +175,9 @@ describe("LiveOverlay", () => {
       getUserMedia: () => Promise.reject(new DOMException("Permission denied", "NotAllowedError")),
       ...props
     });
-    await act(async () => q<HTMLInputElement>("[data-riffrec-consent] input[type=checkbox]")!.click());
+    await click("[data-riffrec-consent-next]");
+    await click("[data-riffrec-consent-agree]");
+    await click("[data-riffrec-consent-next]");
     await click("[data-riffrec-consent-accept]");
     await click("[data-riffrec-consent-continue-novoice]");
   };
@@ -208,6 +212,7 @@ describe("LiveOverlay", () => {
 
     await act(async () => session.beginConsent());
     expect(q("[data-riffrec-consent]")).not.toBeNull();
+    await click("[data-riffrec-consent-next]");
     expect(q("[data-riffrec-consent]")!.textContent).toContain(h.endpoint.baseUrl);
   });
 
@@ -251,7 +256,7 @@ describe("LiveOverlay", () => {
     await consentDenied(session, { onConsent });
 
     expect(session.status).toBe("live_novoice");
-    expect(onConsent).toHaveBeenCalledWith({ stream: null, mic: "denied" });
+    expect(onConsent).toHaveBeenCalledWith({ stream: null, mic: "denied", mode: "smart", frames: true });
     expect(indicatorState()).toBe("muted");
     expect(q("[data-riffrec-board]")).not.toBeNull();
     expect(q("[data-riffrec-draw-surface]")).not.toBeNull();
@@ -350,7 +355,7 @@ describe("LiveOverlay", () => {
     await click("[data-riffrec-send]");
     await settled(session);
     expect(received(h.endpoint, "checkpoint")).toHaveLength(1);
-    expect(q("[data-riffrec-send-note]")!.textContent).toBe("Nothing held");
+    expect(q("[data-riffrec-live-toast]")!.textContent).toBe("Nothing held to send");
   });
 
   it("a mode change emits no page checkpoint and keeps the pending hint until the endpoint acts on the new mode (KTD12)", async () => {
@@ -360,6 +365,7 @@ describe("LiveOverlay", () => {
     session.subscribe((snapshot) => pendingSeen.push(snapshot.pendingMode));
 
     // Into Collect: nothing wakes the agent, so the hint stays until a checkpoint stamped `collect` is acked.
+    await click("[data-riffrec-live-settings]");
     await click('[data-riffrec-mode-option="collect"]');
     await settled(session);
     expect(received(h.endpoint, "mode").map((entry) => entry.payload)).toEqual([{ mode: "collect" }]);
@@ -399,6 +405,7 @@ describe("LiveOverlay", () => {
     const restored = track(LiveSession.rehydrate(h.options({ sessionId: undefined }))!);
     expect(restored.snapshot().pendingMode).toBe("collect");
     await render({ session: restored });
+    await click("[data-riffrec-live-settings]");
     expect(q("[data-riffrec-mode-pending]")!.getAttribute("data-riffrec-mode-pending")).toBe("collect");
   });
 
@@ -423,7 +430,7 @@ describe("LiveOverlay", () => {
     });
     await vi.waitFor(() => expect(q(`[data-riffrec-unit="${second}"]`)!.getAttribute("data-riffrec-unit-status")).toBe("blocked"));
 
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     expect(q("[data-riffrec-confirmation]")).not.toBeNull();
     expect(q(`[data-riffrec-confirm-unit="${withdrawn}"]`)).toBeNull();
     await act(async () => q<HTMLInputElement>(`[data-riffrec-confirm-unit="${second}"] [data-riffrec-confirm-change]`)!.click());
@@ -459,7 +466,7 @@ describe("LiveOverlay", () => {
     const h = harness();
     const onFinished = vi.fn<(result: FinishResult) => void>();
     await liveSession(h, { onFinished });
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     await click("[data-riffrec-confirm-finish]");
     await vi.waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
 
@@ -473,7 +480,7 @@ describe("LiveOverlay", () => {
     const h = harness();
     const onFinished = vi.fn<(result: FinishResult) => void>();
     await liveSession(h, { onFinished });
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     const finish = q<HTMLButtonElement>("[data-riffrec-confirm-finish]")!;
     await act(async () => {
       finish.click();
@@ -489,7 +496,7 @@ describe("LiveOverlay", () => {
   it("cannot collapse to the pill, and so cannot Send, while the confirmation pass is open", async () => {
     const h = harness();
     await liveSession(h);
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     expect(q("[data-riffrec-live-collapse]")).toBeNull();
     expect(q("[data-riffrec-send]")).toBeNull();
     expect(q("[data-riffrec-confirmation]")).not.toBeNull();
@@ -519,10 +526,10 @@ describe("LiveOverlay", () => {
     const first = await liveSession(h, { onPauseChange });
 
     // Leave the first session mid-confirmation, drawing, and paused; the endpoint ends it.
-    await click("[data-riffrec-draw-toggle]");
+    await click('[data-riffrec-tool="draw"]');
     await click("[data-riffrec-live-pause]");
     expect(onPauseChange).toHaveBeenLastCalledWith(true);
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     await act(async () => {
       await h.endpoint.handle({ method: "POST", path: "/session/end", headers: h.endpoint.pageHeaders(first.id), body: {} });
     });
@@ -553,7 +560,7 @@ describe("LiveOverlay", () => {
   it("keeps riffing when the confirmation pass is cancelled", async () => {
     const h = harness();
     await liveSession(h);
-    await click("[data-riffrec-done]");
+    await click("[data-riffrec-live-end]");
     await click("[data-riffrec-confirm-cancel]");
     expect(q("[data-riffrec-confirmation]")).toBeNull();
     expect(q("[data-riffrec-board]")).not.toBeNull();
@@ -580,6 +587,34 @@ describe("LiveOverlay", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("offers the next session from the remembered link: a launcher while idle, on the ended card, and after dismissing it", async () => {
+    const onStartNext = vi.fn();
+    const nextSession = { state: "ready" as const, endpoint: "http://127.0.0.1:4321" };
+    const h = harness();
+    const idle = track(LiveSession.create(h.options()));
+    await render({ session: idle, nextSession, onStartNext });
+    await click("[data-riffrec-next-session-start]");
+    expect(onStartNext).toHaveBeenCalledTimes(1);
+
+    await render({ session: idle, nextSession: null, onStartNext });
+    expect(container.innerHTML).toBe("");
+
+    const h2 = harness();
+    const session = await liveSession(h2, { nextSession: { ...nextSession, state: "draining" }, onStartNext });
+    await act(async () => {
+      await h2.endpoint.handle({ method: "POST", path: "/session/end", headers: h2.endpoint.pageHeaders(session.id), body: {} });
+    });
+    await vi.waitFor(() => expect(q("[data-riffrec-ended-card]")).not.toBeNull());
+    expect(q<HTMLButtonElement>("[data-riffrec-ended-start-next]")!.disabled).toBe(true);
+
+    await render({ session, nextSession, onStartNext });
+    await click("[data-riffrec-ended-start-next]");
+    expect(onStartNext).toHaveBeenCalledTimes(2);
+
+    await click("[data-riffrec-ended-dismiss]");
+    expect(q("[data-riffrec-next-session]")).not.toBeNull();
+  });
+
   it("strokes from the session store rehydrate into the drawing layer after a simulated reload", async () => {
     const h = harness();
     const session = track(LiveSession.create(h.options()));
@@ -603,9 +638,9 @@ describe("LiveOverlay", () => {
     const session = await liveSession(h, {}, { now: undefined });
     (document as Document & { elementsFromPoint?: (x: number, y: number) => Element[] }).elementsFromPoint = () => [];
 
-    await click("[data-riffrec-draw-toggle]");
+    await click('[data-riffrec-tool="draw"]');
     expect(q("[data-riffrec-draw-active]")).not.toBeNull();
-    expect(q("[data-riffrec-draw-toggle]")!.getAttribute("aria-pressed")).toBe("true");
+    expect(q('[data-riffrec-tool="draw"]')!.getAttribute("aria-pressed")).toBe("true");
 
     const surface = q<SVGSVGElement>("[data-riffrec-draw-surface]")!;
     await act(async () => {
@@ -624,8 +659,117 @@ describe("LiveOverlay", () => {
     expect(received(h.endpoint, "annotation")).toHaveLength(1);
     expect(q(`[data-riffrec-stroke="${annotations[0].id}"]`)).not.toBeNull();
 
-    await click("[data-riffrec-draw-toggle]");
+    await click('[data-riffrec-tool="draw"]');
     expect(q("[data-riffrec-draw-active]")).toBeNull();
+  });
+
+  it("drives the panel and the page tools from single keys, and ignores keys typed into fields", async () => {
+    const h = harness();
+    const session = await liveSession(h);
+    const press = async (key: string, target: EventTarget = window) => {
+      await act(async () => {
+        target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+      });
+    };
+    const tool = () => q("[data-riffrec-live-overlay]")!.getAttribute("data-riffrec-live-tool");
+
+    await press("d");
+    expect(tool()).toBe("draw");
+    expect(q("[data-riffrec-tool-caption]")!.textContent).toMatch(/Draw mode/);
+    await press("n");
+    expect(tool()).toBe("pin");
+    await press("Escape");
+    expect(tool()).toBe("cursor");
+
+    await press("m");
+    expect(session.snapshot().muted).toBe(true);
+    await press("m");
+    expect(session.snapshot().muted).toBe(false);
+
+    await press("3");
+    expect(session.snapshot().mode).toBe("collect");
+
+    await press("p");
+    expect(indicatorState()).toBe("paused");
+    await press("d");
+    expect(tool()).toBe("cursor");
+    expect(q<HTMLButtonElement>('[data-riffrec-tool="draw"]')!.disabled).toBe(true);
+    await press("p");
+
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    await press("d", field);
+    expect(tool()).toBe("cursor");
+    field.remove();
+
+    await press("c");
+    expect(q("[data-riffrec-live-pill]")).not.toBeNull();
+    await press("e");
+    expect(q("[data-riffrec-confirmation]")).not.toBeNull();
+    await press("Escape");
+    expect(q("[data-riffrec-confirmation]")).toBeNull();
+    await press("e");
+    await press("Enter");
+    await settled(session);
+    expect(received(h.endpoint, "checkpoint").map((entry) => entry.payload)).toMatchObject([{ trigger: "final" }]);
+  });
+
+  it("closes the ended card on Escape", async () => {
+    const h = harness();
+    const session = await liveSession(h);
+    await act(async () => {
+      await h.endpoint.handle({ method: "POST", path: "/session/end", headers: h.endpoint.pageHeaders(session.id), body: {} });
+    });
+    await vi.waitFor(() => expect(q("[data-riffrec-ended-card]")).not.toBeNull());
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(q("[data-riffrec-ended-card]")).toBeNull();
+  });
+
+  it("Pin drops a pin wherever the pointer goes down, and Clear hides marks from the page only", async () => {
+    const h = harness();
+    const session = await liveSession(h);
+    (document as Document & { elementsFromPoint?: (x: number, y: number) => Element[] }).elementsFromPoint = () => [];
+    await act(async () => session.addAnnotation(stroke("ann_0001")));
+
+    await click('[data-riffrec-tool="pin"]');
+    const surface = q<SVGSVGElement>("[data-riffrec-draw-surface]")!;
+    await act(async () => {
+      surface.dispatchEvent(pointer("pointerdown", { x: 40, y: 40 }));
+      surface.dispatchEvent(pointer("pointermove", { x: 90, y: 90 }));
+      surface.dispatchEvent(pointer("pointerup", { x: 90, y: 90 }));
+    });
+    const composer = q("[data-riffrec-pin-composer]")!;
+    const textarea = composer.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "bigger");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => composer.querySelector<HTMLButtonElement>("button[type=submit]")!.click());
+    expect(session.allAnnotations().map((annotation) => annotation.kind)).toEqual(["stroke", "pin"]);
+    expect(q("[data-riffrec-live-toast]")!.textContent).toBe("Pin 1 added");
+
+    await click("[data-riffrec-tool-clear]");
+    expect(q('[data-riffrec-stroke="ann_0001"]')).toBeNull();
+    expect(q("[data-riffrec-pin]")).toBeNull();
+    expect(session.allAnnotations()).toHaveLength(2);
+  });
+
+  it("applies the start flow's mode and screenshot choices before the session starts", async () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options()));
+    session.beginConsent();
+    await render({ session });
+    await click('[data-riffrec-consent-mode="instant"]');
+    await click("[data-riffrec-consent-frames]");
+    await click("[data-riffrec-consent-next]");
+    await click("[data-riffrec-consent-agree]");
+    await click("[data-riffrec-consent-next]");
+    await click("[data-riffrec-consent-accept]");
+
+    expect(session.snapshot().mode).toBe("instant");
+    expect(session.framesLeavePage).toBe(false);
   });
 
   it("collapses to a pill with the indicator and Send, and marks the whole surface as overlay", async () => {
@@ -640,7 +784,7 @@ describe("LiveOverlay", () => {
     const pill = q("[data-riffrec-live-pill]")!;
     expect(pill.querySelector("[data-riffrec-live-indicator]")).not.toBeNull();
     expect(pill.querySelector("[data-riffrec-send]")).not.toBeNull();
-    expect(pill.querySelector("[data-riffrec-done]")).toBeNull();
+    expect(pill.querySelector("[data-riffrec-live-end]")).toBeNull();
     expect(pill.querySelector("[data-riffrec-live-indicator-label]")!.textContent).toBe("Live");
 
     await click("[data-riffrec-live-expand]");
