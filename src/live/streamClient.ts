@@ -46,6 +46,8 @@ export interface StreamClientOptions {
   clearTimeout?: (handle: unknown) => void;
   failureThreshold?: number;
   backoffMs?: readonly number[];
+  /** How long one `POST /events` may take before it counts as a failure; default `DEFAULT_POST_TIMEOUT_MS`. */
+  postTimeoutMs?: number;
   /** Milliseconds since session start, stamped on fillers the client has to create. */
   elapsed?: () => number;
   onAck?: (ackedSeq: number) => void;
@@ -60,6 +62,12 @@ export interface StreamClientOptions {
 
 export const DEFAULT_FAILURE_THRESHOLD = 3;
 export const DEFAULT_BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000, 16000, 30000];
+/**
+ * A `POST /events` that never settles (a tunnel that swallows the request)
+ * would otherwise pin `inflight`, stall every later envelope, and leave the
+ * indicator on "streaming" forever; past this it is a failure like any other.
+ */
+export const DEFAULT_POST_TIMEOUT_MS = 20_000;
 
 const SERVER_EVENT_NAMES: readonly LiveServerEventName[] = ["unit_status", "applied", "ask", "ack", "session_ended"];
 
@@ -122,6 +130,7 @@ export class StreamClient {
   private readonly clearTimer: (handle: unknown) => void;
   private readonly failureThreshold: number;
   private readonly backoffMs: readonly number[];
+  private readonly postTimeoutMs: number;
 
   private flushScheduled = false;
   private inflight = false;
@@ -140,6 +149,7 @@ export class StreamClient {
     this.clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
     this.failureThreshold = options.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
     this.backoffMs = options.backoffMs ?? DEFAULT_BACKOFF_MS;
+    this.postTimeoutMs = options.postTimeoutMs ?? DEFAULT_POST_TIMEOUT_MS;
   }
 
   get queue(): UnsentQueue {
@@ -256,15 +266,28 @@ export class StreamClient {
 
   private async post(envelopes: LiveEnvelope[], frame: boolean): Promise<"continue" | "stop"> {
     this.postAttempts += 1;
+    const abort = typeof AbortController === "function" ? new AbortController() : null;
+    let timedOut = false;
+    const timer = this.setTimer(() => {
+      timedOut = true;
+      abort?.abort();
+    }, this.postTimeoutMs);
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.options.endpoint}/events`, {
         method: "POST",
         headers: this.headers({ "Content-Type": "application/json" }),
-        body: JSON.stringify(envelopes)
+        body: JSON.stringify(envelopes),
+        ...(abort ? { signal: abort.signal } : {})
       });
     } catch (error) {
-      this.recordFailure(error);
+      this.recordFailure(timedOut ? new Error(`riffrec live: POST /events timed out after ${this.postTimeoutMs} ms`) : error);
+      return "stop";
+    } finally {
+      this.clearTimer(timer);
+    }
+    if (timedOut) {
+      this.recordFailure(new Error(`riffrec live: POST /events timed out after ${this.postTimeoutMs} ms`));
       return "stop";
     }
 
@@ -318,6 +341,28 @@ export class StreamClient {
       case 410:
         this.markEnded(body && typeof body.reason === "string" ? body.reason : "session_ended");
         return "stop";
+      case 400: {
+        // The endpoint refused an envelope as malformed (I3: `400 { reason, seq }`).
+        // Retrying it unchanged would block every envelope behind it, so it is
+        // replaced in place — a smaller copy first, then a same-seq filler —
+        // and only when nothing smaller is left does the rejection count as a
+        // failure, so a stream the endpoint refuses outright surfaces as
+        // buffering instead of spinning.
+        const seq = body && typeof body.seq === "number" ? body.seq : null;
+        const targets =
+          seq !== null && envelopes.some((envelope) => envelope.seq === seq) ? [seq] : envelopes.map((envelope) => envelope.seq);
+        const reason = body && typeof body.reason === "string" ? body.reason : "invalid_envelope";
+        const t = this.options.elapsed?.() ?? 0;
+        const replaced = targets.filter((target) => this.queue.replaceRejected(target, t) !== null);
+        const label = targets.length === 1 ? `seq ${targets[0]}` : `seq ${targets.join(", ")}`;
+        if (replaced.length === 0) {
+          this.recordFailure(new Error(`riffrec live: the endpoint keeps rejecting ${label} as ${reason}`));
+          return "stop";
+        }
+        this.options.onError?.(new Error(`riffrec live: the endpoint rejected ${label} as ${reason}; replaced with a placeholder so the stream keeps moving`));
+        this.options.onQueueChange?.();
+        return "continue";
+      }
       default:
         this.recordFailure(new Error(`riffrec live: POST /events returned ${response.status}`));
         return "stop";

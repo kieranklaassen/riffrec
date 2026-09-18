@@ -377,6 +377,30 @@ export class UnsentQueue {
   }
 
   /**
+   * A same-`seq` stand-in for an envelope the endpoint refused as malformed
+   * (`400`): a shrunk copy when the envelope has something to shed, otherwise a
+   * filler; a frame goes straight to a filler, since its metadata was what was
+   * refused. Returns null once the entry is already a filler — nothing smaller
+   * exists, and the caller treats the rejection as a failure.
+   */
+  replaceRejected(seq: number, t: number): LiveEnvelope | null {
+    const entry = this.entries.find((candidate) => candidate.seq === seq);
+    if (!entry) return null;
+    if (isFrameEnvelope(entry)) {
+      const filler = fillerEnvelope(this.sessionId, seq, t);
+      this.replace(seq, filler);
+      this.forgetFrame(entry.payload.id);
+      this.evictions += 1;
+      return filler;
+    }
+    if (isPlaceholder(entry)) return null;
+    const replacement = shrinkEnvelope(entry) ?? fillerEnvelope(this.sessionId, seq, t);
+    this.replace(seq, replacement);
+    this.evictions += 1;
+    return replacement;
+  }
+
+  /**
    * Evicts the oldest `count` envelopes that still carry content, keeping
    * their `seq` as fillers or tombstones. Returns how many were evicted.
    */
