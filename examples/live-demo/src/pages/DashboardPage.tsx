@@ -1,6 +1,24 @@
 import { orders, stats, type OrderStatus } from '../data'
 import { StatIcon } from '../components/StatIcon'
 
+/** A small area chart of recent values, scaled to its own min and max. */
+function Trendline({ points, label }: { points: number[]; label: string }) {
+  const width = 200
+  const height = 40
+  const min = Math.min(...points)
+  const max = Math.max(...points)
+  const x = (index: number) => (index / (points.length - 1)) * width
+  const y = (value: number) => height - 4 - ((value - min) / (max - min || 1)) * (height - 8)
+  const line = points.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join(' ')
+  return (
+    <svg className="stat__chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={label}>
+      <path d={`${line} L${width} ${height} L0 ${height} Z`} className="stat__chart-area" />
+      <path d={line} className="stat__chart-line" />
+      <circle cx={x(points.length - 1)} cy={y(points[points.length - 1])} r="2.5" className="stat__chart-dot" />
+    </svg>
+  )
+}
+
 function statusLabel(status: OrderStatus): string {
   switch (status) {
     case 'paid':
@@ -21,7 +39,7 @@ function statusLabel(status: OrderStatus): string {
 export function DashboardPage() {
   return (
     <div className="page">
-      <div className="page__header">
+      <div className="page__header page__header--textured">
         <div>
           <h1 className="page__title">Dashboard</h1>
           <p className="page__subtitle">Overview for the last 30 days.</p>
@@ -46,6 +64,7 @@ export function DashboardPage() {
               </span>
             </div>
             <div className="stat__value">{stat.value}</div>
+            {stat.trendline ? <Trendline points={stat.trendline} label={`${stat.label} over the last 12 days`} /> : null}
             <div className={`stat__delta stat__delta--${stat.trend}`}>
               <span className="stat__arrow" aria-hidden="true">
                 {stat.trend === 'up' ? '↗' : stat.trend === 'down' ? '↘' : '→'}

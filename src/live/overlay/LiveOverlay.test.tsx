@@ -721,6 +721,41 @@ describe("LiveOverlay", () => {
     expect(received(h.endpoint, "checkpoint").map((entry) => entry.payload)).toMatchObject([{ trigger: "final" }]);
   });
 
+  it("outlines the element and brings back the marks of a unit the agent asks about, until it is answered", async () => {
+    const h = harness();
+    const session = await liveSession(h);
+    const target = document.createElement("button");
+    target.className = "save";
+    document.body.appendChild(target);
+    let id = "";
+    await act(async () => {
+      session.addAnnotation(stroke("ann_0001"));
+      id = session.recordUnit({
+        statement: "Make this red",
+        transcript_excerpt: "red",
+        anchors: [{ ...anchor(), selector: "button.save" }],
+        evidence: { annotation_ids: ["ann_0001"] }
+      }).id;
+    });
+    await click("[data-riffrec-tool-clear]");
+    expect(q('[data-riffrec-stroke="ann_0001"]')).toBeNull();
+
+    await session.send();
+    await settled(session);
+    const batch = await h.endpoint.wait();
+    await h.endpoint.ack((batch.body as { checkpoint_id: string }).checkpoint_id);
+    await act(async () => {
+      await h.endpoint.ask(id, "Which red?");
+    });
+    await vi.waitFor(() => expect(q(`[data-riffrec-asked-highlight="${id}"]`)).not.toBeNull());
+    expect(q('[data-riffrec-stroke="ann_0001"]')).not.toBeNull();
+
+    await act(async () => void session.answer(id, "the brand red"));
+    expect(q(`[data-riffrec-asked-highlight="${id}"]`)).toBeNull();
+    expect(q('[data-riffrec-stroke="ann_0001"]')).toBeNull();
+    target.remove();
+  });
+
   it("closes the ended card on Escape", async () => {
     const h = harness();
     const session = await liveSession(h);

@@ -240,6 +240,8 @@ interface PersistedLiveSession {
 
 /** Gesture frames kept for a later unit reference under `frames: "one"`; matches the U6 ring buffer with slack. */
 const HELD_FRAME_CAP = 24;
+/** How far back a drawing-only unit can be taken over by a spoken unit on the same element. */
+const DRAWING_MERGE_WINDOW_MS = 30_000;
 
 export const LIVE_CURRENT_SESSION_KEY = "riffrec:live:current";
 export const LIVE_SESSION_KEY_PREFIX = "riffrec:live:session:";
@@ -724,6 +726,16 @@ export class LiveSession {
   // ---------------------------------------------------------------------
 
   recordUnit(input: RecordUnitInput): LiveUnit {
+    const absorbed = input.transcript_excerpt ? this.absorbDrawingOnly(input) : [];
+    if (absorbed.length > 0) {
+      input = {
+        ...input,
+        evidence: {
+          ...input.evidence,
+          annotation_ids: [...new Set([...(input.evidence?.annotation_ids ?? []), ...absorbed])]
+        }
+      };
+    }
     const id = input.id ?? `unit_${pad(this.nextUnit++)}`;
     const firstAnchorT = input.anchors[0]?.t ?? this.elapsed();
     const unit: LiveUnit = {
@@ -777,10 +789,33 @@ export class LiveSession {
     return result;
   }
 
+  /**
+   * Drawing first and talking a few seconds later is one request, not two: a spoken unit on the
+   * element a still-unreleased drawing-only unit points at takes over that drawing, and the
+   * drawing-only unit is withdrawn. Returns the annotation ids taken over.
+   */
+  private absorbDrawingOnly(input: RecordUnitInput): string[] {
+    const selectors = new Set(input.anchors.map((anchor) => anchor.selector));
+    if (selectors.size === 0) return [];
+    const now = this.elapsed();
+    const taken: string[] = [];
+    for (const unit of this.units.all()) {
+      const drawingOnly = unit.transcript_excerpt === "" && unit.evidence.annotation_ids.length > 0;
+      if (!drawingOnly || unit.status !== "initial" || this.units.isReleased(unit.id)) continue;
+      if (now - unit.evidence.transcript_span.t_start > DRAWING_MERGE_WINDOW_MS) continue;
+      if (!unit.anchors.some((anchor) => selectors.has(anchor.selector))) continue;
+      if (this.withdrawUnit(unit.id, "merged into a spoken request").ok) taken.push(...unit.evidence.annotation_ids);
+    }
+    return taken;
+  }
+
   /** The riffer's answer to an endpoint question, spoken (`relay_answer`) or typed. */
   answer(unitId: string, text: string): LiveAnswer | null {
     const unit = this.units.get(unitId);
     if (!unit) return null;
+    // One answer per question: the interviewer can relay the same reply twice, and a unit the
+    // endpoint already moved on has nothing left to answer.
+    if (!this.units.openQuestions().some((question) => question.unit_id === unitId)) return null;
     this.units.answer(unitId);
     const answer: LiveAnswer = { unit_id: unitId, text };
     this.answers.push(answer);

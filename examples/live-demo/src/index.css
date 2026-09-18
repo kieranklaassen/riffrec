@@ -379,6 +379,29 @@ a {
   font-weight: 600;
 }
 
+/* A small smiley that bobs gently in the card's top-right corner. */
+.plan-card__smiley {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--brand-strong);
+  animation: plan-card-smiley 2.6s ease-in-out infinite;
+}
+
+@keyframes plan-card-smiley {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card__smiley {
+    animation: none;
+  }
+}
+
 .plan-card__meta {
   color: var(--text-muted);
   font-size: 12px;
@@ -406,6 +429,28 @@ a {
   gap: 16px;
 }
 
+/* Dashboard only: a playful band of dots and diagonal stripes that fades out to the right. */
+.page__header--textured {
+  position: relative;
+  isolation: isolate;
+  padding: 18px 20px;
+  margin: -8px -4px 20px;
+}
+
+.page__header--textured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--brand) 28%, transparent) 1px, transparent 0) 0 0 / 12px 12px,
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--amber) 10%, transparent) 0 8px, transparent 8px 20px),
+    linear-gradient(90deg, var(--brand-soft), transparent 75%);
+  -webkit-mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35));
+  mask-image: linear-gradient(90deg, #000 55%, rgba(0, 0, 0, 0.35));
+}
+
 .page__title {
   margin: 0;
   font-size: 22px;
@@ -425,9 +470,13 @@ a {
 /* Buttons */
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   font: inherit;
   font-weight: 500;
-  padding: 8px 14px;
+  padding: 0 14px;
   border-radius: 6px;
   border: 1px solid var(--brand);
   background: var(--brand);
@@ -455,8 +504,14 @@ a {
 }
 
 .button--small {
-  padding: 5px 10px;
+  height: 28px;
+  padding: 0 10px;
   font-size: 12px;
+}
+
+/* Header actions read as a matched pair: same height, same width. */
+.page__actions .button {
+  min-width: 112px;
 }
 
 /* Cards */
@@ -501,6 +556,43 @@ a {
 .stat--green {
   --stat-accent: var(--green);
   --stat-wash: var(--green-soft);
+}
+
+.stat__chart {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin: 6px 0 4px;
+  overflow: visible;
+}
+
+.stat__chart-area {
+  fill: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.stat__chart-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.stat__chart-dot {
+  fill: currentColor;
+}
+
+.stat--amber .stat__chart {
+  color: var(--amber);
+}
+
+.stat--brand .stat__chart {
+  color: var(--brand);
+}
+
+.stat--blue .stat__chart {
+  color: var(--blue);
 }
 
 .stat--amber {

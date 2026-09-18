@@ -370,6 +370,69 @@ function streamStatus(snapshot: LiveSessionSnapshot, paused: boolean): { label: 
   }
 }
 
+/**
+ * Outlines the element a unit points at while the agent asks about it. The live element wins
+ * (the page may have scrolled since); the rect recorded on the anchor is the fallback.
+ */
+function AskedHighlight({ unit, zIndex }: { unit: LiveUnit; zIndex: number }) {
+  const anchor = unit.anchors[0];
+  const [rect, setRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!anchor || typeof document === "undefined") return;
+    let frame = 0;
+    const measure = () => {
+      let element: Element | null = null;
+      try {
+        element = document.querySelector(anchor.selector);
+      } catch {
+        element = null;
+      }
+      const box = element?.getBoundingClientRect();
+      setRect(box && box.width > 0 ? { x: box.left, y: box.top, width: box.width, height: box.height } : anchor.rect);
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    return () => cancelAnimationFrame(frame);
+  }, [anchor]);
+  if (!anchor || !rect) return null;
+  return (
+    <div
+      data-riffrec-asked-highlight={unit.id}
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        left: rect.x - 4,
+        top: rect.y - 4,
+        width: rect.width + 8,
+        height: rect.height + 8,
+        border: "2px dashed #c11574",
+        borderRadius: 8,
+        background: "rgba(193, 21, 116, 0.05)",
+        pointerEvents: "none",
+        zIndex,
+        animation: "riffrec-live-pulse 1.6s ease-in-out infinite"
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          left: 0,
+          top: -22,
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: "#c11574",
+          color: "#ffffff",
+          fontFamily: FONT,
+          fontSize: 11,
+          whiteSpace: "nowrap"
+        }}
+      >
+        Agent asks about this
+      </span>
+    </div>
+  );
+}
+
 const COMPOUND_STATEMENT = "/ce-compound: capture the decisions and learnings from this session";
 const COMPOUND_MS = 1800;
 
@@ -606,21 +669,31 @@ export function LiveOverlay({
     if (fresh.length > 0) playAppliedChime();
   }, [snapshot.units]);
 
+  // While the agent asks about a unit, what the riffer drew or pinned for it comes back on the
+  // page (and its element is outlined) until they answer.
+  const askedUnits = useMemo(() => {
+    const open = new Set(snapshot.openQuestions.filter((question) => !question.answered).map((question) => question.unit_id));
+    return snapshot.units.filter((unit) => open.has(unit.id));
+  }, [snapshot.openQuestions, snapshot.units]);
+  const recalled = useMemo(() => new Set(askedUnits.flatMap((unit) => unit.evidence.annotation_ids)), [askedUnits]);
+
   const visibleAnnotations = useMemo(
-    () => snapshot.annotations.filter((annotation) => !cleared.has(annotation.id)),
-    [snapshot.annotations, cleared]
+    () => snapshot.annotations.filter((annotation) => !cleared.has(annotation.id) || recalled.has(annotation.id)),
+    [snapshot.annotations, cleared, recalled]
   );
+  const fadingNow = useMemo(() => new Set([...fading].filter((id) => !recalled.has(id))), [fading, recalled]);
 
   const handleAnnotation = useCallback(
     (annotation: LiveAnnotation) => {
       if (onAnnotation) onAnnotation(annotation);
       else session.addAnnotation(annotation);
       if (annotation.kind === "pin") {
-        const pins = visibleAnnotations.filter((mark) => mark.kind === "pin").length + 1;
+        // Count every pin in the session: faded or cleared ones still happened.
+        const pins = snapshot.annotations.filter((mark) => mark.kind === "pin").length + 1;
         flash(`Pin ${pins} added`);
       }
     },
-    [session, onAnnotation, visibleAnnotations, flash]
+    [session, onAnnotation, snapshot.annotations, flash]
   );
 
   // Clearing hides marks from the page only; what already left for the agent stays in the session.
@@ -916,7 +989,7 @@ export function LiveOverlay({
       <style>{OVERLAY_KEYFRAMES}</style>
       <DrawingLayer
         annotations={visibleAnnotations}
-        fadingIds={fading}
+        fadingIds={fadingNow}
         onAnnotation={handleAnnotation}
         active={activeTool !== "cursor"}
         tool={activeTool === "pin" ? "pin" : "draw"}
@@ -1185,6 +1258,7 @@ export function LiveOverlay({
         </div>
       )}
       {toolbar}
+      {running ? askedUnits.map((unit) => <AskedHighlight key={unit.id} unit={unit} zIndex={zIndex} />) : null}
       {compounding ? <CompoundBurst zIndex={zIndex + 3} /> : null}
       {toast ? (
         <div data-riffrec-live-toast="" role="status" style={{ ...toastStyle, zIndex: zIndex + 1 }}>

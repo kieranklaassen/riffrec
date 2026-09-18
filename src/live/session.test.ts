@@ -440,6 +440,48 @@ describe("LiveSession units and withdrawals", () => {
     expect(session.noteFor(id)).toBe("moved");
   });
 
+  it("drops a second answer to a question that is already answered", async () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options()));
+    session.start();
+    const [id] = recordUnits(session, 1);
+    await session.send();
+    await settled(session);
+    await vi.waitFor(() => expect(h.requests.some((request) => request.url.endsWith("/stream"))).toBe(true));
+    const first = await h.endpoint.wait();
+    await h.endpoint.ack((first.body as { checkpoint_id: string }).checkpoint_id);
+    await h.endpoint.ask(id, "Which header?");
+    await vi.waitFor(() => expect(session.openQuestions()).toHaveLength(1));
+
+    expect(session.relayAnswer(id, "The compact one")).not.toBeNull();
+    expect(session.relayAnswer(id, "The compact one")).toBeNull();
+    expect(session.answer("unit_missing", "x")).toBeNull();
+  });
+
+  it("folds a drawing-only unit into the spoken unit that follows on the same element", () => {
+    const h = harness();
+    const session = track(LiveSession.create(h.options()));
+    session.start();
+    const drawing = session.recordUnit({
+      statement: "Drawing on Sidebar",
+      transcript_excerpt: "",
+      anchors: [anchor()],
+      evidence: { annotation_ids: ["ann_1"] }
+    });
+    const elsewhere = session.recordUnit({
+      statement: "Drawing on Footer",
+      transcript_excerpt: "",
+      anchors: [{ ...anchor(), selector: "footer" }],
+      evidence: { annotation_ids: ["ann_2"] }
+    });
+
+    const spoken = session.recordUnit({ statement: "Make this calmer", transcript_excerpt: "make this calmer", anchors: [anchor()] });
+
+    expect(session.unit(drawing.id)?.status).toBe("withdrawn");
+    expect(session.unit(elsewhere.id)?.status).toBe("initial");
+    expect(spoken.evidence.annotation_ids).toEqual(["ann_1"]);
+  });
+
   it("links annotations to units locally and posts them", async () => {
     const h = harness();
     const session = track(LiveSession.create(h.options()));

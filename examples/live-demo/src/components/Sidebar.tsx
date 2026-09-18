@@ -40,6 +40,9 @@ export function Sidebar({ open }: SidebarProps) {
 
       <div className="sidebar__footer">
         <div className="plan-card">
+          <span className="plan-card__smiley" aria-hidden="true">
+            ☺
+          </span>
           <div className="plan-card__title">Pro plan</div>
           <div className="plan-card__meta">14 days left in trial</div>
           <button type="button" className="button button--small">
