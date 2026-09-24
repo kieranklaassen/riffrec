@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [2.2.1] - 2026-09-24
 
 - Live mode: the interviewer is now told what the riffer clicks as it happens (`[PAGE] The riffer clicked <element> (anchor id: …)` system notes, one per click burst), so "this" and "here" resolve without asking, and it can see the screen: a `look_at_screen` tool makes the page attach a screenshot as an `input_image` item, and the page attaches one on its own after a click or drawing and when the riffer's words point at something visual, at most one every 5 s and downscaled to 1280 px. Frames shown to the interviewer are also released to the endpoint. `LIVE_TOOLS` therefore has five tools; `DEFAULT_INTERVIEWER_INSTRUCTIONS` gains a `[SCREEN CONTEXT]` section and the persona helpers are exported for endpoint authors. Under `frames: "none"` nothing visual leaves the page. Clicks on riffrec's own panel are no longer captured in live sessions. Consent copy names the clicks and screenshots going to OpenAI.
 - Live mode: after `session.created`, riffrec reconciles the session the endpoint minted — missing tools are added (the endpoint's copies win), a persona without `[SCREEN CONTEXT]` gets it appended, a bare session gets the defaults — so live mode works out of the box while the endpoint keeps owning the persona.
